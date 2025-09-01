@@ -1,0 +1,18 @@
+{
+  "name": "comind-mcp",
+  "version": "0.2.0",
+  "private": true,
+  "description": "MCP gateway — aggregate MCP servers & APIs, compose tools, expose curated virtual MCP endpoints to agents. Self-hosted, zero-infra (SQLite).",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:server": "pnpm --filter comind-server dev",
+    "dev:web": "pnpm --filter comind-web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter comind-server db:generate"
+  }
+}
