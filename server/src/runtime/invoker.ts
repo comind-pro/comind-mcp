@@ -1,0 +1,102 @@
+import { and, eq } from 'drizzle-orm';
+import { createConnector } from '../connectors/index.js';
+import type { CallResult } from '../connectors/types.js';
+import { textResult } from '../connectors/types.js';
+import { db } from '../db/client.js';
+import { callLogs, composites, sources, tools } from '../db/schema.js';
+import { runComposite } from '../composite/engine.js';
+import { applyAuth } from '../auth/apply.js';
+import { buildMcpOAuthProvider } from '../auth/mcp-oauth.js';
+import { newId } from '../lib/id.js';
+import { resolveSourceConfig } from '../secrets/loader.js';
+
+export interface InvokeContext {
+  ownerId: string; // tools are resolved only within this user's namespace
+  agentId?: string | null;
+  groupId?: string | null;
+}
+
+const MAX_DEPTH = 5;
+
+function estimateTokens(result: CallResult): number {
+  const len = result.content.reduce((n, c) => n + (typeof c.text === 'string' ? c.text.length : 0), 0);
+  return Math.ceil(len / 4);
+}
+
+/**
+ * Central tool runtime shared by the gateway, composites and the scheduler.
+ * Resolves a tool by registry name and dispatches: native → connector,
+ * composite → recursive engine. Every invocation is logged (best-effort).
+ */
+export async function invokeTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  ctx: InvokeContext,
+  depth = 0,
+): Promise<CallResult> {
+  const startedAt = Date.now();
+  const result = await dispatch(toolName, args, ctx, depth);
+  // Observability: record each call. Never let logging break the call.
+  void db
+    .insert(callLogs)
+    .values({
+      id: newId(),
+      ownerId: ctx.ownerId,
+      groupId: ctx.groupId ?? null,
+      agentId: ctx.agentId ?? null,
+      toolName,
+      status: result.isError ? 'error' : 'success',
+      durationMs: Date.now() - startedAt,
+      tokensEst: estimateTokens(result),
+      error: result.isError ? result.content.map((c) => c.text).join('\n').slice(0, 500) : null,
+      ts: new Date(),
+    })
+    .catch(() => {});
+  return result;
+}
+
+async function dispatch(
+  toolName: string,
+  args: Record<string, unknown>,
+  ctx: InvokeContext,
+  depth: number,
+): Promise<CallResult> {
+  if (depth > MAX_DEPTH) return textResult(`Max composite depth exceeded at ${toolName}`, true);
+
+  // Owner-scoped: never resolve another user's tool with the same name.
+  const [tool] = await db
+    .select()
+    .from(tools)
+    .where(and(eq(tools.name, toolName), eq(tools.ownerId, ctx.ownerId)));
+  if (!tool) return textResult(`Unknown tool: ${toolName}`, true);
+
+  if (tool.kind === 'composite') {
+    const [comp] = await db.select().from(composites).where(eq(composites.toolId, tool.id));
+    if (!comp) return textResult(`Composite definition missing for ${toolName}`, true);
+    return runComposite(comp.definition, args, (name, a, d) => invokeTool(name, a, ctx, d), depth);
+  }
+
+  // native
+  if (!tool.sourceId) return textResult(`Native tool ${toolName} has no source`, true);
+  const [source] = await db.select().from(sources).where(eq(sources.id, tool.sourceId));
+  if (!source) return textResult(`Source missing for ${toolName}`, true);
+
+  try {
+    const full = await resolveSourceConfig(source.config, source.id);
+    const authBlock = full.auth as { type?: string; scope?: string; clientId?: string } | undefined;
+
+    // MCP-native OAuth: hand the SDK provider to the transport (auto Bearer + refresh).
+    if (source.kind === 'mcp' && authBlock?.type === 'mcp_oauth') {
+      const provider = buildMcpOAuthProvider(source.id, { scope: authBlock.scope, clientId: authBlock.clientId });
+      const connector = createConnector('mcp', full, { authProvider: provider });
+      return await connector.callTool(tool.upstreamName ?? tool.name, args);
+    }
+
+    const resolved = await applyAuth(source.id, full);
+    const connector = createConnector(source.kind, resolved);
+    return await connector.callTool(tool.upstreamName ?? tool.name, args);
+  } catch (err) {
+    // Fault isolation: one bad upstream must not crash the caller.
+    return textResult(err instanceof Error ? err.message : String(err), true);
+  }
+}
