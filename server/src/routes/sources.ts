@@ -75,4 +75,18 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(204).send();
   });
 
+  app.post('/sources/:id/test', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = await owned(req, id, ownerOf(req));
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+
+    const connector = createConnector(row.kind, await applyAuth(row.id, await resolveSourceConfig(row.config, row.id)));
+    const result = await connector.health();
+    await db
+      .update(sources)
+      .set({ status: result.ok ? 'ok' : 'error', statusMessage: result.message ?? null })
+      .where(eq(sources.id, id));
+    return result;
+  });
+
 }
