@@ -89,4 +89,49 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     return result;
   });
 
+  app.post('/sources/:id/import', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const owner = ownerOf(req);
+    const row = await owned(req, id, owner);
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+
+    const connector = createConnector(row.kind, await applyAuth(row.id, await resolveSourceConfig(row.config, row.id)));
+    const upstream = await connector.listTools();
+    const prefix = slugify(row.name);
+
+    for (const t of upstream) {
+      const name = `${prefix}.${t.name}`;
+      await db
+        .insert(tools)
+        .values({
+          id: newId(),
+          ownerId: owner,
+          sourceId: row.id,
+          kind: 'native',
+          name,
+          upstreamName: t.name,
+          displayName: t.name,
+          description: t.description ?? null,
+          inputSchema: t.inputSchema ?? null,
+          visible: true,
+          createdAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [tools.ownerId, tools.name],
+          set: {
+            sourceId: row.id,
+            upstreamName: t.name,
+            description: t.description ?? null,
+            inputSchema: t.inputSchema ?? null,
+          },
+        });
+    }
+
+    await db.update(sources).set({ status: 'ok', statusMessage: null }).where(eq(sources.id, id));
+    const imported = await db
+      .select()
+      .from(tools)
+      .where(and(eq(tools.sourceId, row.id), eq(tools.kind, 'native')));
+    return { imported: imported.length, tools: imported };
+  });
 }
