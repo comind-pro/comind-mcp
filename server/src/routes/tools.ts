@@ -35,4 +35,36 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
     return row;
   });
 
+  app.patch('/tools/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const owner = ownerOf(req);
+    const body = patchBody.parse(req.body);
+    const existing = await ownedTool(id, owner);
+    if (!existing) return reply.code(404).send({ error: 'not_found' });
+
+    if (body.name && body.name !== existing.name) {
+      const [clash] = await db
+        .select()
+        .from(tools)
+        .where(and(eq(tools.name, body.name), eq(tools.ownerId, owner)));
+      if (clash) return reply.code(409).send({ error: 'name_taken' });
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (body.name !== undefined) patch.name = body.name;
+    if (body.displayName !== undefined) patch.displayName = body.displayName;
+    if (body.description !== undefined) patch.description = body.description;
+    if (body.visible !== undefined) patch.visible = body.visible;
+    if (Object.keys(patch).length) await db.update(tools).set(patch).where(eq(tools.id, id));
+
+    const [row] = await db.select().from(tools).where(eq(tools.id, id));
+    return row;
+  });
+
+  app.delete('/tools/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    await db.delete(tools).where(and(eq(tools.id, id), eq(tools.ownerId, ownerOf(req))));
+    return reply.code(204).send();
+  });
+
 }
