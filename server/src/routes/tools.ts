@@ -67,4 +67,13 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(204).send();
   });
 
+  app.post('/tools/:id/test', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const owner = ownerOf(req);
+    const tool = await ownedTool(id, owner);
+    if (!tool) return reply.code(404).send({ error: 'not_found' });
+    const args = ((req.body as { args?: Record<string, unknown> })?.args ?? {}) as Record<string, unknown>;
+    const result = await invokeTool(tool.name, args, { ownerId: owner, groupId: null, agentId: null });
+    return result;
+  });
 }
