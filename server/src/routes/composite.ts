@@ -82,4 +82,40 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
     return { ...tool, definition: comp?.definition };
   });
 
+  app.patch('/composite-tools/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const owner = ownerOf(req);
+    const tool = await ownedComposite(id, owner);
+    if (!tool) return reply.code(404).send({ error: 'not_found' });
+
+    const body = z
+      .object({
+        definition: compositeDefinitionSchema.optional(),
+        displayName: z.string().nullable().optional(),
+        description: z.string().nullable().optional(),
+      })
+      .parse(req.body);
+
+    if (body.definition) {
+      const missing = await missingRefs(body.definition.steps, owner);
+      if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
+      await db.update(composites).set({ definition: body.definition }).where(eq(composites.toolId, id));
+      await db.update(tools).set({ inputSchema: body.definition.inputSchema ?? null }).where(eq(tools.id, id));
+    }
+    const toolPatch: Record<string, unknown> = {};
+    if (body.displayName !== undefined) toolPatch.displayName = body.displayName;
+    if (body.description !== undefined) toolPatch.description = body.description;
+    if (Object.keys(toolPatch).length) await db.update(tools).set(toolPatch).where(eq(tools.id, id));
+
+    const [comp] = await db.select().from(composites).where(eq(composites.toolId, id));
+    const [updated] = await db.select().from(tools).where(eq(tools.id, id));
+    return { ...updated, definition: comp?.definition };
+  });
+
+  app.delete('/composite-tools/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    await db.delete(tools).where(and(eq(tools.id, id), eq(tools.ownerId, ownerOf(req))));
+    return reply.code(204).send();
+  });
+
 }
