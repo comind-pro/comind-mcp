@@ -118,4 +118,21 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(204).send();
   });
 
+  app.post('/composite-tools/:id/run', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const owner = ownerOf(req);
+    const tool = await ownedComposite(id, owner);
+    if (!tool) return reply.code(404).send({ error: 'not_found' });
+    const [comp] = await db.select().from(composites).where(eq(composites.toolId, id));
+    if (!comp) return reply.code(404).send({ error: 'definition_missing' });
+
+    const args = ((req.body as { args?: Record<string, unknown> })?.args ?? {}) as Record<string, unknown>;
+    const { result, steps } = await runCompositeTrace(
+      comp.definition,
+      args,
+      (name, a, d) => invokeTool(name, a, { ownerId: owner, groupId: null, agentId: null }, d),
+      0,
+    );
+    return { content: result.content, isError: result.isError, steps };
+  });
 }
