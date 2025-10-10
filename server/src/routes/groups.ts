@@ -79,4 +79,37 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(204).send();
   });
 
+  app.get('/groups/:id/tools', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const grp = await ownedGroup(id, ownerOf(req));
+    if (!grp) return reply.code(404).send({ error: 'not_found' });
+    const links = await db.select().from(groupTools).where(eq(groupTools.groupId, id));
+    const ids = links.map((l) => l.toolId);
+    if (!ids.length) return [];
+    return db.select().from(tools).where(inArray(tools.id, ids));
+  });
+
+  app.put('/groups/:id/tools', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const owner = ownerOf(req);
+    const { toolIds } = z.object({ toolIds: z.array(z.string()) }).parse(req.body);
+    const grp = await ownedGroup(id, owner);
+    if (!grp) return reply.code(404).send({ error: 'not_found' });
+
+    if (toolIds.length) {
+      // tools must belong to the same owner
+      const found = await db
+        .select()
+        .from(tools)
+        .where(and(inArray(tools.id, toolIds), eq(tools.ownerId, owner)));
+      const missing = toolIds.filter((t) => !found.some((f) => f.id === t));
+      if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
+    }
+
+    await db.delete(groupTools).where(eq(groupTools.groupId, id));
+    if (toolIds.length) {
+      await db.insert(groupTools).values(toolIds.map((toolId) => ({ groupId: id, toolId })));
+    }
+    return { groupId: id, toolIds };
+  });
 }
