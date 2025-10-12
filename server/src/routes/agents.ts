@@ -76,4 +76,36 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     return { apiKey: key.token, prefix: key.prefix };
   });
 
+  app.get('/agents/:id/groups', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = await ownedAgent(id, ownerOf(req));
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    return agentGrants(id);
+  });
+
+  app.post('/agents/:id/groups', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const owner = ownerOf(req);
+    const { groupId } = z.object({ groupId: z.string() }).parse(req.body);
+    const agent = await ownedAgent(id, owner);
+    if (!agent) return reply.code(404).send({ error: 'not_found' });
+    // group must belong to the same owner
+    const [grp] = await db.select().from(groups).where(and(eq(groups.id, groupId), eq(groups.ownerId, owner)));
+    if (!grp) return reply.code(400).send({ error: 'unknown_group' });
+
+    const [exists] = await db
+      .select()
+      .from(agentGroups)
+      .where(and(eq(agentGroups.agentId, id), eq(agentGroups.groupId, groupId)));
+    if (!exists) await db.insert(agentGroups).values({ agentId: id, groupId });
+    return agentGrants(id);
+  });
+
+  app.delete('/agents/:id/groups/:groupId', async (req, reply) => {
+    const { id, groupId } = req.params as { id: string; groupId: string };
+    const agent = await ownedAgent(id, ownerOf(req));
+    if (!agent) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(agentGroups).where(and(eq(agentGroups.agentId, id), eq(agentGroups.groupId, groupId)));
+    return reply.code(204).send();
+  });
 }
