@@ -58,4 +58,18 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(204).send();
   });
 
+  app.post('/schedules/:sid/run', async (req, reply) => {
+    const { sid } = req.params as { sid: string };
+    const sch = await getSchedule(sid);
+    if (!sch || sch.ownerId !== ownerOf(req)) return reply.code(404).send({ error: 'not_found' });
+    const runId = await execute(sid);
+    return { runId };
+  });
+
+  app.get('/schedules/:sid/runs', async (req, reply) => {
+    const { sid } = req.params as { sid: string };
+    const sch = await getSchedule(sid);
+    if (!sch || sch.ownerId !== ownerOf(req)) return reply.code(404).send({ error: 'not_found' });
+    return listRuns(sid);
+  });
 }
