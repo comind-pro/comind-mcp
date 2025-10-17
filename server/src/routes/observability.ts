@@ -61,4 +61,48 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // What does this agent actually see through its endpoint?
+  app.get('/agents/:id/inspect', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const [agent] = await db.select().from(agents).where(and(eq(agents.id, id), eq(agents.ownerId, ownerOf(req))));
+    if (!agent) return reply.code(404).send({ error: 'not_found' });
+
+    // What the agent sees per granted group.
+    const links = await db.select().from(agentGroups).where(eq(agentGroups.agentId, id));
+    const out = [];
+    for (const l of links) {
+      const [grp] = await db.select().from(groups).where(eq(groups.id, l.groupId));
+      if (!grp) continue;
+      const visible = await groupVisibleTools(grp.id);
+      out.push({
+        group: { id: grp.id, name: grp.name, slug: grp.slug, schedulingEnabled: grp.schedulingEnabled },
+        tools: visible.map((t) => ({ name: t.name, displayName: t.displayName, kind: t.kind })),
+        builtinTools: grp.schedulingEnabled ? SELF_CRON : [],
+      });
+    }
+    return { agentId: agent.id, groups: out };
+  });
+
+  // Test invoke from the control plane (gated by a granted group's toolset).
+  app.post('/agents/:id/invoke', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z
+      .object({ groupId: z.string(), tool: z.string(), args: z.record(z.unknown()).optional() })
+      .parse(req.body);
+    const owner = ownerOf(req);
+    const [agent] = await db.select().from(agents).where(and(eq(agents.id, id), eq(agents.ownerId, owner)));
+    if (!agent) return reply.code(404).send({ error: 'not_found' });
+
+    const [grant] = await db
+      .select()
+      .from(agentGroups)
+      .where(and(eq(agentGroups.agentId, id), eq(agentGroups.groupId, body.groupId)));
+    if (!grant) return reply.code(400).send({ error: 'group_not_granted' });
+
+    const visible = await groupVisibleTools(body.groupId);
+    if (!visible.some((t) => t.name === body.tool)) {
+      return reply.code(400).send({ error: 'tool_not_in_group' });
+    }
+    const result = await invokeTool(body.tool, body.args ?? {}, { ownerId: owner, agentId: agent.id, groupId: body.groupId });
+    return result;
+  });
 }
