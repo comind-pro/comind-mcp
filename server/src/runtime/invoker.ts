@@ -23,6 +23,19 @@ function estimateTokens(result: CallResult): number {
   return Math.ceil(len / 4);
 }
 
+/** When a native tool declares an outputSchema and its result body is JSON,
+ *  surface the parsed value as structuredContent (MCP structured output). */
+function withStructured(result: CallResult, outputSchema: unknown): CallResult {
+  if (!outputSchema || result.isError || result.structuredContent !== undefined) return result;
+  const text = result.content.find((c) => typeof c.text === 'string')?.text;
+  if (!text) return result;
+  try {
+    return { ...result, structuredContent: JSON.parse(text) };
+  } catch {
+    return result; // not JSON — leave as text
+  }
+}
+
 /**
  * Central tool runtime shared by the gateway, composites and the scheduler.
  * Resolves a tool by registry name and dispatches: native → connector,
@@ -89,12 +102,12 @@ async function dispatch(
     if (source.kind === 'mcp' && authBlock?.type === 'mcp_oauth') {
       const provider = buildMcpOAuthProvider(source.id, { scope: authBlock.scope, clientId: authBlock.clientId });
       const connector = createConnector('mcp', full, { authProvider: provider });
-      return await connector.callTool(tool.upstreamName ?? tool.name, args);
+      return withStructured(await connector.callTool(tool.upstreamName ?? tool.name, args), tool.outputSchema);
     }
 
     const resolved = await applyAuth(source.id, full);
     const connector = createConnector(source.kind, resolved);
-    return await connector.callTool(tool.upstreamName ?? tool.name, args);
+    return withStructured(await connector.callTool(tool.upstreamName ?? tool.name, args), tool.outputSchema);
   } catch (err) {
     // Fault isolation: one bad upstream must not crash the caller.
     return textResult(err instanceof Error ? err.message : String(err), true);

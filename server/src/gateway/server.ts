@@ -201,6 +201,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
       name: t.name,
       description: t.displayName ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}` : t.description ?? undefined,
       inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
+      ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
     }));
     return {
       tools: auth.schedulingEnabled ? [...toolDefs, ...SELF_CRON_TOOLS] : toolDefs,
@@ -226,7 +227,11 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
       agentId: auth.agentId,
       groupId: auth.groupId,
     });
-    return { content: result.content, isError: result.isError };
+    return {
+      content: result.content,
+      ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
+      isError: result.isError,
+    };
   });
 
   return server;
@@ -263,6 +268,7 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
         name: t.name,
         description: t.displayName ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}` : t.description ?? undefined,
         inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
+        ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
       })),
     };
   });
@@ -278,7 +284,11 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
       agentId: auth.agentId,
       groupId: hit.groupId,
     });
-    return { content: result.content, isError: result.isError };
+    return {
+      content: result.content,
+      ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
+      isError: result.isError,
+    };
   });
 
   return server;

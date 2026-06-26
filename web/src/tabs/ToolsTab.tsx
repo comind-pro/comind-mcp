@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, type Source, type Tool } from '../api.js';
-import { CompositeBuilder } from './CompositeBuilder.js';
+import { CompositeBuilder, OutputField } from './CompositeBuilder.js';
 
 interface StepTrace {
   id: string;
@@ -30,6 +30,13 @@ export function ToolsTab() {
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editDef, setEditDef] = useState('');
+  // native-tool edit buffers
+  const [edName, setEdName] = useState('');
+  const [edDisplay, setEdDisplay] = useState('');
+  const [edDesc, setEdDesc] = useState('');
+  const [edInput, setEdInput] = useState('');
+  const [edOutput, setEdOutput] = useState('');
+  const [edOut, setEdOut] = useState<unknown>(undefined); // composite output (string template | object)
   const [testArgs, setTestArgs] = useState('{}');
   const [testOut, setTestOut] = useState<RunResult | null>(null);
   const [openSec, setOpenSec] = useState<Set<string>>(new Set());
@@ -52,11 +59,6 @@ export function ToolsTab() {
     }
   };
 
-  const rename = async (t: Tool) => {
-    const name = prompt('New unique name', t.name);
-    if (name && name !== t.name) await patch(t.id, { name });
-  };
-
   const del = async (id: string) => {
     await api.del(`/tools/${id}`).catch((e) => setErr(String(e.message)));
     if (expanded === id) setExpanded(null);
@@ -69,21 +71,59 @@ export function ToolsTab() {
     setTestOut(null);
     setTestArgs('{}');
     setErr('');
+    // common identity fields (both kinds, edited inline — no popup)
+    setEdName(t.name);
+    setEdDisplay(t.displayName ?? '');
+    setEdDesc(t.description ?? '');
     if (t.kind === 'composite') {
-      const full = await api.get<Tool & { definition: unknown }>(`/composite-tools/${t.id}`);
-      setEditDef(JSON.stringify(full.definition, null, 2));
+      const full = await api.get<Tool & { definition: Record<string, unknown> }>(`/composite-tools/${t.id}`);
+      // Split schemas/output out of the definition so they get their own fields;
+      // the Definition textarea keeps steps/when only.
+      const { inputSchema, outputSchema, output, ...rest } = full.definition ?? {};
+      setEditDef(JSON.stringify(rest, null, 2));
+      setEdInput(inputSchema ? JSON.stringify(inputSchema, null, 2) : '');
+      setEdOutput(outputSchema ? JSON.stringify(outputSchema, null, 2) : '');
+      setEdOut(output ?? undefined);
     } else {
       setEditDef('');
+      setEdInput(JSON.stringify(t.inputSchema ?? { type: 'object', properties: {} }, null, 2));
+      setEdOutput(t.outputSchema ? JSON.stringify(t.outputSchema, null, 2) : '');
     }
   };
 
-  const saveDef = async (id: string) => {
+  /** Save name/displayName/description (works for both kinds via /tools). */
+  const saveIdentity = async (t: Tool) => {
+    const body: Record<string, unknown> = { displayName: edDisplay || null, description: edDesc || null };
+    if (edName && edName !== t.name) body.name = edName;
+    await api.patch(`/tools/${t.id}`, body);
+  };
+
+  const saveNative = async (t: Tool) => {
+    setErr('');
+    const body: Record<string, unknown> = { displayName: edDisplay || null, description: edDesc || null };
+    if (edName && edName !== t.name) body.name = edName;
+    try {
+      body.inputSchema = edInput.trim() ? JSON.parse(edInput) : null;
+      body.outputSchema = edOutput.trim() ? JSON.parse(edOutput) : null;
+    } catch (e) {
+      return setErr('Invalid JSON in schema: ' + (e as Error).message);
+    }
+    await patch(t.id, body);
+  };
+
+  const saveDef = async (t: Tool) => {
     setErr('');
     try {
-      await api.patch(`/composite-tools/${id}`, { definition: JSON.parse(editDef) });
+      const definition: Record<string, unknown> = JSON.parse(editDef);
+      if (edInput.trim()) definition.inputSchema = JSON.parse(edInput);
+      if (edOutput.trim()) definition.outputSchema = JSON.parse(edOutput);
+      if (edOut !== undefined) definition.output = edOut;
+      else delete definition.output; // empty → engine returns raw last step
+      await saveIdentity(t); // name/displayName/description
+      await api.patch(`/composite-tools/${t.id}`, { definition });
       await load();
     } catch (e) {
-      setErr(String((e as Error).message));
+      setErr('Invalid JSON: ' + (e as Error).message);
     }
   };
 
@@ -140,9 +180,6 @@ export function ToolsTab() {
           </button>
         </td>
         <td className="row">
-          <button className="ghost" onClick={() => rename(t)}>
-            Rename
-          </button>
           <button className="danger" onClick={() => del(t.id)}>
             Delete
           </button>
@@ -151,20 +188,54 @@ export function ToolsTab() {
       {expanded === t.id && (
         <tr>
           <td colSpan={4}>
+            {/* Shared identity (both kinds, inline — no popup) */}
+            <h3>Edit tool</h3>
+            <label className="builder-field">
+              <span>name (unique)</span>
+              <input className="mono" value={edName} onChange={(e) => setEdName(e.target.value)} placeholder="registry key" />
+            </label>
+            <label className="builder-field">
+              <span>display name</span>
+              <input value={edDisplay} onChange={(e) => setEdDisplay(e.target.value)} placeholder="shown to agents" />
+            </label>
+            <label className="builder-field">
+              <span>description</span>
+              <input value={edDesc} onChange={(e) => setEdDesc(e.target.value)} placeholder="what the tool does" />
+            </label>
+
             <h3>Input schema (JSON)</h3>
-            <div className="endpoint mono" style={{ maxHeight: 160, overflow: 'auto' }}>
-              {JSON.stringify(t.inputSchema ?? { type: 'object', properties: {} }, null, 2)}
-            </div>
+            {t.kind === 'composite' && (
+              <div className="hint">
+                Params the tool accepts. Use <code>$.input.x</code> in step args/sql params. Leave empty for none.
+              </div>
+            )}
+            <textarea value={edInput} onChange={(e) => setEdInput(e.target.value)} style={{ minHeight: 110 }} />
+
+            <h3>Output schema (JSON, optional)</h3>
+            <div className="hint">Helps models parse the result. Leave empty to omit.</div>
+            <textarea
+              value={edOutput}
+              onChange={(e) => setEdOutput(e.target.value)}
+              style={{ minHeight: 90 }}
+              placeholder='{ "type": "object", "properties": { ... } }'
+            />
 
             {t.kind === 'composite' && (
               <>
-                <div className="spacer" />
-                <h3>Definition (edit)</h3>
-                <textarea value={editDef} onChange={(e) => setEditDef(e.target.value)} />
-                <div className="spacer" />
-                <button onClick={() => saveDef(t.id)}>Save definition</button>
+                <h3>Output (optional)</h3>
+                <div className="hint">
+                  <b>text</b> = string template; <b>json</b> = object template → structured output (describe in Output
+                  schema). Empty → raw result of the last step.
+                </div>
+                <OutputField value={edOut} onChange={setEdOut} />
+
+                <h3>Definition (steps / when)</h3>
+                <textarea value={editDef} onChange={(e) => setEditDef(e.target.value)} style={{ minHeight: 200 }} />
               </>
             )}
+
+            <div className="spacer" />
+            <button onClick={() => (t.kind === 'composite' ? saveDef(t) : saveNative(t))}>Save tool</button>
 
             <div className="spacer" />
             <h3>Test run</h3>

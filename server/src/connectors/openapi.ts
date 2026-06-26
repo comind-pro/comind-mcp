@@ -20,6 +20,7 @@ interface Operation {
   paramLoc: Record<string, ParamLoc>;
   bodyKeys: Set<string>;
   inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
 }
 
 interface Parsed {
@@ -49,6 +50,30 @@ function deref(spec: any, node: any, seen = new Set<string>()): any {
     return deref(spec, target, seen);
   }
   return node;
+}
+
+/** Deep `$ref` resolver — produces a self-contained schema (for outputSchema).
+ *  Bounded by depth to survive recursive specs. */
+function deepDeref(spec: any, node: any, depth = 0): any {
+  if (depth > 12 || node === null || typeof node !== 'object') return node;
+  const r = deref(spec, node);
+  if (Array.isArray(r)) return r.map((x) => deepDeref(spec, x, depth + 1));
+  if (r && typeof r === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) out[k] = deepDeref(spec, v, depth + 1);
+    return out;
+  }
+  return r;
+}
+
+/** Pull a JSON success-response schema from an operation, if declared. */
+function responseSchema(spec: any, op: any): Record<string, unknown> | undefined {
+  const resp = op.responses ?? {};
+  const pick = resp['200'] ?? resp['201'] ?? resp['2XX'] ?? resp['default'];
+  const schema = deref(spec, pick)?.content?.['application/json']?.schema;
+  if (!schema) return undefined;
+  const resolved = deepDeref(spec, schema);
+  return resolved && typeof resolved === 'object' ? (resolved as Record<string, unknown>) : undefined;
 }
 
 function parse(spec: any, cfgBase?: string): Parsed {
@@ -97,6 +122,7 @@ function parse(spec: any, cfgBase?: string): Parsed {
         paramLoc,
         bodyKeys,
         inputSchema: { type: 'object', properties, required },
+        outputSchema: responseSchema(spec, op),
       });
     }
   }
@@ -130,6 +156,7 @@ export class OpenApiConnector implements Connector {
       name: o.name,
       description: o.description,
       inputSchema: o.inputSchema,
+      ...(o.outputSchema ? { outputSchema: o.outputSchema } : {}),
     }));
   }
 

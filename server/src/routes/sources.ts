@@ -113,6 +113,7 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
           displayName: t.name,
           description: t.description ?? null,
           inputSchema: t.inputSchema ?? null,
+          outputSchema: t.outputSchema ?? null,
           visible: true,
           createdAt: new Date(),
         })
@@ -123,6 +124,9 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
             upstreamName: t.name,
             description: t.description ?? null,
             inputSchema: t.inputSchema ?? null,
+            // only refresh when the connector provides one (OpenAPI); undefined is
+            // omitted by drizzle, preserving a manually-set schema on re-import.
+            outputSchema: t.outputSchema,
           },
         });
     }

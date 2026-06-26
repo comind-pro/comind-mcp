@@ -137,8 +137,24 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
             + step
           </button>
 
-          <h3>Output template</h3>
-          <textarea value={def.output ?? ''} onChange={(e) => setDef((d) => ({ ...d, output: e.target.value }))} style={{ minHeight: 70 }} />
+          <h3>Output (optional)</h3>
+          <div className="hint">
+            <b>text</b>: a string template, e.g. <code>{'Found: ${$.steps.s1.text}'}</code>.{' '}
+            <b>json</b>: an object template → returned as <b>structured output</b> (describe it in Output schema below).
+            Empty → raw result of the last step.
+          </div>
+          <OutputField value={def.output} onChange={(v) => setDef((d) => ({ ...d, output: v }))} />
+
+          <h3>Input schema (JSON) — params the tool accepts</h3>
+          <div className="hint">
+            e.g. <code>{'{ "type":"object", "properties": { "from":{"type":"string"}, "to":{"type":"string"} } }'}</code> —
+            reference values in steps as <code>$.input.from</code>.
+          </div>
+          <SchemaField value={def.inputSchema} onParsed={(v) => setDef((d) => ({ ...d, inputSchema: v }))} />
+
+          <h3>Output schema (JSON, optional)</h3>
+          <div className="hint">Describes the result so models parse it better. Leave empty to omit.</div>
+          <SchemaField value={def.outputSchema} onParsed={(v) => setDef((d) => ({ ...d, outputSchema: v }))} />
         </div>
       )}
 
@@ -148,6 +164,92 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
       </button>
       {err && <div className="err-msg">{err}</div>}
     </div>
+  );
+}
+
+/** JSON-schema textarea: parses to an object (or undefined when empty), shows
+ *  a parse error inline. Keeps its own text so partial typing isn't lost. */
+function SchemaField({ value, onParsed }: { value: unknown; onParsed: (v: Record<string, unknown> | undefined) => void }) {
+  const [text, setText] = useState(value ? JSON.stringify(value, null, 2) : '');
+  const [err, setErr] = useState('');
+  const onChange = (v: string) => {
+    setText(v);
+    if (!v.trim()) {
+      setErr('');
+      onParsed(undefined);
+      return;
+    }
+    try {
+      onParsed(JSON.parse(v));
+      setErr('');
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+  return (
+    <>
+      <textarea value={text} onChange={(e) => onChange(e.target.value)} style={{ minHeight: 90 }} />
+      {err && <div className="err-msg">{err}</div>}
+    </>
+  );
+}
+
+/** Output editor with text|json toggle. text → string template; json → object
+ *  template (structured output). Emits undefined when empty. */
+export function OutputField({
+  value,
+  onChange,
+}: {
+  value: unknown;
+  onChange: (v: string | Record<string, unknown> | undefined) => void;
+}) {
+  const initJson = value !== null && typeof value === 'object';
+  const [mode, setMode] = useState<'text' | 'json'>(initJson ? 'json' : 'text');
+  const [text, setText] = useState(
+    value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value, null, 2),
+  );
+  const [err, setErr] = useState('');
+  const emit = (t: string, m: 'text' | 'json') => {
+    setText(t);
+    if (!t.trim()) {
+      setErr('');
+      onChange(undefined);
+      return;
+    }
+    if (m === 'text') {
+      setErr('');
+      onChange(t);
+      return;
+    }
+    try {
+      onChange(JSON.parse(t));
+      setErr('');
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+  const switchMode = (m: 'text' | 'json') => {
+    setMode(m);
+    emit(text, m);
+  };
+  return (
+    <>
+      <div className="row" style={{ gap: 2, marginBottom: 4 }}>
+        <button className={mode === 'text' ? 'mini' : 'ghost mini'} onClick={() => switchMode('text')}>
+          text
+        </button>
+        <button className={mode === 'json' ? 'mini' : 'ghost mini'} onClick={() => switchMode('json')}>
+          json
+        </button>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => emit(e.target.value, mode)}
+        style={{ minHeight: 80 }}
+        placeholder={mode === 'json' ? '{ "count": "${$.steps.s1.text}" }' : 'Result: ${$.steps.s1.text}'}
+      />
+      {err && <div className="err-msg">{err}</div>}
+    </>
   );
 }
 

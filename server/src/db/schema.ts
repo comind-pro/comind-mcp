@@ -59,6 +59,8 @@ export const tools = pgTable(
     displayName: text('display_name'),
     description: text('description'),
     inputSchema: jsonb('input_schema').$type<Record<string, unknown>>(),
+    // optional JSON Schema describing the tool's result (helps models parse output)
+    outputSchema: jsonb('output_schema').$type<Record<string, unknown>>(),
     visible: boolean('visible').notNull().default(true),
     createdAt: createdAt(),
   },

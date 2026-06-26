@@ -10,6 +10,8 @@ const patchBody = z.object({
   name: z.string().min(1).optional(),
   displayName: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
+  inputSchema: z.record(z.unknown()).nullable().optional(),
+  outputSchema: z.record(z.unknown()).nullable().optional(),
   visible: z.boolean().optional(),
 });
 
@@ -54,6 +56,8 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
     if (body.name !== undefined) patch.name = body.name;
     if (body.displayName !== undefined) patch.displayName = body.displayName;
     if (body.description !== undefined) patch.description = body.description;
+    if (body.inputSchema !== undefined) patch.inputSchema = body.inputSchema;
+    if (body.outputSchema !== undefined) patch.outputSchema = body.outputSchema;
     if (body.visible !== undefined) patch.visible = body.visible;
     if (Object.keys(patch).length) await db.update(tools).set(patch).where(eq(tools.id, id));
 

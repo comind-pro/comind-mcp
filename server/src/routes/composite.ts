@@ -57,6 +57,7 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
         displayName: body.displayName ?? body.name,
         description: body.description ?? null,
         inputSchema: body.definition.inputSchema ?? null,
+        outputSchema: body.definition.outputSchema ?? null,
         visible: true,
         createdAt: new Date(),
       });
@@ -100,7 +101,13 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
       const missing = await missingRefs(body.definition.steps, owner);
       if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
       await db.update(composites).set({ definition: body.definition }).where(eq(composites.toolId, id));
-      await db.update(tools).set({ inputSchema: body.definition.inputSchema ?? null }).where(eq(tools.id, id));
+      await db
+        .update(tools)
+        .set({
+          inputSchema: body.definition.inputSchema ?? null,
+          outputSchema: body.definition.outputSchema ?? null,
+        })
+        .where(eq(tools.id, id));
     }
     const toolPatch: Record<string, unknown> = {};
     if (body.displayName !== undefined) toolPatch.displayName = body.displayName;

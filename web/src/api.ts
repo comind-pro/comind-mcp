@@ -91,6 +91,7 @@ export interface Tool {
   description: string | null;
   visible: boolean;
   inputSchema?: Record<string, unknown> | null;
+  outputSchema?: Record<string, unknown> | null;
 }
 export interface Group {
   id: string;

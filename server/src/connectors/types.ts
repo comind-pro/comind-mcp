@@ -4,11 +4,16 @@ export interface ToolDef {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+  /** JSON Schema for the result, when the connector can derive it (e.g. OpenAPI). */
+  outputSchema?: Record<string, unknown>;
 }
 
-/** MCP-style call result. `content` is an array of content blocks. */
+/** MCP-style call result. `content` is an array of content blocks.
+ *  `structuredContent` (optional) is a JSON value matching the tool's
+ *  outputSchema — surfaced to MCP clients as structured output. */
 export interface CallResult {
   content: Array<{ type: string; text?: string; [k: string]: unknown }>;
+  structuredContent?: unknown;
   isError?: boolean;
 }
 

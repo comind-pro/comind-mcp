@@ -26,6 +26,8 @@ export const stepSchema = z.object({
 
 export const compositeDefinitionSchema = z.object({
   inputSchema: z.record(z.unknown()).optional(),
+  // JSON Schema for the result — not used by the engine, surfaced to agents.
+  outputSchema: z.record(z.unknown()).optional(),
   steps: z.array(stepSchema).min(1),
   output: z.union([z.string(), z.record(z.unknown())]).optional(),
 });
@@ -127,7 +129,16 @@ export async function runCompositeTrace(
     result = textResult(ctx.steps[last.id]?.text ?? '');
   } else {
     const resolved = resolveValue(def.output, ctx);
-    result = textResult(typeof resolved === 'string' ? resolved : JSON.stringify(resolved, null, 2));
+    if (typeof resolved === 'string') {
+      result = textResult(resolved);
+    } else {
+      // Object/array template → structured output (matches the tool's
+      // outputSchema). Keep a text rendering for clients without structured support.
+      result = {
+        content: [{ type: 'text', text: JSON.stringify(resolved, null, 2) }],
+        structuredContent: resolved,
+      };
+    }
   }
   return { result, steps: trace };
 }
