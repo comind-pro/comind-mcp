@@ -1,5 +1,9 @@
 # comind-mcp
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
+Repository: **https://github.com/comind-pro/comind-mcp**
+
 **MCP gateway** — connects various MCP servers and REST APIs, lets you curate and combine tools, organize them into **groups** (each = a separate virtual MCP server with a single endpoint) and hand them out to agents. An agent sees only the narrow set of tools assigned to it and can **schedule its own crons** through MCP.
 
 Self-hosted: a single Node service + Postgres. Multi-user with per-account isolation.
@@ -192,3 +196,25 @@ The core is solid; the production hardening is not done yet. Roughly **60–65%*
 - Thin tests — only pure modules. No automated route / auth / isolation / e2e tests in the repo (those were manual smokes). Scheduler has no retry/backoff/alerting.
 - The OpenAPI parser is minimal — complex specs (`allOf`, deep `$ref`) may not parse correctly.
 - No password reset / email verification; no user audit log.
+
+---
+
+## Contributing
+
+**comind-mcp is open source** (MIT) and contributions are welcome — bug reports, features, docs, tests.
+
+1. Fork & branch from `main` (`feat/...`, `fix/...`).
+2. Set up locally — see [DEVELOPMENT.md](./DEVELOPMENT.md). TL;DR: `corepack enable && pnpm install`, then `pnpm dev`.
+3. Before opening a PR: `pnpm typecheck` and `pnpm -r test` must pass.
+4. Use [Conventional Commits](https://www.conventionalcommits.org/) for messages (`feat:`, `fix:`, `docs:`, `chore:`).
+5. Open a PR against `comind-pro/comind-mcp` with a clear description; link any related issue.
+
+Questions or ideas? Open an [issue](https://github.com/comind-pro/comind-mcp/issues). See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+
+---
+
+## License
+
+[MIT](./LICENSE) © comind — open source, free to use, modify, and distribute anywhere, including commercially.
+
+Repository: https://github.com/comind-pro/comind-mcp
