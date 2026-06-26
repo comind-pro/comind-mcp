@@ -8,6 +8,20 @@
       "when": 1782461528315,
       "tag": "0000_curved_stardust",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782479903897,
+      "tag": "0001_ancient_black_cat",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782482618147,
+      "tag": "0002_previous_jane_foster",
+      "breakpoints": true
     }
   ]
 }

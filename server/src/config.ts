@@ -37,6 +37,12 @@ export const config = {
   // HMAC secret for signing user session JWTs. Override in production.
   jwtSecret: env('JWT_SECRET', 'dev-only-insecure-jwt-secret-change-me'),
   corsOrigins: env('CORS_ORIGINS', '*'),
+  // Public origin used as the OAuth issuer / endpoint base in inbound-OAuth
+  // metadata. Must be the externally-reachable URL (e.g. https://mcp.comind.pro),
+  // not the bind host. Falls back to the bind host:port for local dev.
+  publicBaseUrl:
+    (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '') ||
+    `http://${env('HOST', '127.0.0.1')}:${env('PORT', '8787')}`,
 };
 
 export type Config = typeof config;

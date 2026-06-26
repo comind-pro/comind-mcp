@@ -1,6 +1,29 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, type Agent, type Group } from '../api.js';
 
+function Snip({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard blocked */
+    }
+  };
+  return (
+    <div className="row" style={{ alignItems: 'stretch', gap: 6, marginBottom: 8 }}>
+      <div className="endpoint mono grow" style={{ whiteSpace: 'pre-wrap' }}>
+        {text}
+      </div>
+      <button className="ghost" onClick={copy} style={{ alignSelf: 'flex-start' }}>
+        {copied ? '✓' : 'Copy'}
+      </button>
+    </div>
+  );
+}
+
 interface InspectGroup {
   group: { id: string; name: string; slug: string; schedulingEnabled: boolean };
   tools: { name: string; kind: string }[];
@@ -151,21 +174,50 @@ export function AgentsTab() {
                   {expanded === a.id && (
                     <tr>
                       <td colSpan={4}>
-                        <h3>V-MCP access</h3>
-                        {granted.map((g) => (
+                        <h3>Agent endpoint — all V-MCPs</h3>
+                        <div className="hint" style={{ marginBottom: 8 }}>
+                          One endpoint exposing every tool from all V-MCPs this agent is granted. The token is this
+                          agent's key (substitute for <code>&lt;AGENT_KEY&gt;</code>). For ChatGPT / Claude.ai, add the
+                          endpoint as a connector — it runs OAuth and you paste the agent key on the consent screen.
+                        </div>
+
+                        <h3>MCP endpoint</h3>
+                        <Snip text={`${api.base}/a/mcp`} />
+
+                        <h3>Claude Code / Cursor / any MCP client</h3>
+                        <Snip
+                          text={`claude mcp add ${a.name.replace(/\s+/g, '-')} --transport http ${api.base}/a/mcp --header "Authorization: Bearer <AGENT_KEY>"`}
+                        />
+
+                        <h3>curl (raw JSON-RPC — tools/list example)</h3>
+                        <Snip
+                          text={`curl -X POST ${api.base}/a/mcp \\
+  -H "Authorization: Bearer <AGENT_KEY>" \\
+  -H "Content-Type: application/json" \\
+  -H "Accept: application/json, text/event-stream" \\
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`}
+                        />
+
+                        <h3>Per-V-MCP access</h3>
+                        {granted.map((g) => {
+                          // Build from the public base (api.base) — the server's
+                          // endpoint uses its bind host:port (0.0.0.0:8787).
+                          const ep = `${api.base}/g/${g.id}/mcp`;
+                          return (
                           <div key={g.id} className="row" style={{ marginBottom: 6, alignItems: 'stretch' }}>
                             <span className="pill" style={{ minWidth: 120 }}>
                               {g.name}
                             </span>
-                            <div className="endpoint mono grow">{g.endpoint}</div>
-                            <button className="ghost" onClick={() => copy(g.endpoint)}>
+                            <div className="endpoint mono grow">{ep}</div>
+                            <button className="ghost" onClick={() => copy(ep)}>
                               Copy
                             </button>
                             <button className="danger" onClick={() => revoke(a.id, g.id)}>
                               Revoke
                             </button>
                           </div>
-                        ))}
+                          );
+                        })}
                         <div className="row" style={{ marginTop: 6 }}>
                           <select value={addSel[a.id] ?? ''} onChange={(e) => setAddSel((s) => ({ ...s, [a.id]: e.target.value }))}>
                             <option value="">— grant V-MCP access —</option>

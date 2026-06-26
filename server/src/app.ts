@@ -10,6 +10,7 @@ import { compositeRoutes } from './routes/composite.js';
 import { gatewayRoutes } from './routes/gateway.js';
 import { groupRoutes } from './routes/groups.js';
 import { oauthRoutes } from './routes/oauth.js';
+import { oauthProviderRoutes } from './routes/oauth-provider.js';
 import { observabilityRoutes } from './routes/observability.js';
 import { scheduleRoutes } from './routes/schedules.js';
 import { secretRoutes } from './routes/secrets.js';
@@ -33,6 +34,15 @@ export function buildApp(): FastifyInstance {
     }
   });
 
+  // OAuth endpoints (token/register/consent) speak form-urlencoded.
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
+    try {
+      done(null, Object.fromEntries(new URLSearchParams((body as string) || '')));
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
+
   app.setErrorHandler((err: { statusCode?: number; message?: string }, _req, reply) => {
     if (err instanceof ZodError) {
       return reply.code(400).send({ error: 'validation', issues: err.issues });
@@ -50,7 +60,14 @@ export function buildApp(): FastifyInstance {
       path === '/auth/register' ||
       path === '/auth/login' ||
       path === '/oauth/callback' ||
-      path.startsWith('/g/')
+      // Inbound OAuth (we are the Authorization Server): discovery + flow are
+      // public; they authenticate via PKCE / the pasted agent key themselves.
+      path.startsWith('/.well-known/') ||
+      path === '/oauth/register' ||
+      path === '/oauth/authorize' ||
+      path === '/oauth/token' ||
+      path.startsWith('/g/') ||
+      path === '/a/mcp'
     );
   };
   app.addHook('preHandler', async (req, reply) => {
@@ -72,6 +89,7 @@ export function buildApp(): FastifyInstance {
   app.register(secretRoutes);
   app.register(observabilityRoutes);
   app.register(oauthRoutes);
+  app.register(oauthProviderRoutes);
   app.register(gatewayRoutes);
 
   app.get('/healthz', async () => {

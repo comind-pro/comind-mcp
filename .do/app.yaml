@@ -50,6 +50,9 @@ services:
         scope: RUN_TIME
       - key: CORS_ORIGINS
         value: https://mcp.comind.pro
+      - key: PUBLIC_BASE_URL # OAuth issuer / endpoint base in metadata
+        value: https://mcp.comind.pro
+        scope: RUN_TIME
         scope: RUN_TIME
       - key: VAULT_KEY
         type: SECRET
@@ -82,11 +85,16 @@ ingress:
     # prefix by default (/healthz -> /), which breaks routing; keep the full path.
     - match: { path: { prefix: /healthz } }
       component: { name: server, preserve_path_prefix: true }
+    # inbound-OAuth discovery (ChatGPT / Claude.ai connectors)
+    - match: { path: { prefix: /.well-known } }
+      component: { name: server, preserve_path_prefix: true }
     - match: { path: { prefix: /auth } }
       component: { name: server, preserve_path_prefix: true }
     - match: { path: { prefix: /oauth } }
       component: { name: server, preserve_path_prefix: true }
     - match: { path: { prefix: /g } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /a/mcp } }
       component: { name: server, preserve_path_prefix: true }
     - match: { path: { prefix: /agents } }
       component: { name: server, preserve_path_prefix: true }

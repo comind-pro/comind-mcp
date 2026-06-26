@@ -2,7 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentGroups, agents, groups, groupTools, tools } from '../db/schema.js';
+import { agentGroups, agents, groups, groupTools, oauthAccessTokens, tools } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
 import { invokeTool } from '../runtime/invoker.js';
 import {
@@ -21,34 +21,81 @@ export interface AgentAuth {
   schedulingEnabled: boolean;
 }
 
-/** Resolve a Bearer token to an agent and verify it belongs to group `groupId`. */
-export async function authenticateAgent(
-  groupId: string,
-  authHeader: string | undefined,
-): Promise<AgentAuth | null> {
+/** An authenticated agent plus every V-MCP group it may reach (for /a/mcp). */
+export interface AgentAuthAll {
+  agentId: string;
+  ownerId: string;
+  groups: { id: string; slug: string; schedulingEnabled: boolean }[];
+}
+
+interface Resolved {
+  agentId: string;
+  ownerId: string;
+  /** If set, the Bearer is restricted to this single group (group-scoped OAuth token). */
+  restrictGroupId: string | null;
+}
+
+/** Resolve a Bearer (raw agent key OR inbound-OAuth access token) to an agent. */
+async function resolveBearer(authHeader: string | undefined): Promise<Resolved | null> {
   if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.slice('Bearer '.length).trim();
   if (!token) return null;
 
   const [agent] = await db.select().from(agents).where(eq(agents.apiKeyHash, hashKey(token)));
-  if (!agent) return null;
+  if (agent) return { agentId: agent.id, ownerId: agent.ownerId, restrictGroupId: null };
+
+  const [tok] = await db.select().from(oauthAccessTokens).where(eq(oauthAccessTokens.tokenHash, hashKey(token)));
+  if (!tok || tok.expiresAt.getTime() <= Date.now()) return null;
+  const [ag] = await db.select().from(agents).where(eq(agents.id, tok.agentId));
+  if (!ag) return null;
+  return { agentId: ag.id, ownerId: ag.ownerId, restrictGroupId: tok.groupId };
+}
+
+/** Resolve a Bearer token to an agent and verify it belongs to group `groupId`. */
+export async function authenticateAgent(
+  groupId: string,
+  authHeader: string | undefined,
+): Promise<AgentAuth | null> {
+  const r = await resolveBearer(authHeader);
+  if (!r) return null;
+  // Group-scoped OAuth token only works on its own group.
+  if (r.restrictGroupId && r.restrictGroupId !== groupId) return null;
 
   // Agent must be granted access to this group.
   const [grant] = await db
     .select()
     .from(agentGroups)
-    .where(and(eq(agentGroups.agentId, agent.id), eq(agentGroups.groupId, groupId)));
+    .where(and(eq(agentGroups.agentId, r.agentId), eq(agentGroups.groupId, groupId)));
   if (!grant) return null;
 
   const [grp] = await db.select().from(groups).where(eq(groups.id, groupId));
   if (!grp) return null;
 
   return {
-    agentId: agent.id,
-    ownerId: agent.ownerId,
+    agentId: r.agentId,
+    ownerId: r.ownerId,
     groupId: grp.id,
     groupSlug: grp.slug,
     schedulingEnabled: grp.schedulingEnabled,
+  };
+}
+
+/** Resolve a Bearer to an agent and ALL groups it may reach (agent-wide /a/mcp).
+ *  A group-scoped OAuth token narrows the set to that one group. */
+export async function authenticateAgentAll(authHeader: string | undefined): Promise<AgentAuthAll | null> {
+  const r = await resolveBearer(authHeader);
+  if (!r) return null;
+
+  const grants = await db.select().from(agentGroups).where(eq(agentGroups.agentId, r.agentId));
+  let groupIds = grants.map((g) => g.groupId);
+  if (r.restrictGroupId) groupIds = groupIds.filter((id) => id === r.restrictGroupId);
+  if (!groupIds.length) return { agentId: r.agentId, ownerId: r.ownerId, groups: [] };
+
+  const grps = await db.select().from(groups).where(inArray(groups.id, groupIds));
+  return {
+    agentId: r.agentId,
+    ownerId: r.ownerId,
+    groups: grps.map((g) => ({ id: g.id, slug: g.slug, schedulingEnabled: g.schedulingEnabled })),
   };
 }
 
@@ -178,6 +225,58 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
       ownerId: auth.ownerId,
       agentId: auth.agentId,
       groupId: auth.groupId,
+    });
+    return { content: result.content, isError: result.isError };
+  });
+
+  return server;
+}
+
+/**
+ * Build an agent-wide MCP server: the union of curated, visible tools across
+ * EVERY group the agent may reach, exposed at one endpoint (/a/mcp). Self-cron
+ * tools are omitted here (they are group-scoped). Tool names are unique per
+ * owner, so the union never collides; each call dispatches to the group that
+ * actually contains the tool.
+ */
+export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
+  const server = new Server(
+    { name: 'comind:agent', version: '0.1.0' },
+    { capabilities: { tools: {} } },
+  );
+
+  // name -> { groupId, tool } across all reachable groups (first group wins).
+  const index = async () => {
+    const map = new Map<string, { groupId: string; tool: Awaited<ReturnType<typeof groupVisibleTools>>[number] }>();
+    for (const g of auth.groups) {
+      for (const t of await groupVisibleTools(g.id)) {
+        if (!map.has(t.name)) map.set(t.name, { groupId: g.id, tool: t });
+      }
+    }
+    return map;
+  };
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const map = await index();
+    return {
+      tools: [...map.values()].map(({ tool: t }) => ({
+        name: t.name,
+        description: t.displayName ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}` : t.description ?? undefined,
+        inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
+      })),
+    };
+  });
+
+  server.setRequestHandler(CallToolRequestSchema, async (req) => {
+    const { name, arguments: args } = req.params;
+    const hit = (await index()).get(name);
+    if (!hit) {
+      return { content: [{ type: 'text', text: `Tool not available to this agent: ${name}` }], isError: true };
+    }
+    const result = await invokeTool(name, (args ?? {}) as Record<string, unknown>, {
+      ownerId: auth.ownerId,
+      agentId: auth.agentId,
+      groupId: hit.groupId,
     });
     return { content: result.content, isError: result.isError };
   });

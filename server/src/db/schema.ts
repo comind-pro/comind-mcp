@@ -224,6 +224,61 @@ export const mcpOauth = pgTable(
   }),
 );
 
+/* ── Inbound OAuth (we act as Authorization Server for MCP clients like
+ *    ChatGPT / Claude.ai connectors). Distinct from `oauthTokens`/`mcpOauth`
+ *    above, which are OUTBOUND (us authenticating to upstream sources). ── */
+
+/** Dynamically-registered OAuth client (RFC 7591). Public PKCE clients. */
+export const oauthClients = pgTable(
+  'oauth_clients',
+  {
+    id: id(),
+    clientId: text('client_id').notNull(),
+    clientName: text('client_name'),
+    redirectUris: jsonb('redirect_uris').notNull().$type<string[]>(),
+    createdAt: createdAt(),
+  },
+  (t) => ({ cidIdx: uniqueIndex('oauth_clients_client_id_unique').on(t.clientId) }),
+);
+
+/** Short-lived authorization codes (PKCE). Bound to the agent the user pasted
+ *  on the consent page and the V-MCP group derived from the resource. */
+export const oauthAuthCodes = pgTable(
+  'oauth_auth_codes',
+  {
+    id: id(),
+    codeHash: text('code_hash').notNull(),
+    clientId: text('client_id').notNull(),
+    agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    // null = agent-wide (all the agent's groups, via the /a/mcp endpoint)
+    groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    redirectUri: text('redirect_uri').notNull(),
+    codeChallenge: text('code_challenge').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => ({ codeIdx: uniqueIndex('oauth_auth_codes_code_hash_unique').on(t.codeHash) }),
+);
+
+/** Issued access/refresh tokens → resolve to an agent + group at the gateway. */
+export const oauthAccessTokens = pgTable(
+  'oauth_access_tokens',
+  {
+    id: id(),
+    tokenHash: text('token_hash').notNull(),
+    refreshHash: text('refresh_hash'),
+    clientId: text('client_id').notNull(),
+    agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    // null = agent-wide (all the agent's groups, via the /a/mcp endpoint)
+    groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    tokIdx: uniqueIndex('oauth_access_tokens_token_hash_unique').on(t.tokenHash),
+  }),
+);
+
 /** CallLog = observability record for every tool invocation through the gateway. */
 export const callLogs = pgTable('call_logs', {
   id: id(),
@@ -252,5 +307,8 @@ export const schema = {
   secrets,
   oauthTokens,
   mcpOauth,
+  oauthClients,
+  oauthAuthCodes,
+  oauthAccessTokens,
   callLogs,
 };
