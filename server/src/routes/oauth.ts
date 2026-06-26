@@ -19,7 +19,7 @@ function defaultRedirect(): string {
 async function loadAuth(sourceId: string) {
   const [row] = await db.select().from(sources).where(eq(sources.id, sourceId));
   if (!row) return null;
-  const resolved = await resolveSourceConfig(row.config, row.id);
+  const resolved = await resolveSourceConfig(row.config, row.ownerId, row.id);
   if (!resolved.auth) return null;
   return { row, resolved, auth: authConfigSchema.parse(resolved.auth) };
 }

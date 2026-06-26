@@ -82,7 +82,7 @@ async function dispatch(
   if (!source) return textResult(`Source missing for ${toolName}`, true);
 
   try {
-    const full = await resolveSourceConfig(source.config, source.id);
+    const full = await resolveSourceConfig(source.config, source.ownerId, source.id);
     const authBlock = full.auth as { type?: string; scope?: string; clientId?: string } | undefined;
 
     // MCP-native OAuth: hand the SDK provider to the transport (auto Bearer + refresh).

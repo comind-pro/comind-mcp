@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { secrets } from '../db/schema.js';
 import { decrypt } from './vault.js';
@@ -8,9 +9,11 @@ function valueOf(r: typeof secrets.$inferSelect): string {
   return '';
 }
 
-/** name → resolved value. Globals first, then source-scoped overrides (if sourceId given). */
-export async function loadSecretMap(sourceId?: string): Promise<Record<string, string>> {
-  const rows = await db.select().from(secrets);
+/** name → resolved value, scoped to ONE owner. Globals first, then this owner's
+ *  source-scoped overrides. Owner scoping is mandatory: secrets must never leak
+ *  across tenants. */
+export async function loadSecretMap(ownerId: string, sourceId?: string): Promise<Record<string, string>> {
+  const rows = await db.select().from(secrets).where(eq(secrets.ownerId, ownerId));
   const map: Record<string, string> = {};
   for (const r of rows) if (r.sourceId == null) map[r.name] = valueOf(r); // globals
   if (sourceId) for (const r of rows) if (r.sourceId === sourceId) map[r.name] = valueOf(r); // overrides
@@ -31,11 +34,13 @@ export function injectSecrets<T>(value: T, map: Record<string, string>): T {
   return value;
 }
 
-/** Resolve all secret placeholders inside a source config (source-scoped overrides globals). */
+/** Resolve all secret placeholders inside a source config, using ONLY the
+ *  owning user's secrets (source-scoped overrides globals). */
 export async function resolveSourceConfig(
   config: Record<string, unknown>,
+  ownerId: string,
   sourceId?: string,
 ): Promise<Record<string, unknown>> {
-  const map = await loadSecretMap(sourceId);
+  const map = await loadSecretMap(ownerId, sourceId);
   return injectSecrets(config, map);
 }

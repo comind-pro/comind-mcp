@@ -80,7 +80,7 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     const row = await owned(req, id, ownerOf(req));
     if (!row) return reply.code(404).send({ error: 'not_found' });
 
-    const connector = createConnector(row.kind, await applyAuth(row.id, await resolveSourceConfig(row.config, row.id)));
+    const connector = createConnector(row.kind, await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)));
     const result = await connector.health();
     await db
       .update(sources)
@@ -95,7 +95,7 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     const row = await owned(req, id, owner);
     if (!row) return reply.code(404).send({ error: 'not_found' });
 
-    const connector = createConnector(row.kind, await applyAuth(row.id, await resolveSourceConfig(row.config, row.id)));
+    const connector = createConnector(row.kind, await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)));
     const upstream = await connector.listTools();
     const prefix = slugify(row.name);
 
