@@ -183,7 +183,12 @@ export function SourceBuilder({ onCreated }: { onCreated: () => void }) {
 
       <div className="spacer" />
       <div className="row">
-        <input className="grow" placeholder="name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          className="grow"
+          placeholder="name (no spaces — auto → -)"
+          value={name}
+          onChange={(e) => setName(e.target.value.replace(/\s+/g, '-'))}
+        />
         <select value={kind} onChange={(e) => setKindReset(e.target.value as Kind)}>
           <option value="mcp">mcp proxy</option>
           <option value="openapi">openapi</option>

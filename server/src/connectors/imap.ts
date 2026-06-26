@@ -126,7 +126,7 @@ export class ImapSmtpConnector implements Connector {
           return textResult(`Unknown tool: ${name}`, true);
       }
     } catch (err) {
-      return textResult(err instanceof Error ? err.message : String(err), true);
+      return textResult(mailError(err), true);
     }
   }
 
@@ -272,7 +272,7 @@ export class ImapSmtpConnector implements Connector {
       await c.noop();
       return { ok: true, message: 'IMAP connected' };
     } catch (err) {
-      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+      return { ok: false, message: mailError(err) };
     } finally {
       await c.logout().catch(() => {});
     }
@@ -287,6 +287,28 @@ interface MsgSummaryInput {
     date?: Date;
     from?: Array<{ name?: string; address?: string }>;
   };
+}
+
+/** imapflow / nodemailer throw terse errors ("Command failed"). Surface the
+ *  server response, auth flag and error code so the UI shows something useful. */
+function mailError(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const e = err as {
+      message?: string;
+      responseText?: string;
+      response?: string;
+      code?: string;
+      authenticationFailed?: boolean;
+    };
+    const parts: string[] = [];
+    if (e.authenticationFailed) parts.push('authentication failed');
+    if (e.message) parts.push(e.message);
+    if (e.responseText) parts.push(e.responseText);
+    else if (e.response) parts.push(String(e.response));
+    if (e.code) parts.push(`[${e.code}]`);
+    if (parts.length) return parts.join(' — ');
+  }
+  return err instanceof Error ? err.message : String(err);
 }
 
 function summarise(m: MsgSummaryInput): unknown {

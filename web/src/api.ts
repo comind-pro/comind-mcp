@@ -10,6 +10,23 @@ export const tokenStore = {
 /** Raised on 401 so the app can drop to the login screen. */
 export class Unauthorized extends Error {}
 
+interface ZodIssue { path?: (string | number)[]; message?: string }
+
+/** Build a human-readable error from a server error body. For validation
+ *  failures, spell out each offending field (path) and why. */
+function formatApiError(data: any, status: number): string {
+  const base = data?.error || data?.message || `HTTP ${status}`;
+  const issues: ZodIssue[] | undefined = data?.issues;
+  if (Array.isArray(issues) && issues.length) {
+    const lines = issues.map((i) => {
+      const where = i.path && i.path.length ? i.path.join('.') : '(root)';
+      return `• ${where}: ${i.message ?? 'invalid'}`;
+    });
+    return `${base}:\n${lines.join('\n')}`;
+  }
+  return base;
+}
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
   const token = tokenStore.get();
@@ -27,7 +44,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('comind-unauthorized'));
     throw new Unauthorized('unauthorized');
   }
-  if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(formatApiError(data, res.status));
   return data as T;
 }
 

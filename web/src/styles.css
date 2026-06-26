@@ -57,7 +57,7 @@ code, .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
 .badge.err { color: var(--err); border-color: var(--err); }
 .badge.muted { color: var(--muted); }
 .pill { background: var(--panel2); border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px; font-size: 12px; }
-.err-msg { color: var(--err); font-size: 13px; margin: 8px 0; }
+.err-msg { color: var(--err); font-size: 13px; margin: 8px 0; white-space: pre-line; }
 .muted { color: var(--muted); }
 .spacer { height: 12px; }
 .kv { display: flex; gap: 6px; font-size: 12px; color: var(--muted); }
