@@ -77,7 +77,7 @@ export const api = {
 export interface Source {
   id: string;
   name: string;
-  kind: 'mcp' | 'openapi' | 'http';
+  kind: 'mcp' | 'openapi' | 'http' | 'imap' | 'sql';
   config: Record<string, unknown>;
   status: string;
   statusMessage: string | null;

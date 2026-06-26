@@ -199,9 +199,11 @@ function SchemaField({ value, onParsed }: { value: unknown; onParsed: (v: Record
 export function OutputField({
   value,
   onChange,
+  onMode,
 }: {
   value: unknown;
   onChange: (v: string | Record<string, unknown> | undefined) => void;
+  onMode?: (m: 'text' | 'json') => void;
 }) {
   const initJson = value !== null && typeof value === 'object';
   const [mode, setMode] = useState<'text' | 'json'>(initJson ? 'json' : 'text');
@@ -228,9 +230,11 @@ export function OutputField({
       setErr((e as Error).message);
     }
   };
+  // switching the toggle only changes the mode — it must NOT mutate/clear the
+  // content. Re-parsing happens on the next actual edit.
   const switchMode = (m: 'text' | 'json') => {
     setMode(m);
-    emit(text, m);
+    onMode?.(m);
   };
   return (
     <>

@@ -30,43 +30,57 @@ export function LogsTab() {
   };
   useEffect(() => void load(), [win, source]);
 
+  const stat = (label: string, value: string | number) => (
+    <div className="log-stat">
+      <div className="log-stat-v">{value}</div>
+      <div className="log-stat-l">{label}</div>
+    </div>
+  );
+
   return (
     <>
       <div className="intro">
-        <b>Logs (observability)</b> — every tool call is recorded: tool, status, duration, token estimate, and{' '}
-        <b>source</b> (<code>live</code> = agent via gateway, <code>test</code> = control-plane try-run,{' '}
-        <code>schedule</code> = scheduler). Filter by time window and source; metrics aggregate in SQL.
+        <b>Logs (observability)</b> — every tool call is recorded: tool, status, duration, token estimate, and source
+        (<code>live</code> = agent via gateway, <code>test</code> = control-plane try-run, <code>schedule</code> =
+        scheduler). Filter by time window and source; metrics aggregate in SQL.
       </div>
 
-      <div className="card">
+      <div className="page-head">
+        <div>
+          <span className="title">Logs</span>
+          {metrics && <span className="sub">{metrics.totals.calls} calls · {metrics.totals.errors} errors</span>}
+        </div>
         <div className="row">
-          <h2 style={{ margin: 0 }}>Metrics</h2>
-          <select value={win} onChange={(e) => setWin(e.target.value as keyof typeof WINDOWS)} style={{ marginLeft: 'auto' }}>
+          <span className="seg">
             {Object.keys(WINDOWS).map((w) => (
-              <option key={w} value={w}>{w === 'all' ? 'all time' : `last ${w}`}</option>
+              <span key={w} className={win === w ? 'on' : ''} onClick={() => setWin(w as keyof typeof WINDOWS)}>
+                {w === 'all' ? 'all' : w}
+              </span>
             ))}
-          </select>
-          <select value={source} onChange={(e) => setSource(e.target.value as (typeof SOURCES)[number])}>
-            <option value="">all sources</option>
-            <option value="live">live</option>
-            <option value="test">test</option>
-            <option value="schedule">schedule</option>
-          </select>
+          </span>
+          <span className="seg">
+            {SOURCES.map((s) => (
+              <span key={s || 'all'} className={source === s ? 'on' : ''} onClick={() => setSource(s)}>
+                {s || 'all'}
+              </span>
+            ))}
+          </span>
           <button className="ghost" onClick={load}>Refresh</button>
         </div>
+      </div>
 
-        {metrics && (
-          <>
-            <div className="row" style={{ marginTop: 12 }}>
-              <span className="pill">calls: {metrics.totals.calls}</span>
-              <span className="pill">errors: {metrics.totals.errors}</span>
-              <span className="pill">~tokens: {metrics.totals.tokens}</span>
-              <span className="pill">avg: {metrics.totals.avg_ms}ms</span>
-              <span className="pill">p95: {metrics.totals.p95_ms}ms</span>
-            </div>
+      {metrics && (
+        <>
+          <div className="log-stats">
+            {stat('calls', metrics.totals.calls)}
+            {stat('errors', metrics.totals.errors)}
+            {stat('~tokens', metrics.totals.tokens)}
+            {stat('avg ms', metrics.totals.avg_ms)}
+            {stat('p95 ms', metrics.totals.p95_ms)}
+          </div>
 
-            <div className="spacer" />
-            <h3>By tool</h3>
+          <div className="card">
+            <h2>By tool</h2>
             <table>
               <thead>
                 <tr><th>tool</th><th>calls</th><th>errors</th><th>~tokens</th><th>avg ms</th></tr>
@@ -84,9 +98,10 @@ export function LogsTab() {
                 {!metrics.byTool.length && <tr><td colSpan={5} className="muted">No data in window.</td></tr>}
               </tbody>
             </table>
+          </div>
 
-            <div className="spacer" />
-            <h3>By agent</h3>
+          <div className="card">
+            <h2>By agent</h2>
             <table>
               <thead>
                 <tr><th>agent</th><th>calls</th><th>errors</th><th>~tokens</th></tr>
@@ -103,9 +118,9 @@ export function LogsTab() {
                 {!metrics.byAgent.length && <tr><td colSpan={4} className="muted">No data in window.</td></tr>}
               </tbody>
             </table>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
 
       <div className="card">
         <h2>Recent calls</h2>
@@ -118,19 +133,13 @@ export function LogsTab() {
               <tr key={l.id}>
                 <td className="muted">{new Date(l.ts).toLocaleString()}</td>
                 <td className="mono">{l.toolName}</td>
-                <td>
-                  <span className={`badge ${l.source === 'live' ? 'ok' : 'muted'}`}>{l.source}</span>
-                </td>
-                <td>
-                  <span className={`badge ${l.status === 'success' ? 'ok' : 'err'}`}>{l.status}</span>
-                </td>
+                <td><span className={`badge ${l.source === 'live' ? 'ok' : 'muted'}`}>{l.source}</span></td>
+                <td><span className={`badge ${l.status === 'success' ? 'ok' : 'err'}`}>{l.status}</span></td>
                 <td>{l.durationMs}</td>
                 <td>{l.tokensEst ?? '—'}</td>
               </tr>
             ))}
-            {!logs.length && (
-              <tr><td colSpan={6} className="muted">No calls logged yet.</td></tr>
-            )}
+            {!logs.length && <tr><td colSpan={6} className="muted">No calls logged yet.</td></tr>}
           </tbody>
         </table>
       </div>

@@ -3,6 +3,7 @@ import { api, type Secret } from '../api.js';
 
 export function SecretsTab() {
   const [secrets, setSecrets] = useState<Secret[]>([]);
+  const [draft, setDraft] = useState(false);
   const [name, setName] = useState('');
   const [mode, setMode] = useState<'value' | 'envRef'>('value');
   const [value, setValue] = useState('');
@@ -15,7 +16,6 @@ export function SecretsTab() {
 
   const startEdit = (s: Secret) => {
     setEditId(s.id);
-    // env: prefill with the env var name (not secret). encrypted: blind — start empty.
     setEditVal(s.kind === 'env' ? s.envRef ?? '' : '');
     setErr('');
   };
@@ -40,6 +40,7 @@ export function SecretsTab() {
       await api.post('/secrets', body);
       setName('');
       setValue('');
+      setDraft(false);
       await load();
     } catch (e) {
       setErr(String((e as Error).message));
@@ -47,6 +48,7 @@ export function SecretsTab() {
   };
 
   const del = async (id: string) => {
+    if (!confirm('Delete this secret?')) return;
     await api.del(`/secrets/${id}`).catch((e) => setErr(String(e.message)));
     await load();
   };
@@ -54,58 +56,58 @@ export function SecretsTab() {
   return (
     <>
       <div className="intro">
-        <b>Secrets</b> — tokens, keys, passwords. Stored encrypted (AES-256-GCM). In the source config you{' '}
-        <b>don't write the value</b> — only a reference <code>{'${secret.NAME}'}</code>. At runtime comind substitutes
-        the real value into the outgoing call; the agent and JSON config never see it.
-        <br />
-        <span className="muted">
-          <b>value</b> — the value itself (encrypted). <b>envRef</b> — the name of a process env variable (the value is
-          not stored in the DB).
-        </span>
+        <b>Secrets</b> — tokens, keys, passwords. Stored encrypted (AES-256-GCM). In a source config you write only a
+        reference <code>{'${secret.NAME}'}</code>; at runtime comind substitutes the real value — the agent and JSON
+        never see it. <b>value</b> = encrypted value · <b>envRef</b> = name of a process env variable.
       </div>
 
-      <div className="card">
-        <h2>New secret</h2>
-        <div className="hint">
-          Name — uppercase Latin letters (e.g. <code>TITAN_TOKEN</code>). You'll reference it as <code>{'${secret.TITAN_TOKEN}'}</code>.
+      <div className="page-head">
+        <div>
+          <span className="title">Secrets</span>
+          <span className="sub">{secrets.length} stored</span>
         </div>
-        <div className="row">
-          <input
-            placeholder="NAME"
-            value={name}
-            onChange={(e) => setName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
-            style={{ width: 200 }}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            name="comind-secret-name"
-          />
-          <select value={mode} onChange={(e) => setMode(e.target.value as 'value' | 'envRef')}>
-            <option value="value">value (encrypt)</option>
-            <option value="envRef">envRef (env variable)</option>
-          </select>
-          <input
-            className="grow"
-            placeholder={mode === 'value' ? 'secret value' : 'ENV_VAR_NAME'}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            type={mode === 'value' ? 'password' : 'text'}
-            autoComplete={mode === 'value' ? 'new-password' : 'off'}
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            name="comind-secret-value"
-          />
-          <button onClick={create} disabled={!name || !value}>
-            Create
-          </button>
-        </div>
-        {err && <div className="err-msg">{err}</div>}
+        <button className="btn-primary" onClick={() => setDraft(!draft)}>+ New secret</button>
       </div>
 
+      {err && !draft && <div className="err-msg">{err}</div>}
+
+      {draft && (
+        <div className="scard open">
+          <div className="scard-body">
+            <div className="editor-left" style={{ borderRight: 'none' }}>
+              <div className="field-label">Name · uppercase Latin (e.g. TITAN_TOKEN)</div>
+              <div className="row">
+                <input
+                  className="mono"
+                  style={{ width: 220 }}
+                  placeholder="NAME"
+                  value={name}
+                  onChange={(e) => setName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} name="comind-secret-name" autoFocus
+                />
+                <select value={mode} onChange={(e) => setMode(e.target.value as 'value' | 'envRef')}>
+                  <option value="value">value (encrypt)</option>
+                  <option value="envRef">envRef (env variable)</option>
+                </select>
+                <input
+                  className="grow"
+                  placeholder={mode === 'value' ? 'secret value' : 'ENV_VAR_NAME'}
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  type={mode === 'value' ? 'password' : 'text'}
+                  autoComplete={mode === 'value' ? 'new-password' : 'off'} autoCorrect="off" autoCapitalize="off" spellCheck={false} name="comind-secret-value"
+                />
+                <button className="btn-primary" onClick={create} disabled={!name || !value}>Create</button>
+                <button className="ghost" onClick={() => setDraft(false)}>Cancel</button>
+              </div>
+              <div className="hint">Reference it in configs as <code>{`\${secret.${name || 'NAME'}}`}</code>.</div>
+              {err && <div className="err-msg">{err}</div>}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card">
-        <h2>Secrets</h2>
         <table>
           <thead>
             <tr>
@@ -121,49 +123,32 @@ export function SecretsTab() {
               <tr key={s.id}>
                 <td className="mono">{s.displayName}</td>
                 <td>
-                  {s.sourceName ? (
-                    <span className="pill">{s.sourceName}</span>
-                  ) : (
-                    <span className="badge muted">global</span>
-                  )}
+                  {s.sourceName ? <span className="tbadge">{s.sourceName}</span> : <span className="badge muted">global</span>}
                 </td>
                 <td className="mono muted">{`\${secret.${s.name}}`}</td>
                 <td>
-                  <span className="pill">{s.kind}</span>
+                  <span className="tbadge">{s.kind}</span>
                   {s.envRef && editId !== s.id && <span className="muted"> ← {s.envRef}</span>}
                 </td>
                 <td>
                   {editId === s.id ? (
                     <div className="row" style={{ gap: 4 }}>
                       <input
-                        className="grow"
-                        autoFocus
+                        className="grow" autoFocus
                         type={s.kind === 'env' ? 'text' : 'password'}
                         placeholder={s.kind === 'env' ? 'ENV_VAR_NAME' : 'new value (current hidden)'}
                         value={editVal}
                         onChange={(e) => setEditVal(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && saveEdit(s)}
-                        autoComplete={s.kind === 'env' ? 'off' : 'new-password'}
-                        autoCorrect="off"
-                        autoCapitalize="off"
-                        spellCheck={false}
-                        name="comind-secret-edit"
+                        autoComplete={s.kind === 'env' ? 'off' : 'new-password'} autoCorrect="off" autoCapitalize="off" spellCheck={false} name="comind-secret-edit"
                       />
-                      <button className="mini" onClick={() => saveEdit(s)} disabled={!editVal}>
-                        Save
-                      </button>
-                      <button className="ghost mini" onClick={() => setEditId(null)}>
-                        Cancel
-                      </button>
+                      <button className="mini" onClick={() => saveEdit(s)} disabled={!editVal}>Save</button>
+                      <button className="ghost mini" onClick={() => setEditId(null)}>Cancel</button>
                     </div>
                   ) : (
                     <div className="row" style={{ gap: 4 }}>
-                      <button className="ghost mini" onClick={() => startEdit(s)}>
-                        Edit
-                      </button>
-                      <button className="danger mini" onClick={() => del(s.id)}>
-                        Delete
-                      </button>
+                      <button className="ghost mini" onClick={() => startEdit(s)}>Edit</button>
+                      <button className="danger mini" onClick={() => del(s.id)}>Delete</button>
                     </div>
                   )}
                 </td>
@@ -171,9 +156,7 @@ export function SecretsTab() {
             ))}
             {!secrets.length && (
               <tr>
-                <td colSpan={5} className="muted">
-                  No secrets yet.
-                </td>
+                <td colSpan={5} className="muted">No secrets yet.</td>
               </tr>
             )}
           </tbody>

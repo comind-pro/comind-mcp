@@ -33,7 +33,7 @@ const specCache = new Map<string, { parsed: Parsed; at: number }>();
 const TTL_MS = 60_000;
 
 function sanitize(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'op';
+  return name.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'op';
 }
 
 /** Shallow local `$ref` resolver (`#/components/...`). */
@@ -76,6 +76,26 @@ function responseSchema(spec: any, op: any): Record<string, unknown> | undefined
   return resolved && typeof resolved === 'object' ? (resolved as Record<string, unknown>) : undefined;
 }
 
+/** Join base URL and operation path without duplicating a shared path prefix.
+ *  e.g. base `https://h/api/v1` + path `/api/v1/users` → `https://h/api/v1/users`
+ *  (NestJS-style specs whose paths already embed the server prefix). */
+export function joinUrl(baseUrl: string, path: string): string {
+  const b = baseUrl.replace(/\/+$/, '');
+  let origin = '';
+  let basePath = b;
+  try {
+    const u = new URL(b);
+    origin = u.origin;
+    basePath = u.pathname.replace(/\/+$/, '');
+  } catch {
+    // relative base — treat the whole string as a path prefix
+  }
+  if (basePath && (path === basePath || path.startsWith(`${basePath}/`))) {
+    return (origin || b.slice(0, b.length - basePath.length)) + path;
+  }
+  return b + path;
+}
+
 function parse(spec: any, cfgBase?: string): Parsed {
   const baseUrl = cfgBase ?? spec?.servers?.[0]?.url ?? '';
   const ops = new Map<string, Operation>();
@@ -116,7 +136,9 @@ function parse(spec: any, cfgBase?: string): Parsed {
 
       ops.set(name, {
         name,
-        description: op.summary ?? op.description,
+        // prefer the fuller description; fall back to summary. `||` (not `??`)
+        // so an empty-string summary from codegen tooling still falls through.
+        description: op.description || op.summary || undefined,
         method,
         path,
         paramLoc,
@@ -179,7 +201,7 @@ export class OpenApiConnector implements Connector {
       else if (op.bodyKeys.has(k)) body[k] = v;
     }
 
-    const url = `${baseUrl.replace(/\/$/, '')}${path}${query.toString() ? `?${query}` : ''}`;
+    const url = `${joinUrl(baseUrl, path)}${query.toString() ? `?${query}` : ''}`;
     const hasBody = op.bodyKeys.size > 0 && op.method !== 'get';
     if (hasBody) headers['content-type'] = headers['content-type'] ?? 'application/json';
 

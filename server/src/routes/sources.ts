@@ -7,7 +7,7 @@ import { db } from '../db/client.js';
 import { sources, tools } from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
-import { resolveSourceConfig } from '../secrets/loader.js';
+import { injectSecrets, loadSecretMap, resolveSourceConfig } from '../secrets/loader.js';
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -18,6 +18,13 @@ const createBody = z.object({
 const patchBody = z.object({
   name: z.string().min(1).optional(),
   config: z.record(z.unknown()).optional(),
+});
+
+const testBody = z.object({
+  name: z.string().optional(),
+  kind: sourceKind,
+  config: z.record(z.unknown()),
+  secrets: z.record(z.string()).optional(),
 });
 
 /** Load a source owned by the requester, or null. */
@@ -73,6 +80,26 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     await db.delete(sources).where(and(eq(sources.id, id), eq(sources.ownerId, ownerOf(req))));
     return reply.code(204).send();
+  });
+
+  // Stateless connection check for the new-source wizard (before the row exists).
+  // Resolves the owner's GLOBAL secrets plus any pending (not-yet-saved) secret
+  // values passed inline by the wizard. Skips applyAuth (no stored OAuth tokens).
+  app.post('/sources/test', async (req, reply) => {
+    const owner = ownerOf(req);
+    const body = testBody.parse(req.body);
+    try {
+      const map = { ...(await loadSecretMap(owner)), ...(body.secrets ?? {}) };
+      const config = parseSourceConfig(body.kind, injectSecrets(body.config, map));
+      const connector = createConnector(body.kind, config);
+      return await connector.health();
+    } catch (e) {
+      const msg =
+        e instanceof z.ZodError
+          ? e.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ')
+          : (e as Error).message;
+      return reply.code(200).send({ ok: false, message: msg });
+    }
   });
 
   app.post('/sources/:id/test', async (req, reply) => {

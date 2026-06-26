@@ -15,6 +15,7 @@ export function App() {
   const [tab, setTab] = useState<Tab>('Sources');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [menu, setMenu] = useState(false);
 
   useEffect(() => {
     const drop = () => setUser(null);
@@ -26,6 +27,13 @@ export function App() {
     }
     return () => window.removeEventListener('comind-unauthorized', drop);
   }, []);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [menu]);
 
   const logout = () => {
     api.logout();
@@ -47,8 +55,17 @@ export function App() {
               {t}
             </div>
           ))}
-          <div className="tab" style={{ marginLeft: 12 }} title={user.email} onClick={logout}>
-            {user.email.split('@')[0]} · logout
+          <span className="topbar-sep" />
+          <div className="user-menu" onClick={(e) => e.stopPropagation()}>
+            <div className="tab" title={user.email} onClick={() => setMenu((m) => !m)}>
+              {user.email.split('@')[0]} <span className="muted">▾</span>
+            </div>
+            {menu && (
+              <div className="menu-pop">
+                <div className="menu-email">{user.email}</div>
+                <div className="menu-item" onClick={logout}>Log out</div>
+              </div>
+            )}
           </div>
         </div>
       </div>
