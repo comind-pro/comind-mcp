@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { authConfigSchema } from '../auth/config.js';
 import { HttpConnector } from './http.js';
+import { ImapSmtpConnector } from './imap.js';
 import { McpConnector } from './mcp.js';
 import { OpenApiConnector } from './openapi.js';
 import type { Connector } from './types.js';
@@ -39,7 +40,22 @@ export const httpConfigSchema = z.object({
     .min(1),
 });
 
-export const sourceKind = z.enum(['mcp', 'openapi', 'http']);
+const mailEndpoint = z.object({
+  host: z.string().min(1),
+  port: z.number().int().positive().optional(),
+  secure: z.boolean().optional(),
+});
+
+export const imapConfigSchema = z.object({
+  imap: mailEndpoint,
+  // optional: omit for a read-only mailbox (send_message tool is then hidden)
+  smtp: mailEndpoint.optional(),
+  user: z.string().min(1),
+  // resolved from the vault via `${secret.NAME}` before the connector is built
+  pass: z.string().min(1),
+});
+
+export const sourceKind = z.enum(['mcp', 'openapi', 'http', 'imap']);
 export type SourceKind = z.infer<typeof sourceKind>;
 
 /** Validate a source's config against its kind; throws ZodError on mismatch.
@@ -56,6 +72,9 @@ export function parseSourceConfig(kind: SourceKind, config: unknown): Record<str
       break;
     case 'http':
       base = httpConfigSchema.parse(config);
+      break;
+    case 'imap':
+      base = imapConfigSchema.parse(config);
       break;
   }
   const raw = config as { auth?: unknown };
@@ -76,6 +95,8 @@ export function createConnector(
       return new OpenApiConnector(openapiConfigSchema.parse(config));
     case 'http':
       return new HttpConnector(httpConfigSchema.parse(config));
+    case 'imap':
+      return new ImapSmtpConnector(imapConfigSchema.parse(config));
   }
 }
 

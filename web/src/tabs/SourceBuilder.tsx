@@ -1,13 +1,19 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 
-type Kind = 'mcp' | 'openapi' | 'http';
+type Kind = 'mcp' | 'openapi' | 'http' | 'imap';
 type Cfg = Record<string, any>;
 
 const DEFAULTS: Record<Kind, Cfg> = {
   mcp: { url: '', transport: 'http' },
   openapi: { specUrl: '', baseUrl: '' },
   http: { baseUrl: '', endpoints: [{ name: '', method: 'GET', path: '' }] },
+  imap: {
+    imap: { host: '', port: 993, secure: true },
+    smtp: { host: '', port: 465, secure: true },
+    user: '',
+    pass: '${secret.MAIL_PASS}',
+  },
 };
 
 const AUTH_DEFAULTS: Record<string, Cfg> = {
@@ -133,7 +139,9 @@ export function SourceBuilder({ onCreated }: { onCreated: () => void }) {
   const create = async () => {
     setErr('');
     try {
-      const config = mode === 'json' ? JSON.parse(jsonText) : cfg;
+      const config = mode === 'json' ? JSON.parse(jsonText) : { ...cfg };
+      // imap: drop an empty SMTP block (sending optional → read-only mailbox)
+      if (kind === 'imap' && !config.smtp?.host) delete config.smtp;
       const src = await api.post<{ id: string }>('/sources', { name, kind, config });
       // create source-scoped secrets defined inline in the wizard
       for (const s of pendingSecrets) {
@@ -180,6 +188,7 @@ export function SourceBuilder({ onCreated }: { onCreated: () => void }) {
           <option value="mcp">mcp proxy</option>
           <option value="openapi">openapi</option>
           <option value="http">http</option>
+          <option value="imap">email (imap/smtp)</option>
         </select>
       </div>
       <div className="spacer" />
@@ -235,6 +244,27 @@ export function SourceBuilder({ onCreated }: { onCreated: () => void }) {
             </>
           )}
 
+          {kind === 'imap' && (
+            <>
+              <h3>IMAP (incoming)</h3>
+              <Field label="IMAP host" value={cfg.imap?.host} onChange={(v) => patch({ imap: { ...cfg.imap, host: v } })} placeholder="imap.titan.email" />
+              <Field label="IMAP port" value={String(cfg.imap?.port ?? '')} onChange={(v) => patch({ imap: { ...cfg.imap, port: Number(v) || undefined } })} placeholder="993" />
+              <h3>SMTP (outgoing) — optional</h3>
+              <div className="hint">Leave SMTP host empty for a read-only mailbox (no send_message tool).</div>
+              <Field label="SMTP host" value={cfg.smtp?.host} onChange={(v) => patch({ smtp: { ...cfg.smtp, host: v } })} placeholder="smtp.titan.email" />
+              <Field label="SMTP port" value={String(cfg.smtp?.port ?? '')} onChange={(v) => patch({ smtp: { ...cfg.smtp, port: Number(v) || undefined } })} placeholder="465" />
+              <h3>Credentials</h3>
+              <Field label="User (email)" value={cfg.user} onChange={(v) => patch({ user: v })} placeholder="you@domain.com" />
+              <Field label="Password (secret ref)" value={cfg.pass} onChange={(v) => patch({ pass: v })} placeholder="${secret.MAIL_PASS}" />
+              <div className="hint">
+                Use an app password. Add it under “Secrets for this source” below as <code>MAIL_PASS</code> and keep the
+                reference <code>{'${secret.MAIL_PASS}'}</code> here.
+              </div>
+            </>
+          )}
+
+          {kind !== 'imap' && (
+          <>
           <h3>Authorization</h3>
           <label className="builder-field">
             <span>type</span>
@@ -296,6 +326,8 @@ export function SourceBuilder({ onCreated }: { onCreated: () => void }) {
           <h3>Custom headers</h3>
           <div className="hint">Arbitrary headers with custom names (e.g. <code>X-Api-Key: {'${secret.KEY}'}</code>). Suitable for static tokens.</div>
           <KvEditor obj={headers} kv={headersKv} valuePlaceholder="${secret.API_TOKEN} / value" />
+          </>
+          )}
         </div>
       )}
 
