@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 
-type Kind = 'mcp' | 'openapi' | 'http' | 'imap';
+type Kind = 'mcp' | 'openapi' | 'http' | 'imap' | 'sql';
 type Cfg = Record<string, any>;
 
 const DEFAULTS: Record<Kind, Cfg> = {
@@ -14,6 +14,7 @@ const DEFAULTS: Record<Kind, Cfg> = {
     user: '',
     pass: '${secret.MAIL_PASS}',
   },
+  sql: { url: '${secret.DB_URL}', schema: 'public', maxRows: 1000 },
 };
 
 const AUTH_DEFAULTS: Record<string, Cfg> = {
@@ -194,6 +195,7 @@ export function SourceBuilder({ onCreated }: { onCreated: () => void }) {
           <option value="openapi">openapi</option>
           <option value="http">http</option>
           <option value="imap">email (imap/smtp)</option>
+          <option value="sql">sql (postgres, read-only)</option>
         </select>
       </div>
       <div className="spacer" />
@@ -268,7 +270,20 @@ export function SourceBuilder({ onCreated }: { onCreated: () => void }) {
             </>
           )}
 
-          {kind !== 'imap' && (
+          {kind === 'sql' && (
+            <>
+              <Field label="Connection URL" value={cfg.url} onChange={(v) => patch({ url: v })} placeholder="${secret.DB_URL}" />
+              <Field label="Schema" value={cfg.schema} onChange={(v) => patch({ schema: v })} placeholder="public" />
+              <Field label="Max rows" value={String(cfg.maxRows ?? '')} onChange={(v) => patch({ maxRows: Number(v) || undefined })} placeholder="1000" />
+              <div className="hint">
+                Postgres only, <b>read-only</b> (every query runs in a READ ONLY transaction). Use a read-only DB user.
+                Store the connection string as a Secret <code>DB_URL</code> and keep the reference{' '}
+                <code>{'${secret.DB_URL}'}</code> here. Tools: list_tables, describe_table, run_query.
+              </div>
+            </>
+          )}
+
+          {kind !== 'imap' && kind !== 'sql' && (
           <>
           <h3>Authorization</h3>
           <label className="builder-field">

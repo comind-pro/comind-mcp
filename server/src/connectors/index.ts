@@ -4,6 +4,7 @@ import { HttpConnector } from './http.js';
 import { ImapSmtpConnector } from './imap.js';
 import { McpConnector } from './mcp.js';
 import { OpenApiConnector } from './openapi.js';
+import { SqlConnector } from './sql.js';
 import type { Connector } from './types.js';
 
 const headers = z.record(z.string()).optional();
@@ -55,7 +56,14 @@ export const imapConfigSchema = z.object({
   pass: z.string().min(1),
 });
 
-export const sourceKind = z.enum(['mcp', 'openapi', 'http', 'imap']);
+export const sqlConfigSchema = z.object({
+  // Postgres connection string. Use a read-only DB user; supports `${secret.NAME}`.
+  url: z.string().min(1),
+  schema: z.string().optional(),
+  maxRows: z.number().int().positive().optional(),
+});
+
+export const sourceKind = z.enum(['mcp', 'openapi', 'http', 'imap', 'sql']);
 export type SourceKind = z.infer<typeof sourceKind>;
 
 /** Validate a source's config against its kind; throws ZodError on mismatch.
@@ -75,6 +83,9 @@ export function parseSourceConfig(kind: SourceKind, config: unknown): Record<str
       break;
     case 'imap':
       base = imapConfigSchema.parse(config);
+      break;
+    case 'sql':
+      base = sqlConfigSchema.parse(config);
       break;
   }
   const raw = config as { auth?: unknown };
@@ -97,6 +108,8 @@ export function createConnector(
       return new HttpConnector(httpConfigSchema.parse(config));
     case 'imap':
       return new ImapSmtpConnector(imapConfigSchema.parse(config));
+    case 'sql':
+      return new SqlConnector(sqlConfigSchema.parse(config));
   }
 }
 

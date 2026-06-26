@@ -31,7 +31,7 @@ export const sources = pgTable('sources', {
   id: id(),
   ownerId: ownerId(),
   name: text('name').notNull(),
-  kind: text('kind', { enum: ['mcp', 'openapi', 'http', 'imap'] }).notNull(),
+  kind: text('kind', { enum: ['mcp', 'openapi', 'http', 'imap', 'sql'] }).notNull(),
   config: jsonb('config').notNull().$type<Record<string, unknown>>(),
   status: text('status', { enum: ['unknown', 'ok', 'error'] })
     .notNull()
