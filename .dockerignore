@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+**/dist
+**/build
+*.tsbuildinfo
+.git
+.idea
+.vscode
+.claude
+.env
+.env.*
+!.env.example
+*.log
+coverage
+web/dist

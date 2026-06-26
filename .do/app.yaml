@@ -1,0 +1,111 @@
+# DigitalOcean App Platform spec for comind-mcp.
+#
+# Layout: ONE app, same origin, path-routing.
+#   - service `server`  -> all API path prefixes (Dockerfile build)
+#   - static `web`      -> `/` catch-all (Vite SPA, buildpack)
+#   - database `db`     -> managed Postgres (injects DATABASE_URL with sslmode=require)
+#
+# Same origin => web and API share the host, so VITE_API_BASE = ${APP_URL}
+# and CORS is effectively a no-op (still set for safety).
+#
+# First deploy:
+#   doctl apps create --spec .do/app.yaml
+# Update:
+#   doctl apps update <APP_ID> --spec .do/app.yaml
+#
+# Before deploy set the 3 SECRETs (dashboard or `doctl apps update`) — real
+# values live in server/.env.production (gitignored):
+#   DATABASE_URL = postgres://<user>:<pass>@<host>:<port>/<db>?sslmode=require
+#   VAULT_KEY    = 32 bytes base64   (NEVER rotate after first encrypt)
+#   JWT_SECRET   = 48 bytes base64
+name: comind-mcp
+region: fra
+
+# Custom domain, same-origin (web + API on one host).
+domains:
+  - domain: mcp.comind.pro
+    type: PRIMARY
+
+services:
+  - name: server
+    dockerfile_path: server/Dockerfile
+    source_dir: /
+    github:
+      repo: comind-pro/comind-mcp
+      branch: main
+      deploy_on_push: true
+    http_port: 8787
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    health_check:
+      http_path: /healthz
+    envs:
+      - key: HOST
+        value: "0.0.0.0"
+      - key: PORT
+        value: "8787"
+      - key: DATABASE_URL
+        type: SECRET # paste from server/.env.production (has ?sslmode=require -> SSL auto-on)
+        value: REPLACE_ME
+        scope: RUN_TIME
+      - key: CORS_ORIGINS
+        value: https://mcp.comind.pro
+        scope: RUN_TIME
+      - key: VAULT_KEY
+        type: SECRET
+        value: REPLACE_ME # openssl rand -base64 32
+        scope: RUN_TIME
+      - key: JWT_SECRET
+        type: SECRET
+        value: REPLACE_ME # openssl rand -base64 48
+        scope: RUN_TIME
+
+static_sites:
+  - name: web
+    source_dir: /
+    github:
+      repo: comind-pro/comind-mcp
+      branch: main
+      deploy_on_push: true
+    environment_slug: node-js
+    build_command: corepack enable && pnpm install --frozen-lockfile --filter comind-web... && pnpm --filter comind-web build
+    output_dir: web/dist
+    catchall_document: index.html # SPA fallback
+    envs:
+      - key: VITE_API_BASE
+        value: https://mcp.comind.pro
+        scope: BUILD_TIME
+
+ingress:
+  rules:
+    # API path prefixes -> server. preserve_path_prefix: DO strips the matched
+    # prefix by default (/healthz -> /), which breaks routing; keep the full path.
+    - match: { path: { prefix: /healthz } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /auth } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /oauth } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /g } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /agents } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /groups } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /sources } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /tools } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /composite-tools } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /schedules } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /secrets } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /logs } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /metrics } }
+      component: { name: server, preserve_path_prefix: true }
+    # SPA catch-all
+    - match: { path: { prefix: / } }
+      component: { name: web }
