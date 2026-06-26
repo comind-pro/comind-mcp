@@ -1,7 +1,8 @@
 import cron, { type ScheduledTask } from 'node-cron';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, lt } from 'drizzle-orm';
+import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { groupTools, jobRuns, schedules, tools } from '../db/schema.js';
+import { callLogs, groupTools, jobRuns, schedules, tools } from '../db/schema.js';
 import { newId } from '../lib/id.js';
 import { invokeTool } from '../runtime/invoker.js';
 
@@ -98,6 +99,7 @@ export async function execute(scheduleId: string) {
       ownerId: sch.ownerId,
       groupId: sch.groupId,
       agentId: sch.agentId,
+      source: 'schedule',
     });
     await db
       .update(jobRuns)
@@ -123,4 +125,15 @@ export async function execute(scheduleId: string) {
 export async function initScheduler(): Promise<void> {
   const rows = await db.select().from(schedules).where(eq(schedules.enabled, true));
   for (const r of rows) register(r.id, r.cron);
+
+  // Retention: prune old call logs daily (03:00). 0 days = keep forever.
+  const days = config.logRetentionDays;
+  if (days > 0) {
+    cron.schedule('0 3 * * *', () => {
+      void db
+        .delete(callLogs)
+        .where(lt(callLogs.ts, new Date(Date.now() - days * 86_400_000)))
+        .catch(() => {});
+    });
+  }
 }

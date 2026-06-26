@@ -137,7 +137,7 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
     const { result, steps } = await runCompositeTrace(
       comp.definition,
       args,
-      (name, a, d) => invokeTool(name, a, { ownerId: owner, groupId: null, agentId: null }, d),
+      (name, a, d) => invokeTool(name, a, { ownerId: owner, groupId: null, agentId: null, source: 'test' }, d),
       0,
     );
     return { content: result.content, isError: result.isError, steps };

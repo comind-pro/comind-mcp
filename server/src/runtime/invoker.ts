@@ -14,6 +14,8 @@ export interface InvokeContext {
   ownerId: string; // tools are resolved only within this user's namespace
   agentId?: string | null;
   groupId?: string | null;
+  /** How the call was triggered (for analytics). Defaults to 'live'. */
+  source?: 'live' | 'test' | 'schedule';
 }
 
 const MAX_DEPTH = 5;
@@ -58,6 +60,7 @@ export async function invokeTool(
       groupId: ctx.groupId ?? null,
       agentId: ctx.agentId ?? null,
       toolName,
+      source: ctx.source ?? 'live',
       status: result.isError ? 'error' : 'success',
       durationMs: Date.now() - startedAt,
       tokensEst: estimateTokens(result),

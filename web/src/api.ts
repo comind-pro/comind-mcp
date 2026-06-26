@@ -133,6 +133,7 @@ export interface CallLog {
   id: string;
   toolName: string;
   status: string;
+  source: 'live' | 'test' | 'schedule';
   durationMs: number;
   tokensEst: number | null;
   agentId: string | null;

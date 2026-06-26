@@ -43,6 +43,8 @@ export const config = {
   publicBaseUrl:
     (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '') ||
     `http://${env('HOST', '127.0.0.1')}:${env('PORT', '8787')}`,
+  // Days to keep call logs; a daily job prunes older rows. 0 = keep forever.
+  logRetentionDays: Number(env('LOG_RETENTION_DAYS', '30')),
 };
 
 export type Config = typeof config;

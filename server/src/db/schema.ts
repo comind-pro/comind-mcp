@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 const id = () => text('id').primaryKey();
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
@@ -282,18 +282,27 @@ export const oauthAccessTokens = pgTable(
 );
 
 /** CallLog = observability record for every tool invocation through the gateway. */
-export const callLogs = pgTable('call_logs', {
-  id: id(),
-  ownerId: text('owner_id').notNull(),
-  groupId: text('group_id'),
-  agentId: text('agent_id'),
-  toolName: text('tool_name').notNull(),
-  status: text('status', { enum: ['success', 'error'] }).notNull(),
-  durationMs: integer('duration_ms').notNull(),
-  tokensEst: integer('tokens_est'),
-  error: text('error'),
-  ts: createdAt(),
-});
+export const callLogs = pgTable(
+  'call_logs',
+  {
+    id: id(),
+    ownerId: text('owner_id').notNull(),
+    groupId: text('group_id'),
+    agentId: text('agent_id'),
+    toolName: text('tool_name').notNull(),
+    status: text('status', { enum: ['success', 'error'] }).notNull(),
+    // how the call was triggered: live = agent via gateway, test = control-plane
+    // try-run, schedule = scheduler. Lets analytics exclude dry runs.
+    source: text('source', { enum: ['live', 'test', 'schedule'] }).notNull().default('live'),
+    durationMs: integer('duration_ms').notNull(),
+    tokensEst: integer('tokens_est'),
+    error: text('error'),
+    ts: createdAt(),
+  },
+  (t) => ({
+    ownerTsIdx: index('call_logs_owner_ts_idx').on(t.ownerId, t.ts),
+  }),
+);
 
 export const schema = {
   users,

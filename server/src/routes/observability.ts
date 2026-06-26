@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -24,6 +24,9 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
       agentId?: string;
       toolName?: string;
       status?: string;
+      source?: string;
+      from?: string;
+      to?: string;
       limit?: string;
     };
     const filters: SQL[] = [eq(callLogs.ownerId, ownerOf(req))];
@@ -31,33 +34,55 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
     if (q.agentId) filters.push(eq(callLogs.agentId, q.agentId));
     if (q.toolName) filters.push(eq(callLogs.toolName, q.toolName));
     if (q.status === 'success' || q.status === 'error') filters.push(eq(callLogs.status, q.status));
+    if (q.source === 'live' || q.source === 'test' || q.source === 'schedule')
+      filters.push(eq(callLogs.source, q.source));
+    if (q.from) filters.push(gte(callLogs.ts, new Date(q.from)));
+    if (q.to) filters.push(lte(callLogs.ts, new Date(q.to)));
     const limit = Math.min(Number(q.limit ?? 100) || 100, 1000);
     return db.select().from(callLogs).where(and(...filters)).orderBy(desc(callLogs.ts)).limit(limit);
   });
 
-  // Aggregate usage metrics.
+  // Aggregate usage metrics — computed in SQL (scales), with optional time window
+  // and source filter. By default excludes nothing; pass ?source=live for prod-only.
   app.get('/metrics', async (req) => {
-    const rows = await db.select().from(callLogs).where(eq(callLogs.ownerId, ownerOf(req)));
-    const byTool: Record<string, { calls: number; errors: number; tokens: number }> = {};
-    const byAgent: Record<string, { calls: number; errors: number; tokens: number }> = {};
-    let calls = 0,
-      errors = 0,
-      tokens = 0;
-    for (const r of rows) {
-      calls++;
-      if (r.status === 'error') errors++;
-      tokens += r.tokensEst ?? 0;
-      const tt = (byTool[r.toolName] ??= { calls: 0, errors: 0, tokens: 0 });
-      tt.calls++;
-      if (r.status === 'error') tt.errors++;
-      tt.tokens += r.tokensEst ?? 0;
-      const ak = r.agentId ?? '(none)';
-      const aa = (byAgent[ak] ??= { calls: 0, errors: 0, tokens: 0 });
-      aa.calls++;
-      if (r.status === 'error') aa.errors++;
-      aa.tokens += r.tokensEst ?? 0;
-    }
-    return { totals: { calls, errors, tokens }, byTool, byAgent };
+    const owner = ownerOf(req);
+    const q = req.query as { from?: string; to?: string; source?: string };
+    const conds = [sql`owner_id = ${owner}`];
+    // NB: drizzle field `ts` maps to DB column `created_at`.
+    if (q.from) conds.push(sql`created_at >= ${new Date(q.from).toISOString()}`);
+    if (q.to) conds.push(sql`created_at <= ${new Date(q.to).toISOString()}`);
+    if (q.source === 'live' || q.source === 'test' || q.source === 'schedule')
+      conds.push(sql`source = ${q.source}`);
+    const where = sql.join(conds, sql` and `);
+
+    const totals = await db.execute(sql`
+      select count(*)::int calls,
+             count(*) filter (where status='error')::int errors,
+             coalesce(sum(tokens_est),0)::int tokens,
+             coalesce(round(avg(duration_ms)),0)::int avg_ms,
+             coalesce(percentile_cont(0.95) within group (order by duration_ms),0)::int p95_ms
+      from call_logs where ${where}`);
+    const byTool = await db.execute(sql`
+      select tool_name,
+             count(*)::int calls,
+             count(*) filter (where status='error')::int errors,
+             coalesce(sum(tokens_est),0)::int tokens,
+             coalesce(round(avg(duration_ms)),0)::int avg_ms
+      from call_logs where ${where} group by tool_name order by calls desc limit 50`);
+    const byAgent = await db.execute(sql`
+      select coalesce(a.name, s.agent_id, '(none)') agent,
+             s.calls, s.errors, s.tokens
+      from (
+        select agent_id,
+               count(*)::int calls,
+               count(*) filter (where status='error')::int errors,
+               coalesce(sum(tokens_est),0)::int tokens
+        from call_logs where ${where} group by agent_id
+      ) s
+      left join agents a on a.id = s.agent_id
+      order by s.calls desc limit 50`);
+
+    return { totals: totals.rows[0], byTool: byTool.rows, byAgent: byAgent.rows };
   });
 
   // What does this agent actually see through its endpoint?
@@ -102,7 +127,12 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
     if (!visible.some((t) => t.name === body.tool)) {
       return reply.code(400).send({ error: 'tool_not_in_group' });
     }
-    const result = await invokeTool(body.tool, body.args ?? {}, { ownerId: owner, agentId: agent.id, groupId: body.groupId });
+    const result = await invokeTool(body.tool, body.args ?? {}, {
+      ownerId: owner,
+      agentId: agent.id,
+      groupId: body.groupId,
+      source: 'test',
+    });
     return result;
   });
 }
