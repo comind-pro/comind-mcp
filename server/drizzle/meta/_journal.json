@@ -36,6 +36,13 @@
       "when": 1782491561275,
       "tag": "0004_rich_lester",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782543991512,
+      "tag": "0005_unknown_paper_doll",
+      "breakpoints": true
     }
   ]
 }

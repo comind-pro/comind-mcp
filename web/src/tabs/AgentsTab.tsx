@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type Agent, type Group } from '../api.js';
+import { api, type Agent, type AgentKey, type Group } from '../api.js';
 
 function Snip({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -30,19 +30,52 @@ export function AgentsTab() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [draft, setDraft] = useState<string | null>(null); // new-agent name (null = closed)
-  const [freshKey, setFreshKey] = useState<{ name: string; key: string } | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [inspect, setInspect] = useState<Record<string, InspectGroup[]>>({});
   const [addSel, setAddSel] = useState<Record<string, string>>({});
   const [connMode, setConnMode] = useState<'all' | 'single'>('all');
   const [connGroup, setConnGroup] = useState('');
+  const [keys, setKeys] = useState<Record<string, AgentKey[]>>({});
+  const [freshKeys, setFreshKeys] = useState<Record<string, string>>({}); // keyId → raw token (shown once)
   const [err, setErr] = useState('');
+
+  const loadKeys = async (id: string) => {
+    const ks = await api.get<AgentKey[]>(`/agents/${id}/keys`);
+    setKeys((m) => ({ ...m, [id]: ks }));
+  };
 
   const openAgent = (a: Agent) => {
     if (openId === a.id) return setOpenId(null);
     setOpenId(a.id);
     setConnMode('all');
     setConnGroup(a.groups?.[0]?.id ?? '');
+    void loadKeys(a.id);
+  };
+
+  const addKey = async (id: string) => {
+    setErr('');
+    try {
+      const k = await api.post<AgentKey & { apiKey: string }>(`/agents/${id}/keys`, { label: '' });
+      setFreshKeys((m) => ({ ...m, [k.id]: k.apiKey }));
+      await loadKeys(id);
+      await load();
+    } catch (e) {
+      setErr(String((e as Error).message));
+    }
+  };
+
+  const setArchived = async (id: string, keyId: string, archived: boolean) => {
+    await api.patch(`/agents/${id}/keys/${keyId}`, { archived }).catch((e) => setErr(String(e.message)));
+    await loadKeys(id);
+    await load();
+  };
+
+  const delKey = async (id: string, keyId: string) => {
+    if (!confirm('Delete this key? It stops working immediately.')) return;
+    await api.del(`/agents/${id}/keys/${keyId}`).catch((e) => setErr(String(e.message)));
+    setFreshKeys((m) => { const n = { ...m }; delete n[keyId]; return n; });
+    await loadKeys(id);
+    await load();
   };
 
   const load = () => api.get<Agent[]>('/agents').then(setAgents);
@@ -55,17 +88,17 @@ export function AgentsTab() {
     setErr('');
     try {
       const a = await api.post<Agent & { apiKey: string }>('/agents', { name: draft });
-      setFreshKey({ name: a.name, key: a.apiKey });
       setDraft(null);
       await load();
+      // open the new agent and reveal its first key once
+      setOpenId(a.id);
+      setConnMode('all');
+      const ks = await api.get<AgentKey[]>(`/agents/${a.id}/keys`);
+      setKeys((m) => ({ ...m, [a.id]: ks }));
+      if (ks[0]) setFreshKeys((m) => ({ ...m, [ks[0].id]: a.apiKey }));
     } catch (e) {
       setErr(String((e as Error).message));
     }
-  };
-
-  const rotate = async (id: string, nm: string) => {
-    const r = await api.post<{ apiKey: string }>(`/agents/${id}/rotate-key`);
-    setFreshKey({ name: nm, key: r.apiKey });
   };
 
   const del = async (id: string) => {
@@ -184,9 +217,37 @@ export function AgentsTab() {
           </div>
         )}
 
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', margin: '22px 0 8px' }}>
+          <span className="editor-section" style={{ margin: 0 }}>API keys</span>
+          <button className="btn-primary" onClick={() => addKey(a.id)}>+ Add key</button>
+        </div>
+        {(keys[a.id] ?? []).map((k) => {
+          const fresh = freshKeys[k.id];
+          return (
+            <div key={k.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+              <div className="row" style={{ alignItems: 'center' }}>
+                <span className="mono" style={{ fontSize: 13, opacity: k.archived ? 0.5 : 1 }}>{k.prefix}{'…'}</span>
+                {k.label && <span className="tbadge">{k.label}</span>}
+                {k.archived && <span className="badge muted">archived</span>}
+                <span className="muted" style={{ fontSize: 12 }}>added {new Date(k.createdAt).toLocaleDateString()}</span>
+                <span style={{ marginLeft: 'auto' }} />
+                <button className="ghost" onClick={() => setArchived(a.id, k.id, !k.archived)}>{k.archived ? 'Unarchive' : 'Archive'}</button>
+                <button className="danger" onClick={() => delKey(a.id, k.id)}>Delete</button>
+              </div>
+              {fresh && (
+                <div className="row" style={{ alignItems: 'stretch', marginTop: 6 }}>
+                  <div className="endpoint mono grow" style={{ color: 'var(--ok)' }}>{fresh}</div>
+                  <button className="ghost" onClick={() => copy(fresh)}>Copy</button>
+                </div>
+              )}
+              {fresh && <div className="hint" style={{ marginTop: 4 }}>Shown once — copy it now.</div>}
+            </div>
+          );
+        })}
+        {!(keys[a.id] ?? []).length && <div className="muted" style={{ fontSize: 12 }}>No keys.</div>}
+
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
-          <button className="ghost" onClick={() => rotate(a.id, a.name)}>Rotate key</button>
-          <button className="danger" style={{ marginLeft: 'auto' }} onClick={() => del(a.id)}>Delete</button>
+          <button className="danger" style={{ marginLeft: 'auto' }} onClick={() => del(a.id)}>Delete agent</button>
         </div>
         {err && <div className="err-msg">{err}</div>}
       </div>
@@ -207,21 +268,6 @@ export function AgentsTab() {
         </div>
         <button className="btn-primary" onClick={() => setDraft(draft === null ? '' : null)}>+ New agent</button>
       </div>
-
-      {freshKey && (
-        <div className="scard open">
-          <div className="scard-body">
-            <div className="editor-left" style={{ borderRight: 'none' }}>
-              <div className="editor-section" style={{ color: 'var(--ok)' }}>API key for “{freshKey.name}” — shown once, copy it</div>
-              <div className="row" style={{ alignItems: 'stretch' }}>
-                <div className="endpoint mono grow">{freshKey.key}</div>
-                <button className="ghost" onClick={() => copy(freshKey.key)}>Copy</button>
-                <button className="ghost" onClick={() => setFreshKey(null)}>Dismiss</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {draft !== null && (
         <div className="scard open">
@@ -247,7 +293,7 @@ export function AgentsTab() {
           <div key={a.id} className={`scard ${open ? 'open' : ''}`}>
             <div className="scard-head" onClick={() => openAgent(a)}>
               <span className="name src-name">{a.name}</span>
-              <span className="mono muted" style={{ fontSize: 12, width: 90 }}>{a.apiKeyPrefix}…</span>
+              <span className="muted" style={{ fontSize: 12, width: 70 }}>{a.keyCount ?? 0} key{(a.keyCount ?? 0) === 1 ? '' : 's'}</span>
               <span className="muted" style={{ fontSize: 12 }}>
                 {granted.length ? `${granted.length} V-MCP` : 'no access'}
               </span>

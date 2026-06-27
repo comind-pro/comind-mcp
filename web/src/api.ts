@@ -109,8 +109,16 @@ export interface AgentGroupGrant {
 export interface Agent {
   id: string;
   name: string;
-  apiKeyPrefix: string;
+  apiKeyPrefix?: string | null;
+  keyCount?: number;
   groups?: AgentGroupGrant[];
+}
+export interface AgentKey {
+  id: string;
+  prefix: string;
+  label: string | null;
+  archived: boolean;
+  createdAt: number | string;
 }
 export interface Schedule {
   id: string;

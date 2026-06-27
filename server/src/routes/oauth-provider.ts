@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { agentGroups, agents, groups, oauthAccessTokens, oauthAuthCodes, oauthClients } from '../db/schema.js';
+import { agentGroups, agentKeys, agents, groups, oauthAccessTokens, oauthAuthCodes, oauthClients } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
 import { newId } from '../lib/id.js';
 
@@ -102,7 +102,11 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
 
     const groupId = groupIdFromResource(b.resource); // null = agent-wide (/a/mcp)
     const agentKey = (b.agent_key ?? '').trim();
-    const [agent] = await db.select().from(agents).where(eq(agents.apiKeyHash, hashKey(agentKey)));
+    const [keyRow] = await db
+      .select({ agentId: agentKeys.agentId })
+      .from(agentKeys)
+      .where(and(eq(agentKeys.hash, hashKey(agentKey)), eq(agentKeys.archived, false)));
+    const agent = keyRow ? (await db.select().from(agents).where(eq(agents.id, keyRow.agentId)))[0] : undefined;
     if (!agent) return reply.code(401).type('text/html').send(consentPage(b, 'Invalid agent key.'));
 
     // Group-scoped resource: the agent must be granted that group. Agent-wide

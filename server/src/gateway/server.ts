@@ -2,7 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentGroups, agents, groups, groupTools, oauthAccessTokens, tools } from '../db/schema.js';
+import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, tools } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
 import { invokeTool } from '../runtime/invoker.js';
 import {
@@ -41,8 +41,14 @@ async function resolveBearer(authHeader: string | undefined): Promise<Resolved |
   const token = authHeader.slice('Bearer '.length).trim();
   if (!token) return null;
 
-  const [agent] = await db.select().from(agents).where(eq(agents.apiKeyHash, hashKey(token)));
-  if (agent) return { agentId: agent.id, ownerId: agent.ownerId, restrictGroupId: null };
+  const [key] = await db
+    .select({ agentId: agentKeys.agentId })
+    .from(agentKeys)
+    .where(and(eq(agentKeys.hash, hashKey(token)), eq(agentKeys.archived, false)));
+  if (key) {
+    const [agent] = await db.select().from(agents).where(eq(agents.id, key.agentId));
+    if (agent) return { agentId: agent.id, ownerId: agent.ownerId, restrictGroupId: null };
+  }
 
   const [tok] = await db.select().from(oauthAccessTokens).where(eq(oauthAccessTokens.tokenHash, hashKey(token)));
   if (!tok || tok.expiresAt.getTime() <= Date.now()) return null;

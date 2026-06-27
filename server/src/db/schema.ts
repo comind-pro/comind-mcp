@@ -112,16 +112,39 @@ export const groupTools = pgTable(
   }),
 );
 
-/** Agent = a consumer identity (one API key). Access to groups is granted
- *  separately via `agentGroups` (an agent may reach many group endpoints). */
+/** Agent = a consumer identity. Keys live in `agentKeys` (an agent may have
+ *  several). Access to groups is granted via `agentGroups`. The legacy
+ *  apiKeyHash/Prefix columns are kept nullable for back-compat only. */
 export const agents = pgTable('agents', {
   id: id(),
   ownerId: ownerId(),
   name: text('name').notNull(),
-  apiKeyHash: text('api_key_hash').notNull(),
-  apiKeyPrefix: text('api_key_prefix').notNull(),
+  apiKeyHash: text('api_key_hash'),
+  apiKeyPrefix: text('api_key_prefix'),
   createdAt: createdAt(),
 });
+
+/** API keys for an agent. Many per agent; shown masked (prefix only); the raw
+ *  token is returned exactly once at creation. Archived keys stop authenticating
+ *  but stay on record. */
+export const agentKeys = pgTable(
+  'agent_keys',
+  {
+    id: id(),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    hash: text('hash').notNull(),
+    prefix: text('prefix').notNull(),
+    label: text('label'),
+    archived: boolean('archived').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    hashIdx: uniqueIndex('agent_keys_hash_unique').on(t.hash),
+    agentIdx: index('agent_keys_agent_idx').on(t.agentId),
+  }),
+);
 
 /** M2M grant: which groups an agent's key may call. */
 export const agentGroups = pgTable(
@@ -312,6 +335,7 @@ export const schema = {
   groups,
   groupTools,
   agents,
+  agentKeys,
   agentGroups,
   schedules,
   jobRuns,
