@@ -197,6 +197,18 @@ tr.sec-head:hover td { background: #232c38; }
 .builder-field > input, .builder-field > select { flex: 1; }
 .builder h3 { margin-top: 14px; }
 
+/* collapsible setup instructions */
+.setup { border: 1px solid var(--border-strong); border-radius: 9px; margin-bottom: 14px; background: var(--panel2); }
+.setup > summary { cursor: pointer; padding: 9px 12px; font-size: 12.5px; font-weight: 600; color: var(--text); list-style: none; user-select: none; }
+.setup > summary::-webkit-details-marker { display: none; }
+.setup > summary::before { content: '▸ '; color: var(--muted); }
+.setup[open] > summary::before { content: '▾ '; }
+.setup-body { padding: 0 14px 10px; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+.setup-body ol { margin: 4px 0; padding-left: 20px; }
+.setup-body li { margin-bottom: 5px; }
+.setup-body b { color: var(--text); }
+.setup-body code { color: var(--accent); }
+
 /* ===== card-based Sources / Tools redesign ===== */
 .page-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .page-head .title { font-size: 20px; font-weight: 700; letter-spacing: -0.2px; }

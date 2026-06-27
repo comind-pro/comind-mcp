@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type Source, type Tool } from '../api.js';
 import { DEFAULTS, KIND_META, SourceFields, type Cfg, type Kind } from './SourceFields.js';
 
-const KINDS: Kind[] = ['mcp', 'openapi', 'http', 'imap', 'sql'];
+const KINDS: Kind[] = ['mcp', 'openapi', 'http', 'imap', 'sql', 'ga'];
 
 const hasInteractiveOAuth = (cfg: Cfg) =>
   ['oauth2_authorization_code', 'mcp_oauth'].includes((cfg?.auth as { type?: string })?.type ?? '');

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-export type Kind = 'mcp' | 'openapi' | 'http' | 'imap' | 'sql';
+export type Kind = 'mcp' | 'openapi' | 'http' | 'imap' | 'sql' | 'ga';
 export type Cfg = Record<string, any>;
 
 export const KIND_META: Record<Kind, { title: string; desc: string }> = {
@@ -9,6 +9,7 @@ export const KIND_META: Record<Kind, { title: string; desc: string }> = {
   http: { title: 'HTTP API', desc: 'Manual endpoints' },
   imap: { title: 'Email', desc: 'IMAP / SMTP' },
   sql: { title: 'SQL database', desc: 'Postgres · read-only' },
+  ga: { title: 'Google Analytics', desc: 'GA4 · service account' },
 };
 
 export const DEFAULTS: Record<Kind, Cfg> = {
@@ -22,6 +23,7 @@ export const DEFAULTS: Record<Kind, Cfg> = {
     pass: '${secret.MAIL_PASS}',
   },
   sql: { url: '${secret.DB_URL}', schema: 'public', maxRows: 1000 },
+  ga: { sa: '${secret.GA_SA_JSON}', propertyId: '', projectId: '' },
 };
 
 const AUTH_DEFAULTS: Record<string, Cfg> = {
@@ -41,6 +43,67 @@ export function Field({ label, value, onChange, placeholder }: { label: string; 
     </label>
   );
 }
+
+const SETUP: Partial<Record<Kind, ReactNode>> = {
+  ga: (
+    <ol>
+      <li>
+        Enable both APIs in your Google Cloud project:{' '}
+        <a href="https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com" target="_blank" rel="noreferrer">Analytics Admin API</a>{' '}·{' '}
+        <a href="https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com" target="_blank" rel="noreferrer">Analytics Data API</a>.
+      </li>
+      <li>
+        Create a <a href="https://cloud.google.com/iam/docs/service-accounts-create" target="_blank" rel="noreferrer">service account</a>,
+        then <a href="https://cloud.google.com/iam/docs/keys-create-delete" target="_blank" rel="noreferrer">add a JSON key</a> and download the file.
+      </li>
+      <li>
+        In GA4 →{' '}
+        <a href="https://support.google.com/analytics/answer/9305587" target="_blank" rel="noreferrer">Admin → Property Access Management</a>,
+        add the service-account email (<code>…iam.gserviceaccount.com</code>) with the <b>Viewer</b> role.
+      </li>
+      <li>Paste the <b>whole JSON key file</b> into a secret below named <code>GA_SA_JSON</code> (keep the reference <code>{'${secret.GA_SA_JSON}'}</code> in the config).</li>
+      <li><b>Lock to GA4 property</b> (recommended): set one property id — the source then only ever reads that property and account discovery is hidden, so agents can’t reach your other properties. Leave empty to let the agent choose any property the SA can access (use a separate source per property to scope access).</li>
+      <li>Leave <b>GCP project id</b> empty (quota then bills the service account’s own project). Only set it if you have a dedicated quota project where the SA has <code>serviceusage.serviceUsageConsumer</code> — otherwise you’ll get a 403.</li>
+      <li>
+        <a href="https://developers.google.com/analytics/devguides/reporting/data/v1" target="_blank" rel="noreferrer">Data API v1 docs</a>.
+        Read-only scope <code>analytics.readonly</code>.
+      </li>
+    </ol>
+  ),
+  mcp: (
+    <ol>
+      <li>Get the remote MCP server’s <b>URL</b> (Streamable HTTP or SSE).</li>
+      <li>If it needs auth, pick an <b>Authorization</b> type below and store the token in <b>Secrets</b>.</li>
+      <li>For user-OAuth remote MCPs, choose <code>mcp_oauth</code>, Create, then press <b>Connect</b>.</li>
+    </ol>
+  ),
+  openapi: (
+    <ol>
+      <li>Provide the <b>OpenAPI spec URL</b> (or paste an inline spec in JSON mode).</li>
+      <li>Set <b>Base URL</b> if the spec’s server URL is missing/relative.</li>
+      <li>Add auth below if the API needs it; tokens go through <b>Secrets</b>.</li>
+    </ol>
+  ),
+  http: (
+    <ol>
+      <li>Set the <b>Base URL</b> and add each <b>endpoint</b> (name, method, path).</li>
+      <li>Use <code>{'{param}'}</code> in paths; configure auth/headers below.</li>
+    </ol>
+  ),
+  imap: (
+    <ol>
+      <li>Use an <b>app password</b> (not your login password) from your mail provider.</li>
+      <li>Fill IMAP host/port; SMTP is optional (leave empty for a read-only mailbox).</li>
+      <li>Store the password as a secret <code>MAIL_PASS</code> and keep <code>{'${secret.MAIL_PASS}'}</code> here.</li>
+    </ol>
+  ),
+  sql: (
+    <ol>
+      <li>Use a <b>read-only</b> Postgres user (every query runs in a READ ONLY transaction).</li>
+      <li>Store the connection string as a secret <code>DB_URL</code>; keep <code>{'${secret.DB_URL}'}</code> here.</li>
+    </ol>
+  ),
+};
 
 function KvEditor({ obj, kv, valuePlaceholder }: { obj: Cfg; kv: any; valuePlaceholder?: string }) {
   return (
@@ -109,6 +172,12 @@ export function SourceFields({ kind, cfg, onChange }: { kind: Kind; cfg: Cfg; on
 
   return (
     <div className="builder">
+      {SETUP[kind] && (
+        <details className="setup">
+          <summary>Setup instructions</summary>
+          <div className="setup-body">{SETUP[kind]}</div>
+        </details>
+      )}
       {kind === 'mcp' && (
         <>
           <Field label="MCP URL" value={cfg.url} onChange={(v) => patch({ url: v })} placeholder="https://api.example.com/mcp" />
@@ -185,7 +254,22 @@ export function SourceFields({ kind, cfg, onChange }: { kind: Kind; cfg: Cfg; on
         </>
       )}
 
-      {kind !== 'imap' && kind !== 'sql' && (
+      {kind === 'ga' && (
+        <>
+          <Field label="Lock to GA4 property (recommended)" value={cfg.propertyId} onChange={(v) => patch({ propertyId: v })} placeholder="GA4 property id" />
+          <Field label="GCP project id (quota — leave empty unless dedicated)" value={cfg.projectId} onChange={(v) => patch({ projectId: v })} placeholder="(optional)" />
+          <Field label="Service account JSON (secret ref)" value={cfg.sa} onChange={(v) => patch({ sa: v })} placeholder="${secret.GA_SA_JSON}" />
+          <div className="hint">
+            Create a GA4 service account, download the JSON key, and add it under “Secrets for this source” as
+            <code>GA_SA_JSON</code> (paste the whole file). Grant that service-account email <b>Viewer</b> on the GA4
+            property. Keep the reference <code>{'${secret.GA_SA_JSON}'}</code> here. The GA4 <b>property</b> is passed per
+            tool call. Project id sets the API quota project (defaults to the service account’s). Read-only
+            (<code>analytics.readonly</code>). Tools: run_report, run_realtime_report, get_account_summaries, …
+          </div>
+        </>
+      )}
+
+      {kind !== 'imap' && kind !== 'sql' && kind !== 'ga' && (
         <>
           <h3>Authorization</h3>
           <label className="builder-field">
