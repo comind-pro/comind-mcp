@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 const id = () => text('id').primaryKey();
@@ -37,6 +38,11 @@ export const sources = pgTable('sources', {
     .notNull()
     .default('unknown'),
   statusMessage: text('status_message'),
+  // When the status was last verified (set by a health check / live ping). Null = never.
+  statusCheckedAt: timestamp('status_checked_at', { withTimezone: true }),
+  // Cached queryable objects (GA properties, DB schemas, mailboxes). Refreshed on demand.
+  objects: jsonb('objects').$type<Array<Record<string, unknown>>>().notNull().default(sql`'[]'::jsonb`),
+  objectsCheckedAt: timestamp('objects_checked_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
 
@@ -62,6 +68,15 @@ export const tools = pgTable(
     // optional JSON Schema describing the tool's result (helps models parse output)
     outputSchema: jsonb('output_schema').$type<Record<string, unknown>>(),
     visible: boolean('visible').notNull().default(true),
+    // Discovery metadata surfaced via system.context (helps agents call safely &
+    // correctly). All optional; null/empty = unknown.
+    readOnly: boolean('read_only'),
+    dangerous: boolean('dangerous'),
+    permissions: jsonb('permissions').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    // [{ description, input }] — correct-call examples so models don't malform args.
+    examples: jsonb('examples').$type<Array<Record<string, unknown>>>().notNull().default(sql`'[]'::jsonb`),
+    // { daily_report?, safe_for_automation?, requires_user_confirmation? } — automation hints.
+    recommendedUse: jsonb('recommended_use').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
   },
   (t) => ({
@@ -121,6 +136,12 @@ export const agents = pgTable('agents', {
   name: text('name').notNull(),
   apiKeyHash: text('api_key_hash'),
   apiKeyPrefix: text('api_key_prefix'),
+  // names of built-in system.* introspection tools this agent exposes (subset of
+  // SYSTEM_TOOL_NAMES). Applies to every V-MCP the agent connects to and /a/mcp.
+  systemTools: jsonb('system_tools')
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
   createdAt: createdAt(),
 });
 

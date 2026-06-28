@@ -12,6 +12,7 @@ import {
   listByGroup,
   toolInGroup,
 } from '../scheduler/service.js';
+import { SYSTEM_TOOL_NAMES, handleSystemTool, pickSystemTools, systemInstructions } from './system-tools.js';
 
 export interface AgentAuth {
   agentId: string;
@@ -19,18 +20,24 @@ export interface AgentAuth {
   groupId: string;
   groupSlug: string;
   schedulingEnabled: boolean;
+  /** Built-in system.* tools this group exposes (subset of SYSTEM_TOOL_NAMES). */
+  systemTools: string[];
 }
 
 /** An authenticated agent plus every V-MCP group it may reach (for /a/mcp). */
 export interface AgentAuthAll {
   agentId: string;
   ownerId: string;
+  /** Built-in system.* tools this agent exposes (subset of SYSTEM_TOOL_NAMES). */
+  systemTools: string[];
   groups: { id: string; slug: string; schedulingEnabled: boolean }[];
 }
 
 interface Resolved {
   agentId: string;
   ownerId: string;
+  /** Built-in system.* tools this agent exposes (subset of SYSTEM_TOOL_NAMES). */
+  systemTools: string[];
   /** If set, the Bearer is restricted to this single group (group-scoped OAuth token). */
   restrictGroupId: string | null;
 }
@@ -47,14 +54,15 @@ async function resolveBearer(authHeader: string | undefined): Promise<Resolved |
     .where(and(eq(agentKeys.hash, hashKey(token)), eq(agentKeys.archived, false)));
   if (key) {
     const [agent] = await db.select().from(agents).where(eq(agents.id, key.agentId));
-    if (agent) return { agentId: agent.id, ownerId: agent.ownerId, restrictGroupId: null };
+    if (agent)
+      return { agentId: agent.id, ownerId: agent.ownerId, systemTools: agent.systemTools ?? [], restrictGroupId: null };
   }
 
   const [tok] = await db.select().from(oauthAccessTokens).where(eq(oauthAccessTokens.tokenHash, hashKey(token)));
   if (!tok || tok.expiresAt.getTime() <= Date.now()) return null;
   const [ag] = await db.select().from(agents).where(eq(agents.id, tok.agentId));
   if (!ag) return null;
-  return { agentId: ag.id, ownerId: ag.ownerId, restrictGroupId: tok.groupId };
+  return { agentId: ag.id, ownerId: ag.ownerId, systemTools: ag.systemTools ?? [], restrictGroupId: tok.groupId };
 }
 
 /** Resolve a Bearer token to an agent and verify it belongs to group `groupId`. */
@@ -83,6 +91,7 @@ export async function authenticateAgent(
     groupId: grp.id,
     groupSlug: grp.slug,
     schedulingEnabled: grp.schedulingEnabled,
+    systemTools: r.systemTools,
   };
 }
 
@@ -95,13 +104,19 @@ export async function authenticateAgentAll(authHeader: string | undefined): Prom
   const grants = await db.select().from(agentGroups).where(eq(agentGroups.agentId, r.agentId));
   let groupIds = grants.map((g) => g.groupId);
   if (r.restrictGroupId) groupIds = groupIds.filter((id) => id === r.restrictGroupId);
-  if (!groupIds.length) return { agentId: r.agentId, ownerId: r.ownerId, groups: [] };
+  if (!groupIds.length)
+    return { agentId: r.agentId, ownerId: r.ownerId, systemTools: r.systemTools, groups: [] };
 
   const grps = await db.select().from(groups).where(inArray(groups.id, groupIds));
   return {
     agentId: r.agentId,
     ownerId: r.ownerId,
-    groups: grps.map((g) => ({ id: g.id, slug: g.slug, schedulingEnabled: g.schedulingEnabled })),
+    systemTools: r.systemTools,
+    groups: grps.map((g) => ({
+      id: g.id,
+      slug: g.slug,
+      schedulingEnabled: g.schedulingEnabled,
+    })),
   };
 }
 
@@ -198,7 +213,7 @@ async function groupVisibleTools(groupId: string) {
 export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
   const server = new Server(
     { name: `comind:${auth.groupSlug}`, version: '0.1.0' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) || undefined },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -209,14 +224,32 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
       inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
       ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
     }));
-    return {
-      tools: auth.schedulingEnabled ? [...toolDefs, ...SELF_CRON_TOOLS] : toolDefs,
-    };
+    const base = auth.schedulingEnabled ? [...toolDefs, ...SELF_CRON_TOOLS] : toolDefs;
+    return { tools: [...base, ...pickSystemTools(auth.systemTools)] };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { name, arguments: args } = req.params;
     const a = (args ?? {}) as Record<string, unknown>;
+
+    // Built-in system introspection tools: only those this group opted into.
+    if (SYSTEM_TOOL_NAMES.has(name) && auth.systemTools.includes(name)) {
+      const r = await handleSystemTool(
+        {
+          agentId: auth.agentId,
+          ownerId: auth.ownerId,
+          scope: 'group',
+          groups: [{ id: auth.groupId, slug: auth.groupSlug, schedulingEnabled: auth.schedulingEnabled }],
+        },
+        name,
+        a,
+      );
+      return {
+        content: r.content,
+        ...(r.structuredContent !== undefined ? { structuredContent: r.structuredContent } : {}),
+        isError: r.isError,
+      };
+    }
 
     // Built-in self-cron tools: the agent schedules itself.
     if (auth.schedulingEnabled && SELF_CRON_NAMES.has(name)) {
@@ -253,7 +286,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
 export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
   const server = new Server(
     { name: 'comind:agent', version: '0.1.0' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) || undefined },
   );
 
   // name -> { groupId, tool } across all reachable groups (first group wins).
@@ -270,17 +303,44 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const map = await index();
     return {
-      tools: [...map.values()].map(({ tool: t }) => ({
-        name: t.name,
-        description: t.displayName ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}` : t.description ?? undefined,
-        inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
-        ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
-      })),
+      tools: [
+        ...[...map.values()].map(({ tool: t }) => ({
+          name: t.name,
+          description: t.displayName ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}` : t.description ?? undefined,
+          inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
+          ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
+        })),
+        ...pickSystemTools(auth.systemTools),
+      ],
     };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { name, arguments: args } = req.params;
+
+    // Built-in system introspection tools: the agent's configured set.
+    if (SYSTEM_TOOL_NAMES.has(name) && auth.systemTools.includes(name)) {
+      const r = await handleSystemTool(
+        {
+          agentId: auth.agentId,
+          ownerId: auth.ownerId,
+          scope: 'agent',
+          groups: auth.groups.map((g) => ({
+            id: g.id,
+            slug: g.slug,
+            schedulingEnabled: g.schedulingEnabled,
+          })),
+        },
+        name,
+        (args ?? {}) as Record<string, unknown>,
+      );
+      return {
+        content: r.content,
+        ...(r.structuredContent !== undefined ? { structuredContent: r.structuredContent } : {}),
+        isError: r.isError,
+      };
+    }
+
     const hit = (await index()).get(name);
     if (!hit) {
       return { content: [{ type: 'text', text: `Tool not available to this agent: ${name}` }], isError: true };

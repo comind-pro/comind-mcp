@@ -45,6 +45,12 @@ export const config = {
     `http://${env('HOST', '127.0.0.1')}:${env('PORT', '8787')}`,
   // Days to keep call logs; a daily job prunes older rows. 0 = keep forever.
   logRetentionDays: Number(env('LOG_RETENTION_DAYS', '30')),
+  // Deployment environment label surfaced via system.whoami (e.g. prod, staging).
+  serverEnv: env('SERVER_ENV', process.env.NODE_ENV || 'dev'),
+  // Optional build timestamp (ISO string) surfaced via system.version.
+  buildTime: process.env.BUILD_TIME || null,
+  // How long a cached source status is considered fresh (system.context freshness).
+  sourceStatusTtlSeconds: Number(env('SOURCE_STATUS_TTL_SECONDS', '300')),
 };
 
 export type Config = typeof config;

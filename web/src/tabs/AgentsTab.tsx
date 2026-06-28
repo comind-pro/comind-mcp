@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type Agent, type AgentKey, type Group } from '../api.js';
+import { api, SYSTEM_TOOLS, type Agent, type AgentKey, type Group } from '../api.js';
 
 function Snip({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -37,6 +37,8 @@ export function AgentsTab() {
   const [connGroup, setConnGroup] = useState('');
   const [keys, setKeys] = useState<Record<string, AgentKey[]>>({});
   const [freshKeys, setFreshKeys] = useState<Record<string, string>>({}); // keyId → raw token (shown once)
+  const [sysTools, setSysTools] = useState<Set<string>>(new Set());
+  const [exTool, setExTool] = useState<string | null>(null); // system tool whose example is open
   const [err, setErr] = useState('');
 
   const loadKeys = async (id: string) => {
@@ -49,7 +51,26 @@ export function AgentsTab() {
     setOpenId(a.id);
     setConnMode('all');
     setConnGroup(a.groups?.[0]?.id ?? '');
+    setSysTools(new Set(a.systemTools ?? []));
     void loadKeys(a.id);
+  };
+
+  const toggleSys = (name: string) => {
+    setSysTools((prev) => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  };
+
+  const saveSysTools = async (a: Agent) => {
+    setErr('');
+    try {
+      await api.put(`/agents/${a.id}/system-tools`, { names: [...sysTools] });
+      setAgents((as) => as.map((x) => (x.id === a.id ? { ...x, systemTools: [...sysTools] } : x)));
+    } catch (e) {
+      setErr(String((e as Error).message));
+    }
   };
 
   const addKey = async (id: string) => {
@@ -216,6 +237,46 @@ export function AgentsTab() {
             ))}
           </div>
         )}
+
+        <div className="editor-section" style={{ marginTop: 22 }}>System tools</div>
+        <div className="hint">Built-in <code className="mono">system.*</code> introspection tools this agent exposes — applied to every V-MCP it connects to and the agent-wide <code className="mono">/a/mcp</code>. The agent calls these to learn its context instead of guessing. Click <b>example</b> to see what each returns. Don't forget to save.</div>
+        {SYSTEM_TOOLS.map((s) => {
+          const open = exTool === s.name;
+          return (
+            <div key={s.name}>
+              <div className="picker-item" style={{ alignItems: 'center' }}>
+                <input type="checkbox" checked={sysTools.has(s.name)} onChange={() => toggleSys(s.name)} />
+                <span className="mono">{s.name}</span>
+                <span className="muted" style={{ fontSize: 12 }}>{s.label}</span>
+                <span style={{ marginLeft: 'auto' }} />
+                <button className="ghost mini" onClick={() => setExTool(open ? null : s.name)}>
+                  {open ? 'hide' : 'example'}
+                </button>
+              </div>
+              {open && (
+                <pre
+                  className="mono"
+                  style={{
+                    margin: '2px 0 8px 26px',
+                    padding: '8px 10px',
+                    fontSize: 11.5,
+                    lineHeight: 1.45,
+                    background: 'var(--panel2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    color: 'var(--muted)',
+                    overflowX: 'auto',
+                    whiteSpace: 'pre',
+                  }}
+                >
+                  {s.example}
+                </pre>
+              )}
+            </div>
+          );
+        })}
+        <div className="spacer" />
+        <button className="btn-primary" onClick={() => saveSysTools(a)}>Save system tools ({sysTools.size})</button>
 
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', margin: '22px 0 8px' }}>
           <span className="editor-section" style={{ margin: 0 }}>API keys</span>

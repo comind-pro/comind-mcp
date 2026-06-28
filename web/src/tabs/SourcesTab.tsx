@@ -50,6 +50,19 @@ export function SourcesTab() {
     });
   };
 
+  const refreshObjects = async (id: string) => {
+    setBusy('objects');
+    setErr('');
+    try {
+      await api.post(`/sources/${id}/objects`);
+      await load();
+    } catch (e) {
+      setErr(String((e as Error).message));
+    } finally {
+      setBusy('');
+    }
+  };
+
   // form → config (clears the raw JSON override so the pane re-derives)
   const setCfg = (next: Cfg) => patch({ cfg: next, jsonRaw: null, jsonError: null, testState: 'idle' });
 
@@ -124,12 +137,15 @@ export function SourcesTab() {
     }
   };
 
-  const importTools = async () => {
+  const importTools = async (force = false) => {
     if (!ed || ed.id === 'new') return;
     setErr('');
-    setBusy('import');
+    setBusy(force ? 'import-force' : 'import');
     try {
-      const r = await api.post<{ imported: number; tools: Tool[] }>(`/sources/${ed.id}/import`);
+      const r = await api.post<{ imported: number; created: number; skipped: number; tools: Tool[] }>(
+        `/sources/${ed.id}/import`,
+        { force },
+      );
       patch({ importedTools: r.tools });
       await load();
     } catch (e) {
@@ -249,6 +265,29 @@ export function SourcesTab() {
             </div>
           )}
 
+          {/* objects: queryable entities inside the source (GA properties, DB schemas) */}
+          {(!isNew || e.created) && (() => {
+            const objs = sources.find((s) => s.id === e.id)?.objects ?? [];
+            return (
+              <>
+                <div className="editor-section" style={{ marginTop: 18 }}>Objects</div>
+                <div className="hint">Queryable entities inside this source (GA properties, DB schemas) — surfaced to agents via <code className="mono">system.context</code>.</div>
+                <div className="row" style={{ marginBottom: objs.length ? 8 : 0 }}>
+                  <button className="ghost" onClick={() => refreshObjects(e.id)} disabled={busy === 'objects'}>
+                    {busy === 'objects' ? 'Refreshing…' : 'Refresh objects'}
+                  </button>
+                  <span className="muted" style={{ fontSize: 12 }}>{objs.length} object{objs.length === 1 ? '' : 's'}</span>
+                </div>
+                {objs.map((o) => (
+                  <div key={o.id} className="row" style={{ marginBottom: 4, alignItems: 'baseline' }}>
+                    <span className="mono" style={{ fontSize: 12.5 }}>{o.id}</span>
+                    <span className="muted" style={{ fontSize: 12 }}>{o.name}{o.product_hint ? ` · ${o.product_hint}` : ''}</span>
+                  </div>
+                ))}
+              </>
+            );
+          })()}
+
           {/* actions */}
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
             {isNew && !e.created && (
@@ -266,8 +305,11 @@ export function SourcesTab() {
             </button>
             {(!isNew || e.created) && (
               <>
-                <button className="ghost" onClick={importTools} disabled={busy === 'import'}>
-                  {busy === 'import' ? 'Importing…' : e.importedTools ? 'Re-import tools' : 'Import tools →'}
+                <button className="ghost" onClick={() => importTools(false)} disabled={!!busy} title="Create new tools only — leaves existing tools and your edits untouched">
+                  {busy === 'import' ? 'Importing…' : e.importedTools ? 'Import new tools' : 'Import tools →'}
+                </button>
+                <button className="ghost" onClick={() => importTools(true)} disabled={!!busy} title="Overwrite existing tools too — refreshes schemas & metadata from the source (discards manual edits)">
+                  {busy === 'import-force' ? 'Refreshing…' : 'Force re-import'}
                 </button>
                 {interactive && <button className="ghost" onClick={connect}>Connect</button>}
               </>

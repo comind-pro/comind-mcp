@@ -4,11 +4,14 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, groups } from '../db/schema.js';
+import { SYSTEM_TOOL_NAMES } from '../gateway/system-tools.js';
 import { hashKey } from '../lib/crypto.js';
 import { newApiKey, newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
 
 const createBody = z.object({ name: z.string().min(1) });
+// Only known system.* tool names may be enabled on an agent.
+const systemTools = z.array(z.string().refine((n) => SYSTEM_TOOL_NAMES.has(n), 'unknown system tool'));
 
 function publicAgent(a: typeof agents.$inferSelect) {
   const { apiKeyHash: _h, apiKeyPrefix: _p, ...rest } = a;
@@ -47,7 +50,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const owner = ownerOf(req);
     const body = createBody.parse(req.body);
     const key = newApiKey();
-    const row = { id: newId(), ownerId: owner, name: body.name, apiKeyHash: null, apiKeyPrefix: null, createdAt: new Date() };
+    const row = { id: newId(), ownerId: owner, name: body.name, apiKeyHash: null, apiKeyPrefix: null, systemTools: [], createdAt: new Date() };
     await db.insert(agents).values(row);
     await db.insert(agentKeys).values({ id: newId(), agentId: row.id, hash: hashKey(key.token), prefix: key.prefix, label: 'default', archived: false, createdAt: new Date() });
     return reply.code(201).send({ ...publicAgent(row), apiKey: key.token, keyCount: 1, groups: [] });
@@ -56,6 +59,17 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   app.get('/agents', async (req) => {
     const rows = await db.select().from(agents).where(eq(agents.ownerId, ownerOf(req)));
     return Promise.all(rows.map(async (a) => ({ ...publicAgent(a), keyCount: await keyCount(a.id), groups: await agentGrants(a.id) })));
+  });
+
+  // Which built-in system.* introspection tools this agent exposes (all its V-MCPs + /a/mcp).
+  app.put('/agents/:id/system-tools', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const owner = ownerOf(req);
+    if (!(await ownedAgent(id, owner))) return reply.code(404).send({ error: 'not_found' });
+    const { names } = z.object({ names: systemTools }).parse(req.body);
+    const unique = [...new Set(names)];
+    await db.update(agents).set({ systemTools: unique }).where(eq(agents.id, id));
+    return { agentId: id, systemTools: unique };
   });
 
   // ----- API keys -----

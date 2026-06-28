@@ -43,6 +43,34 @@
       "when": 1782543991512,
       "tag": "0005_unknown_paper_doll",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782633377099,
+      "tag": "0006_petite_kingpin",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782634231533,
+      "tag": "0007_lyrical_edwin_jarvis",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782636576151,
+      "tag": "0008_hard_fantastic_four",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1782637135460,
+      "tag": "0009_ambiguous_ronan",
+      "breakpoints": true
     }
   ]
 }

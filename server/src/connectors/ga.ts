@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { CallResult, Connector, HealthResult, ToolDef } from './types.js';
+import type { CallResult, Connector, HealthResult, SourceObject, ToolDef } from './types.js';
 import { textResult } from './types.js';
 
 /**
@@ -155,7 +155,84 @@ export class GaConnector implements Connector {
         },
       },
     );
-    return tools;
+
+    // All GA tools are read-only analytics reads — attach curated discovery metadata.
+    const ro = {
+      readOnly: true,
+      dangerous: false,
+      permissions: ['ga4.read'],
+      recommendedUse: { safe_for_automation: true, requires_user_confirmation: false },
+    };
+    const exProp = locked ? {} : { property: 'properties/123' };
+
+    // Curated output schemas so agents (and the UI) know the GA4 response shape.
+    const valueArr = { type: 'array', items: { type: 'object', properties: { value: { type: 'string' } } } };
+    const reportOut = {
+      type: 'object',
+      properties: {
+        dimensionHeaders: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' } } } },
+        metricHeaders: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, type: { type: 'string' } } } },
+        rows: { type: 'array', items: { type: 'object', properties: { dimensionValues: valueArr, metricValues: valueArr } } },
+        rowCount: { type: 'number' },
+      },
+    };
+    const propItem = { type: 'object', properties: { property: { type: 'string' }, displayName: { type: 'string' }, propertyType: { type: 'string' } } };
+    const accountSummariesOut = {
+      type: 'object',
+      properties: {
+        accountSummaries: {
+          type: 'array',
+          items: { type: 'object', properties: { account: { type: 'string' }, displayName: { type: 'string' }, propertySummaries: { type: 'array', items: propItem } } },
+        },
+      },
+    };
+    const dimItem = { type: 'object', properties: { apiName: { type: 'string' }, uiName: { type: 'string' }, category: { type: 'string' } } };
+    const metadataOut = {
+      type: 'object',
+      properties: {
+        dimensions: { type: 'array', items: dimItem },
+        metrics: { type: 'array', items: { type: 'object', properties: { apiName: { type: 'string' }, uiName: { type: 'string' }, type: { type: 'string' } } } },
+      },
+    };
+    const propertyOut = {
+      type: 'object',
+      properties: { name: { type: 'string' }, displayName: { type: 'string' }, timeZone: { type: 'string' }, currencyCode: { type: 'string' }, createTime: { type: 'string' } },
+    };
+    const adsLinksOut = {
+      type: 'object',
+      properties: {
+        googleAdsLinks: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, customerId: { type: 'string' } } } },
+      },
+    };
+    const outputByName: Record<string, Record<string, unknown>> = {
+      run_report: reportOut,
+      run_realtime_report: reportOut,
+      get_account_summaries: accountSummariesOut,
+      get_custom_dimensions_and_metrics: metadataOut,
+      get_property_details: propertyOut,
+      list_google_ads_links: adsLinksOut,
+    };
+
+    const examplesByName: Record<string, ToolDef['examples']> = {
+      run_report: [
+        {
+          description: '7d active users & sessions by date',
+          input: { ...exProp, dimensions: ['date'], metrics: ['activeUsers', 'sessions'], startDate: '7daysAgo', endDate: 'today' },
+        },
+        {
+          description: 'Top countries by users, last 28 days',
+          input: { ...exProp, dimensions: ['country'], metrics: ['activeUsers'], startDate: '28daysAgo', endDate: 'today', limit: 10 },
+        },
+      ],
+      run_realtime_report: [{ description: 'Active users right now', input: { ...exProp, metrics: ['activeUsers'] } }],
+      get_property_details: [{ description: 'Property details', input: { ...exProp } }],
+    };
+    return tools.map((t) => ({
+      ...ro,
+      ...t,
+      ...(outputByName[t.name] ? { outputSchema: outputByName[t.name] } : {}),
+      ...(examplesByName[t.name] ? { examples: examplesByName[t.name] } : {}),
+    }));
   }
 
   async callTool(name: string, args: Record<string, unknown>): Promise<CallResult> {
@@ -198,5 +275,27 @@ export class GaConnector implements Connector {
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  /** GA4 properties the service account can see (filtered to the locked one if set). */
+  async listObjects(): Promise<SourceObject[]> {
+    const r = await this.call('GET', `${ADMIN}/accountSummaries`);
+    if (r.isError) return [];
+    let data: { accountSummaries?: Array<{ displayName?: string; propertySummaries?: Array<{ property?: string; displayName?: string }> }> };
+    try {
+      data = JSON.parse(r.content[0]?.text ?? '{}');
+    } catch {
+      return [];
+    }
+    const locked = this.cfg.propertyId ? prop(this.cfg.propertyId) : null;
+    const out: SourceObject[] = [];
+    for (const acc of data.accountSummaries ?? []) {
+      for (const p of acc.propertySummaries ?? []) {
+        if (!p.property) continue;
+        if (locked && prop(p.property) !== locked) continue;
+        out.push({ id: p.property, name: p.displayName ?? p.property, type: 'property', product_hint: acc.displayName ?? null });
+      }
+    }
+    return out;
   }
 }

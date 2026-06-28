@@ -1,5 +1,5 @@
 import pg from 'pg';
-import type { CallResult, Connector, HealthResult, ToolDef } from './types.js';
+import type { CallResult, Connector, HealthResult, SourceObject, ToolDef } from './types.js';
 import { textResult } from './types.js';
 
 export interface SqlConfig {
@@ -31,8 +31,26 @@ export class SqlConnector implements Connector {
   }
 
   async listTools(): Promise<ToolDef[]> {
+    // Every SQL tool is read-only by construction (READ ONLY transaction).
+    const ro = { readOnly: true, dangerous: false, permissions: ['db.read'] };
+    const rowsOut = {
+      type: 'object',
+      properties: {
+        rowCount: { type: 'number' },
+        truncated: { type: 'boolean' },
+        rows: { type: 'array', items: { type: 'object' } },
+      },
+    };
     return [
-      { name: 'list_tables', description: 'List database tables (schema.table).', inputSchema: { type: 'object', properties: {} } },
+      {
+        name: 'list_tables',
+        description: 'List database tables (schema.table).',
+        inputSchema: { type: 'object', properties: {} },
+        outputSchema: rowsOut,
+        ...ro,
+        recommendedUse: { safe_for_automation: true, requires_user_confirmation: false },
+        examples: [{ description: 'List all tables', input: {} }],
+      },
       {
         name: 'describe_table',
         description: 'Columns and types of a table.',
@@ -41,6 +59,10 @@ export class SqlConnector implements Connector {
           properties: { table: str, schema: { ...str, description: 'Default public.' } },
           required: ['table'],
         },
+        outputSchema: rowsOut,
+        ...ro,
+        recommendedUse: { safe_for_automation: true, requires_user_confirmation: false },
+        examples: [{ description: 'Describe the users table', input: { table: 'users', schema: 'public' } }],
       },
       {
         name: 'run_query',
@@ -53,6 +75,18 @@ export class SqlConnector implements Connector {
           },
           required: ['sql'],
         },
+        outputSchema: rowsOut,
+        ...ro,
+        recommendedUse: { safe_for_automation: true, requires_user_confirmation: false },
+        examples: [
+          {
+            description: 'Daily signups for the last 7 days',
+            input: {
+              sql: "select date(created_at) d, count(*) n from users where created_at > now() - interval '7 days' group by 1 order by 1",
+            },
+          },
+          { description: 'Lookup by id with a param', input: { sql: 'select * from users where id = $1', params: ['42'] } },
+        ],
       },
     ];
   }
@@ -114,6 +148,25 @@ export class SqlConnector implements Connector {
       return { ok: true, message: 'DB connected' };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    } finally {
+      await c.end().catch(() => {});
+    }
+  }
+
+  /** Database schemas (user-visible), as queryable objects. */
+  async listObjects(): Promise<SourceObject[]> {
+    const c = this.client();
+    try {
+      await c.connect();
+      const res = await c.query(
+        `select schema_name from information_schema.schemata
+         where schema_name not in ('pg_catalog','information_schema','pg_toast')
+           and schema_name not like 'pg_temp%' and schema_name not like 'pg_toast_temp%'
+         order by 1`,
+      );
+      return res.rows.map((r: { schema_name: string }) => ({ id: r.schema_name, name: r.schema_name, type: 'schema' }));
+    } catch {
+      return [];
     } finally {
       await c.end().catch(() => {});
     }

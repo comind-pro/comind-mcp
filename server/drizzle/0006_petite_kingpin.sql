@@ -1,0 +1,1 @@
+ALTER TABLE "groups" ADD COLUMN "system_tools" jsonb DEFAULT '[]'::jsonb NOT NULL;

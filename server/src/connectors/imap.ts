@@ -33,7 +33,7 @@ export class ImapSmtpConnector implements Connector {
   }
 
   async listTools(): Promise<ToolDef[]> {
-    return [
+    const list: ToolDef[] = [
       {
         name: 'list_folders',
         description: 'List all mailboxes / folders.',
@@ -105,6 +105,17 @@ export class ImapSmtpConnector implements Connector {
         },
       },
     ];
+
+    // Curated discovery metadata: reads are safe, send needs confirmation.
+    const META: Record<string, Partial<ToolDef>> = {
+      list_folders: { readOnly: true, dangerous: false, permissions: ['mail.read'], recommendedUse: { safe_for_automation: true, requires_user_confirmation: false }, examples: [{ description: 'List folders', input: {} }] },
+      list_messages: { readOnly: true, dangerous: false, permissions: ['mail.read'], recommendedUse: { safe_for_automation: true, requires_user_confirmation: false }, examples: [{ description: 'Latest 20 unread in INBOX', input: { folder: 'INBOX', limit: 20, unseen: true } }] },
+      search_messages: { readOnly: true, dangerous: false, permissions: ['mail.read'], recommendedUse: { safe_for_automation: true, requires_user_confirmation: false }, examples: [{ description: 'From a sender since a date', input: { from: 'boss@acme.com', since: '2026-06-01' } }] },
+      get_message: { readOnly: true, dangerous: false, permissions: ['mail.read'], examples: [{ description: 'Fetch one message by UID', input: { uid: 123, folder: 'INBOX' } }] },
+      send_message: { readOnly: false, dangerous: true, permissions: ['mail.send'], recommendedUse: { safe_for_automation: false, requires_user_confirmation: true }, examples: [{ description: 'Send a plain email', input: { to: 'a@b.com', subject: 'Hi', text: 'Hello' } }] },
+      mark_seen: { readOnly: false, dangerous: false, permissions: ['mail.write'], examples: [{ description: 'Mark a message read', input: { uid: 123 } }] },
+    };
+    return list.map((t) => ({ ...t, ...META[t.name] }));
   }
 
   async callTool(name: string, args: Record<string, unknown>): Promise<CallResult> {

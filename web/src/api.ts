@@ -74,13 +74,30 @@ export const api = {
   logout: () => tokenStore.clear(),
 };
 
+export interface SourceObject {
+  id: string;
+  name: string;
+  type?: string;
+  product_hint?: string | null;
+}
 export interface Source {
   id: string;
   name: string;
-  kind: 'mcp' | 'openapi' | 'http' | 'imap' | 'sql';
+  kind: 'mcp' | 'openapi' | 'http' | 'imap' | 'sql' | 'ga';
   config: Record<string, unknown>;
   status: string;
   statusMessage: string | null;
+  objects?: SourceObject[];
+  objectsCheckedAt?: string | null;
+}
+export interface ToolExample {
+  description?: string;
+  input: Record<string, unknown>;
+}
+export interface RecommendedUse {
+  daily_report?: boolean;
+  safe_for_automation?: boolean;
+  requires_user_confirmation?: boolean;
 }
 export interface Tool {
   id: string;
@@ -92,6 +109,11 @@ export interface Tool {
   visible: boolean;
   inputSchema?: Record<string, unknown> | null;
   outputSchema?: Record<string, unknown> | null;
+  readOnly?: boolean | null;
+  dangerous?: boolean | null;
+  permissions?: string[];
+  examples?: ToolExample[];
+  recommendedUse?: RecommendedUse | null;
 }
 export interface Group {
   id: string;
@@ -100,6 +122,67 @@ export interface Group {
   description: string | null;
   schedulingEnabled: boolean;
 }
+
+/** Built-in system.* introspection tools an agent can expose, with short labels
+ *  and an example response so users see what each returns. */
+export const SYSTEM_TOOLS: { name: string; label: string; example: string }[] = [
+  {
+    name: 'system.context',
+    label: 'Who am I, scope, groups, sources, tool catalog — one call',
+    example: `{
+  "identity": {
+    "agent_id": "cmd_ag_…",
+    "owner_id": "usr_…",
+    "scope": "group",                 // "agent" on /a/mcp
+    "group": "ops-reporting",         // null on /a/mcp
+    "groups": ["ops-reporting"]
+  },
+  "server": {
+    "name": "ComindMCP", "version": "0.1.0", "mcp_sdk": "1.12.0",
+    "environment": "prod", "url": "https://mcp.comind.pro",
+    "server_time": "2026-06-28T11:40:00Z",   // use for "today"/"this week"
+    "timezone": "Europe/Kyiv", "locale": "en-US",
+    "status": "ok", "db": true
+  },
+  "groups":  [ { "slug": "ops-reporting", "tools": 7, "scheduling_enabled": true } ],
+  "sources": [ {
+    "id": "src_ga", "type": "ga", "status": "ok", "status_message": null,
+    "freshness": { "status_checked_at": "2026-06-28T11:35:00Z", "cached": true, "ttl_seconds": 300 }
+  } ],
+  "tools":   [ {
+    "name": "ga.run_report",
+    "callable": "ga.run_report",            // exact string for tools/call
+    "description": "Run a GA4 report",
+    "category": "analytics", "source": "Google Analytics",
+    "read_only": true, "dangerous": false, "permissions": ["ga4.read"],
+    "recommended_use": { "daily_report": true, "safe_for_automation": true, "requires_user_confirmation": false },
+    "input_schema": { "type": "object", "properties": { "…": {} } },
+    "output_schema": null,
+    "examples": [ {
+      "description": "7d traffic by date",
+      "input": { "property": "properties/527034943", "startDate": "7daysAgo",
+                 "endDate": "today", "dimensions": ["date"],
+                 "metrics": ["activeUsers", "sessions"] }
+    } ]
+  } ]
+}
+// pass { "live": true } to ping each source instead of cached status`,
+  },
+  {
+    name: 'system.debug',
+    label: 'Recent tool calls + errors (for debugging)',
+    example: `{
+  "calls": [
+    { "tool": "ga.run_report", "time": "2026-06-28T10:10:00Z",
+      "status": "success", "source": "live", "duration_ms": 420 }
+  ],
+  "errors": [
+    { "tool": "ga.run_report", "time": "2026-06-28T10:00:00Z",
+      "source": "live", "error": "AUTH_EXPIRED: token expired" }
+  ]
+}`,
+  },
+];
 export interface AgentGroupGrant {
   id: string;
   name: string;
@@ -112,6 +195,7 @@ export interface Agent {
   apiKeyPrefix?: string | null;
   keyCount?: number;
   groups?: AgentGroupGrant[];
+  systemTools?: string[];
 }
 export interface AgentKey {
   id: string;

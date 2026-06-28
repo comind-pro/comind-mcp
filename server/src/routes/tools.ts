@@ -13,6 +13,19 @@ const patchBody = z.object({
   inputSchema: z.record(z.unknown()).nullable().optional(),
   outputSchema: z.record(z.unknown()).nullable().optional(),
   visible: z.boolean().optional(),
+  // Discovery metadata.
+  readOnly: z.boolean().nullable().optional(),
+  dangerous: z.boolean().nullable().optional(),
+  permissions: z.array(z.string()).optional(),
+  examples: z.array(z.object({ description: z.string().optional(), input: z.record(z.unknown()) })).optional(),
+  recommendedUse: z
+    .object({
+      daily_report: z.boolean().optional(),
+      safe_for_automation: z.boolean().optional(),
+      requires_user_confirmation: z.boolean().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 async function ownedTool(id: string, owner: string) {
@@ -59,6 +72,11 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
     if (body.inputSchema !== undefined) patch.inputSchema = body.inputSchema;
     if (body.outputSchema !== undefined) patch.outputSchema = body.outputSchema;
     if (body.visible !== undefined) patch.visible = body.visible;
+    if (body.readOnly !== undefined) patch.readOnly = body.readOnly;
+    if (body.dangerous !== undefined) patch.dangerous = body.dangerous;
+    if (body.permissions !== undefined) patch.permissions = body.permissions;
+    if (body.examples !== undefined) patch.examples = body.examples;
+    if (body.recommendedUse !== undefined) patch.recommendedUse = body.recommendedUse;
     if (Object.keys(patch).length) await db.update(tools).set(patch).where(eq(tools.id, id));
 
     const [row] = await db.select().from(tools).where(eq(tools.id, id));

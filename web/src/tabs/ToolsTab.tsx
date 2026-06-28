@@ -8,10 +8,22 @@ interface RunResult { content: { text?: string }[]; isError?: boolean; steps?: S
 type Cfg = Record<string, any>;
 interface Step { id: string; tool: string; args: Record<string, string>; when?: string }
 
+interface MetaForm {
+  readOnly: string; // '' | 'true' | 'false'
+  dangerous: string;
+  perms: string; // comma-separated
+  daily: string;
+  autoSafe: string;
+  confirm: string;
+  examplesRaw: string; // JSON array text
+  examplesErr: string | null;
+}
+
 interface Editing {
   id: string;
   kind: 'native' | 'composite';
   name: string;
+  meta?: MetaForm; // native discovery metadata
   displayName: string;
   description: string;
   params: Field[]; // inputSchema, as a recursive field tree
@@ -53,6 +65,7 @@ export function ToolsTab() {
 
   const srcName = (id: string | null) => sources.find((s) => s.id === id)?.name ?? 'Unknown source';
   const patch = (p: Partial<Editing>) => setEd((e) => (e ? { ...e, ...p } : e));
+  const setMeta = (p: Partial<MetaForm>) => setEd((e) => (e && e.meta ? { ...e, meta: { ...e.meta, ...p } } : e));
   const close = () => setEd(null);
 
   // composite registry key — derived from the display name, never typed by hand
@@ -66,6 +79,7 @@ export function ToolsTab() {
   const openNewComposite = () =>
     setEd({
       id: 'new', kind: 'composite', name: slugName('New composite tool'), displayName: 'New composite tool', description: '',
+      meta: { readOnly: '', dangerous: '', perms: '', daily: '', autoSafe: '', confirm: '', examplesRaw: '', examplesErr: null },
       params: [], required: [], outParams: [], outRequired: [], steps: [{ id: 's1', tool: '', args: {} }], output: 'Result: ${$.steps.s1.text}', outMode: 'text',
       right: 'json', jsonRaw: null, jsonError: null, testVals: {}, testOut: null, testing: false, pickerStep: null, pickerQuery: '', stepSchemaOpen: {}, stepTest: {},
     });
@@ -75,8 +89,17 @@ export function ToolsTab() {
     setErr('');
     const { params, required } = parseInput(t.inputSchema);
     const out = parseInput(t.outputSchema);
+    const triS = (v: boolean | null | undefined) => (v == null ? '' : String(v));
+    const ru = t.recommendedUse ?? {};
     const base: Editing = {
       id: t.id, kind: t.kind, name: t.name, displayName: t.displayName ?? '', description: t.description ?? '',
+      meta: {
+        readOnly: triS(t.readOnly), dangerous: triS(t.dangerous),
+        perms: (t.permissions ?? []).join(', '),
+        daily: triS(ru.daily_report), autoSafe: triS(ru.safe_for_automation), confirm: triS(ru.requires_user_confirmation),
+        examplesRaw: t.examples?.length ? JSON.stringify(t.examples, null, 2) : '',
+        examplesErr: null,
+      },
       params, required,
       outParams: t.outputSchema ? out.params : [], outRequired: out.required,
       steps: [], output: undefined, outMode: 'text', right: 'json', jsonRaw: null, jsonError: null, testVals: {}, testOut: null, testing: false,
@@ -112,6 +135,9 @@ export function ToolsTab() {
     if (e.name && e.name !== orig?.name) body.name = e.name;
     body.inputSchema = buildInput(e.params, e.required);
     body.outputSchema = e.outParams.length ? buildInput(e.outParams, e.outRequired) : null;
+    const mb = metaBody(e);
+    if (mb === 'error') return;
+    Object.assign(body, mb);
     try {
       await api.patch(`/tools/${e.id}`, body);
       await load();
@@ -119,6 +145,35 @@ export function ToolsTab() {
     } catch (err) {
       setErr(String((err as Error).message));
     }
+  };
+
+  // Build the discovery-metadata patch body from the editor's `meta` form.
+  // Returns 'error' (and flags the examples field) when the examples JSON is invalid.
+  const metaBody = (e: Editing): Cfg | 'error' => {
+    const m = e.meta;
+    if (!m) return {};
+    const tri = (v: string) => (v === '' ? null : v === 'true');
+    const ru: Record<string, boolean> = {};
+    if (m.daily !== '') ru.daily_report = m.daily === 'true';
+    if (m.autoSafe !== '') ru.safe_for_automation = m.autoSafe === 'true';
+    if (m.confirm !== '') ru.requires_user_confirmation = m.confirm === 'true';
+    const body: Cfg = {
+      readOnly: tri(m.readOnly),
+      dangerous: tri(m.dangerous),
+      permissions: m.perms.split(',').map((s) => s.trim()).filter(Boolean),
+      recommendedUse: Object.keys(ru).length ? ru : null,
+    };
+    if (m.examplesRaw.trim()) {
+      try {
+        const ex = JSON.parse(m.examplesRaw);
+        if (!Array.isArray(ex)) throw new Error('examples must be a JSON array');
+        body.examples = ex;
+      } catch (er) {
+        setMeta({ examplesErr: String((er as Error).message) });
+        return 'error';
+      }
+    } else body.examples = [];
+    return body;
   };
 
   const saveComposite = async (e: Editing) => {
@@ -130,13 +185,16 @@ export function ToolsTab() {
       if (e.params.length) definition.inputSchema = buildInput(e.params, e.required);
       if (e.outParams.length) definition.outputSchema = buildInput(e.outParams, e.outRequired);
       if (e.output !== undefined) definition.output = e.output;
+      const mb = metaBody(e);
+      if (mb === 'error') return;
       if (e.id === 'new') {
-        await api.post('/composite-tools', { name: e.name, definition, displayName: e.displayName || undefined, description: e.description || undefined });
+        const created = await api.post<{ id: string }>('/composite-tools', { name: e.name, definition, displayName: e.displayName || undefined, description: e.description || undefined });
+        if (Object.keys(mb).length) await api.patch(`/tools/${created.id}`, mb);
         await load();
         close();
         return;
       }
-      const idBody: Cfg = { displayName: e.displayName || null, description: e.description || null };
+      const idBody: Cfg = { displayName: e.displayName || null, description: e.description || null, ...mb };
       const orig = tools.find((t) => t.id === e.id);
       if (e.name && e.name !== orig?.name) idBody.name = e.name;
       await api.patch(`/tools/${e.id}`, idBody);
@@ -392,6 +450,49 @@ export function ToolsTab() {
                 required={e.outRequired}
                 onChange={(outParams, outRequired) => patch({ outParams, outRequired, jsonRaw: null, jsonError: null })}
               />
+            </>
+          )}
+
+          {e.meta && (
+            <>
+              <div className="editor-section" style={{ marginTop: 20 }}>Discovery metadata</div>
+              <div className="hint">Helps agents call this tool safely & correctly — surfaced via <code className="mono">system.context</code>.</div>
+              <div className="row" style={{ gap: 12 }}>
+                {([['readOnly', 'Read-only'], ['dangerous', 'Dangerous']] as const).map(([k, label]) => (
+                  <div key={k} style={{ flex: 1 }}>
+                    <div className="field-label">{label}</div>
+                    <select style={{ width: '100%' }} value={e.meta![k]} onChange={(ev) => setMeta({ [k]: ev.target.value })}>
+                      <option value="">— unknown —</option>
+                      <option value="true">yes</option>
+                      <option value="false">no</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <div className="field-label" style={{ marginTop: 10 }}>Permissions · comma-separated</div>
+              <input style={{ width: '100%' }} value={e.meta.perms} onChange={(ev) => setMeta({ perms: ev.target.value })} placeholder="ga4.read, gmail.read" />
+              <div className="field-label" style={{ marginTop: 10 }}>Recommended use · automation hints</div>
+              <div className="row" style={{ gap: 12 }}>
+                {([['daily', 'Daily report'], ['autoSafe', 'Safe for automation'], ['confirm', 'Needs confirmation']] as const).map(([k, label]) => (
+                  <div key={k} style={{ flex: 1 }}>
+                    <div className="field-label" style={{ fontWeight: 400 }}>{label}</div>
+                    <select style={{ width: '100%' }} value={e.meta![k]} onChange={(ev) => setMeta({ [k]: ev.target.value })}>
+                      <option value="">—</option>
+                      <option value="true">yes</option>
+                      <option value="false">no</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <div className="field-label" style={{ marginTop: 10 }}>Examples · JSON array of {'{ description, input }'}</div>
+              <textarea
+                className="json-area mono"
+                style={{ minHeight: 120 }}
+                value={e.meta.examplesRaw}
+                onChange={(ev) => setMeta({ examplesRaw: ev.target.value, examplesErr: null })}
+                placeholder={'[\n  { "description": "7d traffic by date", "input": { "property": "properties/123", "dimensions": ["date"], "metrics": ["activeUsers"] } }\n]'}
+              />
+              {e.meta.examplesErr && <div className="err-msg">{e.meta.examplesErr}</div>}
             </>
           )}
 
