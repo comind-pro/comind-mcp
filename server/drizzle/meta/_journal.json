@@ -71,6 +71,27 @@
       "when": 1782637135460,
       "tag": "0009_ambiguous_ronan",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782737250420,
+      "tag": "0010_medical_inertia",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782738607141,
+      "tag": "0011_aromatic_spirit",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782744804421,
+      "tag": "0012_abandoned_marten_broadcloak",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "virtuals" ADD COLUMN "response" jsonb;

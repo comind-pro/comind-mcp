@@ -51,6 +51,22 @@ export const config = {
   buildTime: process.env.BUILD_TIME || null,
   // How long a cached source status is considered fresh (system.context freshness).
   sourceStatusTtlSeconds: Number(env('SOURCE_STATUS_TTL_SECONDS', '300')),
+  // Executable virtual tools: timeout per outbound HTTP call.
+  virtualTimeoutMs: Number(env('VIRTUAL_TOOL_TIMEOUT_MS', '15000')),
+  // Max bytes read from an executable virtual tool's response (truncated beyond).
+  virtualMaxResponseBytes: Number(env('VIRTUAL_TOOL_MAX_RESPONSE_BYTES', '1048576')),
+  // Per-owner outbound rate limit for executable virtual tools (calls/minute).
+  virtualRateLimitPerMin: Number(env('VIRTUAL_TOOL_RATE_LIMIT_PER_MIN', '60')),
+  // Where the rate-limit counter lives: 'memory' (per-process) or 'pg' (shared
+  // across instances). Use 'pg' for any multi-instance deployment.
+  virtualRateLimitStore: env('VIRTUAL_RATE_LIMIT_STORE', 'memory'),
+  // Optional comma-separated host allowlist for executable virtual tools. When
+  // set, only these hosts may be called (and they bypass the private-IP block —
+  // explicit opt-in for trusted internal services). Empty = any PUBLIC host.
+  virtualHostAllowlist: env('VIRTUAL_TOOL_HOST_ALLOWLIST', '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
 };
 
 export type Config = typeof config;

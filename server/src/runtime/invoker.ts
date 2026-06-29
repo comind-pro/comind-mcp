@@ -3,8 +3,9 @@ import { createConnector } from '../connectors/index.js';
 import type { CallResult } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
 import { db } from '../db/client.js';
-import { callLogs, composites, sources, tools } from '../db/schema.js';
+import { callLogs, composites, sources, tools, virtuals } from '../db/schema.js';
 import { runComposite } from '../composite/engine.js';
+import { runVirtual, staticResult } from './virtual.js';
 import { applyAuth } from '../auth/apply.js';
 import { buildMcpOAuthProvider } from '../auth/mcp-oauth.js';
 import { newId } from '../lib/id.js';
@@ -90,6 +91,31 @@ async function dispatch(
     const [comp] = await db.select().from(composites).where(eq(composites.toolId, tool.id));
     if (!comp) return textResult(`Composite definition missing for ${toolName}`, true);
     return runComposite(comp.definition, args, (name, a, d) => invokeTool(name, a, ctx, d), depth);
+  }
+
+  if (tool.kind === 'virtual') {
+    const [v] = await db.select().from(virtuals).where(eq(virtuals.toolId, tool.id));
+    if (!v) return textResult(`Virtual definition missing for ${toolName}`, true);
+    if (!v.executable) {
+      // descriptive: return the user-defined static response body when set,
+      // otherwise a catalog entry describing the tool.
+      if (v.response !== undefined && v.response !== null) return staticResult(v.response);
+      const spec = {
+        kind: 'virtual',
+        executable: false,
+        name: tool.name,
+        description: tool.description ?? null,
+        input_schema: tool.inputSchema ?? null,
+        output_schema: tool.outputSchema ?? null,
+      };
+      return { content: [{ type: 'text', text: JSON.stringify(spec) }], structuredContent: spec };
+    }
+    // read-only enforcement: a tool declared read_only may only use safe methods.
+    const method = String((v.request as { method?: string })?.method ?? 'GET').toUpperCase();
+    if (tool.readOnly === true && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      return textResult(`Tool ${toolName} is marked read-only but its request uses ${method}.`, true);
+    }
+    return withStructured(await runVirtual(v.request, args, ctx.ownerId), tool.outputSchema);
   }
 
   // native

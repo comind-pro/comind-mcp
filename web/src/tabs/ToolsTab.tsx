@@ -19,11 +19,23 @@ interface MetaForm {
   examplesErr: string | null;
 }
 
+interface VReq {
+  method: string;
+  url: string;
+  headers: string; // JSON text
+  query: string; // JSON text
+  body: string; // JSON text
+}
+
 interface Editing {
   id: string;
-  kind: 'native' | 'composite';
+  kind: 'native' | 'composite' | 'virtual';
   name: string;
-  meta?: MetaForm; // native discovery metadata
+  meta?: MetaForm; // discovery metadata
+  req?: VReq; // virtual request template
+  executable?: boolean; // virtual: HTTP-proxied (true) vs descriptive catalog-only (false)
+  respRaw?: string; // virtual descriptive: static response body
+  respMode?: 'json' | 'text'; // how respRaw is interpreted
   displayName: string;
   description: string;
   params: Field[]; // inputSchema, as a recursive field tree
@@ -74,7 +86,7 @@ export function ToolsTab() {
   // editing the display name: for a NEW composite the unique key tracks it live;
   // existing tools keep their key stable (renaming would break composite refs).
   const setDisplay = (v: string) =>
-    setEd((e) => (e ? { ...e, displayName: v, jsonRaw: null, jsonError: null, ...(e.id === 'new' && e.kind === 'composite' ? { name: slugName(v) } : {}) } : e));
+    setEd((e) => (e ? { ...e, displayName: v, jsonRaw: null, jsonError: null, ...(e.id === 'new' && (e.kind === 'composite' || e.kind === 'virtual') ? { name: slugName(v) } : {}) } : e));
 
   const openNewComposite = () =>
     setEd({
@@ -82,6 +94,17 @@ export function ToolsTab() {
       meta: { readOnly: '', dangerous: '', perms: '', daily: '', autoSafe: '', confirm: '', examplesRaw: '', examplesErr: null },
       params: [], required: [], outParams: [], outRequired: [], steps: [{ id: 's1', tool: '', args: {} }], output: 'Result: ${$.steps.s1.text}', outMode: 'text',
       right: 'json', jsonRaw: null, jsonError: null, testVals: {}, testOut: null, testing: false, pickerStep: null, pickerQuery: '', stepSchemaOpen: {}, stepTest: {},
+    });
+
+  const emptyMeta = (): MetaForm => ({ readOnly: '', dangerous: '', perms: '', daily: '', autoSafe: '', confirm: '', examplesRaw: '', examplesErr: null });
+
+  const openNewVirtual = () =>
+    setEd({
+      id: 'new', kind: 'virtual', name: slugName('New virtual tool'), displayName: 'New virtual tool', description: '',
+      meta: emptyMeta(), executable: true, respRaw: '', respMode: 'json',
+      req: { method: 'GET', url: '', headers: '', query: '', body: '' },
+      params: [], required: [], outParams: [], outRequired: [], steps: [], output: undefined, outMode: 'text',
+      right: 'test', jsonRaw: null, jsonError: null, testVals: {}, testOut: null, testing: false, pickerStep: null, pickerQuery: '', stepSchemaOpen: {}, stepTest: {},
     });
 
   const open = async (t: Tool) => {
@@ -106,6 +129,23 @@ export function ToolsTab() {
       pickerStep: null, pickerQuery: '', stepSchemaOpen: {}, stepTest: {},
     };
     setEd(base);
+    if (t.kind === 'virtual') {
+      const full = await api.get<{ request?: Cfg; executable?: boolean; response?: unknown }>(`/virtual-tools/${t.id}`);
+      const rq = full.request ?? {};
+      setEd((e) => (e && e.id === t.id ? {
+        ...e,
+        executable: full.executable ?? true,
+        respMode: typeof full.response === 'string' ? 'text' : 'json',
+        respRaw: full.response == null ? '' : typeof full.response === 'string' ? full.response : JSON.stringify(full.response, null, 2),
+        req: {
+          method: (rq.method as string) ?? 'GET',
+          url: (rq.url as string) ?? '',
+          headers: rq.headers ? JSON.stringify(rq.headers, null, 2) : '',
+          query: rq.query ? JSON.stringify(rq.query, null, 2) : '',
+          body: rq.body !== undefined ? JSON.stringify(rq.body, null, 2) : '',
+        },
+      } : e));
+    }
     if (t.kind === 'composite') {
       const full = await api.get<Tool & { definition: Cfg }>(`/composite-tools/${t.id}`);
       const { inputSchema, outputSchema, output, steps, ...rest } = full.definition ?? {};
@@ -206,6 +246,68 @@ export function ToolsTab() {
     }
   };
 
+  const saveVirtual = async (e: Editing) => {
+    setErr('');
+    const r = e.req!;
+    const executable = e.executable !== false;
+    let request: Cfg | undefined;
+    if (executable) {
+      if (!r.url.trim()) return setErr('URL is required for an executable tool');
+      try {
+        request = {
+          method: r.method,
+          url: r.url,
+          ...(r.headers.trim() ? { headers: JSON.parse(r.headers) } : {}),
+          ...(r.query.trim() ? { query: JSON.parse(r.query) } : {}),
+          ...(r.body.trim() ? { body: JSON.parse(r.body) } : {}),
+        };
+      } catch (err) {
+        setErr('Request headers/query/body must be valid JSON: ' + (err as Error).message);
+        return;
+      }
+    }
+    // descriptive: optional static response body (JSON or plain text)
+    let response: unknown | undefined;
+    if (!executable) {
+      const raw = (e.respRaw ?? '').trim();
+      if (!raw) response = null;
+      else if (e.respMode === 'text') response = e.respRaw;
+      else {
+        try {
+          response = JSON.parse(e.respRaw!);
+        } catch (err) {
+          setErr('Response body must be valid JSON (or switch to Text): ' + (err as Error).message);
+          return;
+        }
+      }
+    }
+    const inputSchema = buildInput(e.params, e.required);
+    const outputSchema = e.outParams.length ? buildInput(e.outParams, e.outRequired) : null;
+    const mb = metaBody(e);
+    if (mb === 'error') return;
+    try {
+      if (e.id === 'new') {
+        const created = await api.post<{ id: string }>('/virtual-tools', {
+          name: e.name, displayName: e.displayName || undefined, description: e.description || undefined, inputSchema, outputSchema, executable,
+          ...(request ? { request } : {}), ...(response !== undefined ? { response } : {}),
+        });
+        if (Object.keys(mb).length) await api.patch(`/tools/${created.id}`, mb);
+        await load();
+        close();
+        return;
+      }
+      await api.patch(`/virtual-tools/${e.id}`, { executable, ...(request ? { request } : {}), ...(response !== undefined ? { response } : {}) });
+      const idBody: Cfg = { displayName: e.displayName || null, description: e.description || null, inputSchema, outputSchema, ...mb };
+      const orig = tools.find((t) => t.id === e.id);
+      if (e.name && e.name !== orig?.name) idBody.name = e.name;
+      await api.patch(`/tools/${e.id}`, idBody);
+      await load();
+      close();
+    } catch (err) {
+      setErr(String((err as Error).message));
+    }
+  };
+
   const del = async (id: string) => {
     if (!confirm('Delete this tool?')) return;
     await api.del(`/tools/${id}`).catch((e) => setErr(String(e.message)));
@@ -235,7 +337,38 @@ export function ToolsTab() {
         const v = e.testVals[p.name];
         if (v !== undefined && v !== '') args[p.name] = v;
       }
-      const r = await api.post<RunResult>(`/tools/${e.id}/test`, { args });
+      let r: RunResult;
+      if (e.kind === 'virtual' && e.id === 'new' && e.req) {
+        // unsaved draft: run statelessly (descriptive → returns the catalog entry)
+        const rq = e.req;
+        if (e.executable === false) {
+          let response: unknown;
+          const raw = (e.respRaw ?? '').trim();
+          if (raw) {
+            if (e.respMode === 'text') response = e.respRaw;
+            else {
+              try {
+                response = JSON.parse(e.respRaw!);
+              } catch (err) {
+                patch({ testing: false });
+                return setErr('Response body must be valid JSON (or switch to Text): ' + (err as Error).message);
+              }
+            }
+          }
+          r = await api.post<RunResult>('/virtual-tools/test', { executable: false, ...(response !== undefined ? { response } : {}) });
+        } else {
+          const request: Cfg = {
+            method: rq.method,
+            url: rq.url,
+            ...(rq.headers.trim() ? { headers: JSON.parse(rq.headers) } : {}),
+            ...(rq.query.trim() ? { query: JSON.parse(rq.query) } : {}),
+            ...(rq.body.trim() ? { body: JSON.parse(rq.body) } : {}),
+          };
+          r = await api.post<RunResult>('/virtual-tools/test', { request, args });
+        }
+      } else {
+        r = await api.post<RunResult>(`/tools/${e.id}/test`, { args });
+      }
       patch({ testOut: r, testing: false });
     } catch (err) {
       patch({ testing: false });
@@ -372,12 +505,12 @@ export function ToolsTab() {
   const groups = useMemo(() => {
     const m = new Map<string, { key: string; label: string; composite: boolean; tools: Tool[] }>();
     for (const t of filtered) {
-      const key = t.kind === 'composite' ? '__composite' : t.sourceId ?? '__none';
+      const key = t.kind === 'composite' ? '__composite' : t.kind === 'virtual' ? '__virtual' : t.sourceId ?? '__none';
       if (!m.has(key)) {
         m.set(key, {
           key,
-          label: t.kind === 'composite' ? 'Composite tools' : srcName(t.sourceId),
-          composite: t.kind === 'composite',
+          label: t.kind === 'composite' ? 'Composite tools' : t.kind === 'virtual' ? 'Virtual tools' : srcName(t.sourceId),
+          composite: t.kind === 'composite' || t.kind === 'virtual',
           tools: [],
         });
       }
@@ -398,6 +531,8 @@ export function ToolsTab() {
   // ----- editor pane -----
   const editor = (e: Editing) => {
     const isComp = e.kind === 'composite';
+    const isVirt = e.kind === 'virtual';
+    const setReq = (p: Partial<VReq>) => setEd((x) => (x && x.req ? { ...x, req: { ...x.req, ...p } } : x));
     const pool = tools.filter((t) => t.name !== e.name);
     const pq = e.pickerQuery.toLowerCase();
     const assembled = JSON.stringify(
@@ -435,7 +570,41 @@ export function ToolsTab() {
           <div className="field-label">Description · the model reads this</div>
           <textarea style={{ minHeight: 56, marginBottom: 14 }} value={e.description} onChange={(ev) => patch({ description: ev.target.value, jsonRaw: null, jsonError: null })} placeholder="what the tool does" />
 
-          <div className="field-label">Input schema{isComp ? ' · reference as $.input.x' : ''}</div>
+          {isVirt && e.req && (
+            <>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                <span className="editor-section" style={{ margin: 0 }}>Endpoint</span>
+                <span className="seg">
+                  <span className={e.executable !== false ? 'on' : ''} onClick={() => patch({ executable: true })}>Executable</span>
+                  <span className={e.executable === false ? 'on' : ''} onClick={() => patch({ executable: false })}>Descriptive</span>
+                </span>
+              </div>
+              <div className="hint">
+                {e.executable === false
+                  ? 'Descriptive — no endpoint is called. Just schema/description/examples so agents know it exists (calling it returns the catalog entry).'
+                  : 'Executable — the gateway makes this HTTP call. Use ${args.x} for arguments and ${secret.NAME} for secrets.'}
+              </div>
+            </>
+          )}
+
+          {isVirt && e.req && e.executable !== false && (
+            <>
+              <div className="row" style={{ gap: 8 }}>
+                <select value={e.req.method} onChange={(ev) => setReq({ method: ev.target.value })} style={{ width: 110 }}>
+                  {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <input className="grow mono" value={e.req.url} onChange={(ev) => setReq({ url: ev.target.value })} placeholder="https://api.example.com/v1/foo?id=${args.id}" />
+              </div>
+              <div className="field-label" style={{ marginTop: 10 }}>Headers · JSON (optional)</div>
+              <textarea className="json-area mono" style={{ minHeight: 60 }} value={e.req.headers} onChange={(ev) => setReq({ headers: ev.target.value })} placeholder={'{ "authorization": "Bearer ${secret.API_TOKEN}" }'} />
+              <div className="field-label" style={{ marginTop: 10 }}>Query · JSON (optional)</div>
+              <textarea className="json-area mono" style={{ minHeight: 50 }} value={e.req.query} onChange={(ev) => setReq({ query: ev.target.value })} placeholder={'{ "limit": "${args.limit}" }'} />
+              <div className="field-label" style={{ marginTop: 10 }}>Body · JSON (optional, non-GET)</div>
+              <textarea className="json-area mono" style={{ minHeight: 70 }} value={e.req.body} onChange={(ev) => setReq({ body: ev.target.value })} placeholder={'{ "q": "${args.query}" }'} />
+            </>
+          )}
+
+          <div className="field-label" style={{ marginTop: isVirt ? 14 : 0 }}>Input schema{isComp ? ' · reference as $.input.x' : ''}</div>
           <FieldRows
             fields={e.params}
             required={e.required}
@@ -449,6 +618,26 @@ export function ToolsTab() {
                 fields={e.outParams}
                 required={e.outRequired}
                 onChange={(outParams, outRequired) => patch({ outParams, outRequired, jsonRaw: null, jsonError: null })}
+              />
+            </>
+          )}
+
+          {isVirt && e.executable === false && (
+            <>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+                <span className="field-label" style={{ margin: 0 }}>Response body · optional · returned on call</span>
+                <span className="seg">
+                  <span className={e.respMode !== 'text' ? 'on' : ''} onClick={() => patch({ respMode: 'json' })}>JSON</span>
+                  <span className={e.respMode === 'text' ? 'on' : ''} onClick={() => patch({ respMode: 'text' })}>Text</span>
+                </span>
+              </div>
+              <div className="hint">Static body the tool returns when called (no endpoint). Empty → returns the catalog entry.</div>
+              <textarea
+                className="json-area mono"
+                style={{ minHeight: 90 }}
+                value={e.respRaw ?? ''}
+                onChange={(ev) => patch({ respRaw: ev.target.value })}
+                placeholder={e.respMode === 'text' ? 'Any plain text the tool should return…' : '{ "projects": [ { "id": 1, "name": "Acme" } ] }'}
               />
             </>
           )}
@@ -534,7 +723,7 @@ export function ToolsTab() {
                             <div key={x.id} className="pi" onClick={() => pickTool(i, x.name)}>
                               <span className="mono" style={{ color: 'var(--accent)', fontSize: 12.5, fontWeight: 600 }}>{x.name}</span>
                               <span className="muted" style={{ fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.displayName ?? ''}</span>
-                              <span className="tbadge">{x.kind === 'composite' ? 'composite' : srcName(x.sourceId)}</span>
+                              <span className="tbadge">{x.kind === 'composite' ? 'composite' : x.kind === 'virtual' ? 'virtual' : srcName(x.sourceId)}</span>
                             </div>
                           ))}
                           {!results.length && <div className="muted" style={{ padding: 16, textAlign: 'center', fontSize: 12 }}>Nothing found</div>}
@@ -628,7 +817,7 @@ export function ToolsTab() {
 
           {/* actions */}
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
-            <button className="btn-primary" onClick={() => (isComp ? saveComposite(e) : saveNative(e))}>
+            <button className="btn-primary" onClick={() => (isComp ? saveComposite(e) : isVirt ? saveVirtual(e) : saveNative(e))}>
               {e.id === 'new' ? 'Create tool' : 'Save changes'}
             </button>
             <button className="ghost" onClick={close}>Cancel</button>
@@ -683,10 +872,11 @@ export function ToolsTab() {
               ))}
               {!e.params.length && <div className="hint">Tool takes no input parameters.</div>}
               <div className="spacer" />
-              <button className="btn-primary" onClick={() => runTest(e)} disabled={e.testing || e.id === 'new'}>
+              <button className="btn-primary" onClick={() => runTest(e)} disabled={e.testing || (e.id === 'new' && !isVirt)}>
                 {e.testing ? <span className="spin" /> : '▶'} {isComp ? 'Run full tool' : 'Run test'}
               </button>
-              {e.id === 'new' && <div className="hint" style={{ marginTop: 6 }}>Create the tool first to test it.</div>}
+              {e.id === 'new' && !isVirt && <div className="hint" style={{ marginTop: 6 }}>Create the tool first to test it.</div>}
+              {e.id === 'new' && isVirt && <div className="hint" style={{ marginTop: 6 }}>Runs the request without saving.</div>}
               {err && <div className="err-msg">{err}</div>}
 
               {e.testOut && (
@@ -731,7 +921,10 @@ export function ToolsTab() {
           <span className="title">Tools</span>
           <span className="sub">{tools.length} tools · {visibleTotal} visible to agents</span>
         </div>
-        <button className="btn-primary" onClick={openNewComposite}>+ New composite tool</button>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn-primary" onClick={openNewVirtual}>+ New virtual tool</button>
+          <button className="btn-primary" onClick={openNewComposite}>+ New composite tool</button>
+        </div>
       </div>
 
       {/* draft composite */}
@@ -739,7 +932,7 @@ export function ToolsTab() {
         <div className="scard open" style={{ marginBottom: 18 }}>
           <div className="scard-head">
             <span className="mono" style={{ fontSize: 13.5, fontWeight: 600, color: '#b48cf0' }}>{ed.name || 'new_tool'}</span>
-            <span className="tbadge composite">composite · draft</span>
+            <span className="tbadge composite">{ed.kind} · draft</span>
             <span className="edit-link" style={{ marginLeft: 'auto' }} onClick={close}>Close</span>
             <span className="chev up">⌄</span>
           </div>

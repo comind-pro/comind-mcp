@@ -56,7 +56,7 @@ export const tools = pgTable(
     id: id(),
     ownerId: ownerId(),
     sourceId: text('source_id').references(() => sources.id, { onDelete: 'cascade' }),
-    kind: text('kind', { enum: ['native', 'composite'] }).notNull(),
+    kind: text('kind', { enum: ['native', 'composite', 'virtual'] }).notNull(),
     // `name` = curated registry key, unique per owner (e.g. "gmail.send").
     name: text('name').notNull(),
     // `upstreamName` = raw tool/operation name to call on the source connector.
@@ -91,6 +91,33 @@ export const composites = pgTable('composites', {
     .notNull()
     .references(() => tools.id, { onDelete: 'cascade' }),
   definition: jsonb('definition').notNull().$type<Record<string, unknown>>(),
+});
+
+/** Fixed-window rate-limit counter, shared across instances (one row per
+ *  key+minute-bucket). Atomic upsert increments `count`; old buckets are pruned. */
+export const rateLimits = pgTable(
+  'rate_limits',
+  {
+    key: text('key').notNull(),
+    bucket: integer('bucket').notNull(), // floor(epoch_ms / 60000)
+    count: integer('count').notNull().default(0),
+  },
+  (t) => ({ pk: uniqueIndex('rate_limits_pk').on(t.key, t.bucket) }),
+);
+
+/** Virtual tool: a single static, user-declared endpoint (no Source/connector).
+ *  `executable` tools are HTTP-proxied by the gateway; `request` is the call
+ *  template ({ method, url, headers, query, body }) with ${args.x}/${secret.NAME}. */
+export const virtuals = pgTable('virtuals', {
+  id: id(),
+  toolId: text('tool_id')
+    .notNull()
+    .references(() => tools.id, { onDelete: 'cascade' }),
+  executable: boolean('executable').notNull().default(true),
+  request: jsonb('request').notNull().$type<Record<string, unknown>>(),
+  // descriptive tools: a static response body returned on call (null = return the
+  // catalog entry instead). Ignored for executable tools.
+  response: jsonb('response').$type<unknown>(),
 });
 
 /** Group = a virtual MCP server: a curated bundle of tools exposed at one endpoint. */

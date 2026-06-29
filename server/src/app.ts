@@ -16,6 +16,7 @@ import { scheduleRoutes } from './routes/schedules.js';
 import { secretRoutes } from './routes/secrets.js';
 import { sourceRoutes } from './routes/sources.js';
 import { toolRoutes } from './routes/tools.js';
+import { virtualRoutes } from './routes/virtual.js';
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({ logger: { level: 'info' } });
@@ -83,6 +84,7 @@ export function buildApp(): FastifyInstance {
   app.register(sourceRoutes);
   app.register(toolRoutes);
   app.register(compositeRoutes);
+  app.register(virtualRoutes);
   app.register(groupRoutes);
   app.register(agentRoutes);
   app.register(scheduleRoutes);

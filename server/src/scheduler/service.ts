@@ -2,7 +2,7 @@ import cron, { type ScheduledTask } from 'node-cron';
 import { and, eq, lt } from 'drizzle-orm';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { callLogs, groupTools, jobRuns, schedules, tools } from '../db/schema.js';
+import { callLogs, groupTools, jobRuns, rateLimits, schedules, tools } from '../db/schema.js';
 import { newId } from '../lib/id.js';
 import { invokeTool } from '../runtime/invoker.js';
 
@@ -136,4 +136,10 @@ export async function initScheduler(): Promise<void> {
         .catch(() => {});
     });
   }
+
+  // Prune stale rate-limit buckets hourly (keep only the last few minutes).
+  cron.schedule('0 * * * *', () => {
+    const cutoff = Math.floor(Date.now() / 60_000) - 5;
+    void db.delete(rateLimits).where(lt(rateLimits.bucket, cutoff)).catch(() => {});
+  });
 }

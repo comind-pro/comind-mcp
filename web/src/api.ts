@@ -102,7 +102,7 @@ export interface RecommendedUse {
 export interface Tool {
   id: string;
   sourceId: string | null;
-  kind: 'native' | 'composite';
+  kind: 'native' | 'composite' | 'virtual';
   name: string;
   displayName: string | null;
   description: string | null;
