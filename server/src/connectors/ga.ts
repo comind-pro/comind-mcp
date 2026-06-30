@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { fetchWithTimeout } from './fetch.js';
 import type { CallResult, Connector, HealthResult, SourceObject, ToolDef } from './types.js';
 import { textResult } from './types.js';
 
@@ -79,7 +80,7 @@ export class GaConnector implements Connector {
     const sig = crypto.createSign('RSA-SHA256').update(signingInput).sign(sa.private_key);
     const jwt = `${signingInput}.${b64url(sig)}`;
 
-    const res = await fetch(tokenUri, {
+    const res = await fetchWithTimeout(tokenUri, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
@@ -101,7 +102,7 @@ export class GaConnector implements Connector {
     // Only force a quota project when explicitly set — it requires the service
     // account to hold serviceusage.serviceUsageConsumer on that project. Omitted,
     // Google bills quota to the service account's own project (no extra grant).
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method,
       headers: {
         authorization: `Bearer ${token}`,

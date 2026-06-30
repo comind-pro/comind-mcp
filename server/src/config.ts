@@ -53,6 +53,8 @@ export const config = {
   sourceStatusTtlSeconds: Number(env('SOURCE_STATUS_TTL_SECONDS', '300')),
   // Executable virtual tools: timeout per outbound HTTP call.
   virtualTimeoutMs: Number(env('VIRTUAL_TOOL_TIMEOUT_MS', '15000')),
+  // Per-call timeout for upstream connector HTTP fetches (GA / HTTP / OpenAPI).
+  upstreamTimeoutMs: Number(env('UPSTREAM_TIMEOUT_MS', '30000')),
   // Max bytes read from an executable virtual tool's response (truncated beyond).
   virtualMaxResponseBytes: Number(env('VIRTUAL_TOOL_MAX_RESPONSE_BYTES', '1048576')),
   // Per-owner outbound rate limit for executable virtual tools (calls/minute).

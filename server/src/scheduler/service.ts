@@ -119,6 +119,13 @@ export async function execute(scheduleId: string) {
   return runId;
 }
 
+/** Stop all cron tasks (graceful shutdown). */
+export function stopScheduler(): void {
+  for (const t of registry.values()) t.stop();
+  registry.clear();
+  for (const t of cron.getTasks().values()) t.stop(); // retention / rate-limit prune crons
+}
+
 /** Load enabled schedules into the cron registry on boot. */
 export async function initScheduler(): Promise<void> {
   const rows = await db.select().from(schedules).where(eq(schedules.enabled, true));
