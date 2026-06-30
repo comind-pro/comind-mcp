@@ -2,6 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
+[![comind-mcp MCP server](https://glama.ai/mcp/servers/comind-pro/comind-mcp/badges/card.svg)](https://glama.ai/mcp/servers/comind-pro/comind-mcp)
+
 Repository: **https://github.com/comind-pro/comind-mcp**
 
 **MCP gateway** — connects various MCP servers and REST APIs, lets you curate and combine tools, organize them into **groups** (each = a separate virtual MCP server with a single endpoint) and hand them out to agents. An agent sees only the narrow set of tools assigned to it and can **schedule its own crons** through MCP.

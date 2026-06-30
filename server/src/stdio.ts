@@ -15,34 +15,130 @@ const REPO = 'https://github.com/comind-pro/comind-mcp';
 const IMAGE = 'ghcr.io/comind-pro/comind-mcp';
 const VERSION = '0.2.0';
 
-const text = (t: string) => ({ content: [{ type: 'text', text: t }] });
 const json = (v: unknown) => ({ content: [{ type: 'text', text: JSON.stringify(v, null, 2) }], structuredContent: v });
+
+const NO_INPUT = { type: 'object', properties: {}, additionalProperties: false };
+const READ_ONLY = { readOnlyHint: true, openWorldHint: false, idempotentHint: true, destructiveHint: false };
 
 const TOOLS = [
   {
     name: 'comind.about',
-    description: 'What ComindMCP is, and how agents use it.',
-    inputSchema: { type: 'object', properties: {} },
+    title: 'About ComindMCP',
+    description:
+      'Returns a structured overview of ComindMCP: its name, version, what it does, the repository, ' +
+      'and the gateway endpoint shape. Takes no arguments. Call this first to learn what this server is ' +
+      'and how agents consume it before using the other comind.* tools.',
+    inputSchema: NO_INPUT,
+    outputSchema: {
+      type: 'object',
+      required: ['name', 'version', 'what'],
+      properties: {
+        name: { type: 'string' },
+        version: { type: 'string' },
+        what: { type: 'string', description: 'One-paragraph explanation of the gateway.' },
+        repository: { type: 'string', format: 'uri' },
+        gateway_endpoint: { type: 'string' },
+        note: { type: 'string' },
+      },
+    },
+    annotations: READ_ONLY,
   },
   {
     name: 'comind.self_host',
-    description: 'How to self-host the ComindMCP gateway (Docker, run modes).',
-    inputSchema: { type: 'object', properties: {} },
+    title: 'Self-host the gateway',
+    description:
+      'Returns the copy-paste Docker command to run your own ComindMCP gateway plus the available ' +
+      'run modes (embedded Postgres via PGlite, external Postgres, or in-memory). Takes no arguments. ' +
+      'Call this when you want to deploy or evaluate the full gateway.',
+    inputSchema: NO_INPUT,
+    outputSchema: {
+      type: 'object',
+      properties: {
+        docker_run: { type: 'string', description: 'Ready-to-run command for a zero-infra instance.' },
+        run_modes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { database_url: { type: 'string' }, mode: { type: 'string' }, use_for: { type: 'string' } },
+          },
+        },
+        repository: { type: 'string', format: 'uri' },
+      },
+    },
+    annotations: READ_ONLY,
   },
   {
     name: 'comind.config',
-    description: 'Environment-variable reference for deploying the gateway.',
-    inputSchema: { type: 'object', properties: {} },
+    title: 'Deployment config reference',
+    description:
+      'Returns the full environment-variable reference for deploying the gateway — each variable with ' +
+      'its requirement, default, secret flag and purpose. Takes no arguments. Use this to assemble the ' +
+      'env for a production deployment.',
+    inputSchema: NO_INPUT,
+    outputSchema: {
+      type: 'object',
+      properties: {
+        env: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['name'],
+            properties: {
+              name: { type: 'string' },
+              required: { type: 'boolean' },
+              default: { type: 'string' },
+              secret: { type: 'boolean' },
+              desc: { type: 'string' },
+            },
+          },
+        },
+        image: { type: 'string' },
+        repository: { type: 'string', format: 'uri' },
+      },
+    },
+    annotations: READ_ONLY,
   },
   {
     name: 'comind.openapi_example',
-    description: 'Worked example: turn an OpenAPI 3.x API into MCP tools via the gateway.',
-    inputSchema: { type: 'object', properties: {} },
+    title: 'Example — OpenAPI → MCP tools',
+    description:
+      'Returns a worked, copy-paste example of turning an OpenAPI 3.x API into curated MCP tools through ' +
+      'the gateway: the ordered steps, the POST /sources body (spec URL or inline spec + baseUrl + ' +
+      'secret-templated headers), and the resulting tool name. Takes no arguments.',
+    inputSchema: NO_INPUT,
+    outputSchema: {
+      type: 'object',
+      properties: {
+        summary: { type: 'string' },
+        steps: { type: 'array', items: { type: 'string' } },
+        create_source: { type: 'object', description: 'POST /sources request body.' },
+        inline_spec_alternative: { type: 'object' },
+        result: { type: 'string' },
+        note: { type: 'string' },
+      },
+    },
+    annotations: READ_ONLY,
   },
   {
     name: 'comind.mcp_proxy_example',
-    description: 'How to connect a running gateway V-MCP endpoint from an MCP client (HTTP / mcp-proxy).',
-    inputSchema: { type: 'object', properties: {} },
+    title: 'Example — connect a V-MCP endpoint',
+    description:
+      'Returns ready-to-use commands for connecting a running gateway group endpoint from an MCP client: ' +
+      'the HTTP endpoint + Bearer header, a `claude mcp add` line, an `mcp-proxy` stdio bridge, and a raw ' +
+      'JSON-RPC curl. Takes no arguments. Use this once you have a deployed gateway, a group id and an agent key.',
+    inputSchema: NO_INPUT,
+    outputSchema: {
+      type: 'object',
+      properties: {
+        summary: { type: 'string' },
+        endpoint: { type: 'string' },
+        auth_header: { type: 'string' },
+        clients: { type: 'object', description: 'Per-client connection commands.' },
+        agent_wide_endpoint: { type: 'string' },
+        note: { type: 'string' },
+      },
+    },
+    annotations: READ_ONLY,
   },
 ] as const;
 
@@ -76,24 +172,21 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         note: 'The gateway is multi-tenant and auth-gated — deploy your own instance (see comind.self_host).',
       });
     case 'comind.self_host':
-      return text(
-        [
-          'Run the gateway (zero-infra, embedded Postgres):',
-          '',
-          `  docker run -p 8787:8787 -v comind-data:/data \\`,
-          `    -e SERVER_ENV=dev ${IMAGE}:latest`,
-          '',
-          'Production: drop SERVER_ENV=dev and set VAULT_KEY + JWT_SECRET; for horizontal scale set',
-          'DATABASE_URL=postgres://… instead of the embedded default.',
-          '',
-          'Run modes (DATABASE_URL scheme):',
-          '  file:/data/comind   embedded Postgres (PGlite) — single node, persist /data as a volume',
-          '  postgres://…        external Postgres — multi-instance',
-          '  memory:             throwaway / CI',
-          '',
-          `Source & docs: ${REPO}`,
-        ].join('\n'),
-      );
+      return json({
+        docker_run: `docker run -p 8787:8787 -v comind-data:/data -e SERVER_ENV=dev ${IMAGE}:latest`,
+        production_note:
+          'Drop SERVER_ENV=dev and set VAULT_KEY + JWT_SECRET; for horizontal scale use DATABASE_URL=postgres://… instead of the embedded default.',
+        run_modes: [
+          {
+            database_url: 'file:/data/comind',
+            mode: 'embedded Postgres (PGlite)',
+            use_for: 'zero-infra single node; persist /data as a volume',
+          },
+          { database_url: 'postgres://…', mode: 'external Postgres', use_for: 'multi-instance / horizontal scale' },
+          { database_url: 'memory:', mode: 'embedded, in-memory', use_for: 'throwaway / CI' },
+        ],
+        repository: REPO,
+      });
     case 'comind.config':
       return json({
         env: [
