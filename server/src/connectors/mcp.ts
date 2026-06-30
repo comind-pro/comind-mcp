@@ -2,7 +2,7 @@ import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { Connector, CallResult, HealthResult, ToolDef } from './types.js';
+import type { CallResult, Connector, HealthResult, ToolDef } from './types.js';
 
 export interface McpConfig {
   url: string;

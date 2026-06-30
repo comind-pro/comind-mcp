@@ -24,7 +24,10 @@ function publicKey(k: typeof agentKeys.$inferSelect) {
 
 /** active (non-archived) key count for an agent */
 async function keyCount(agentId: string): Promise<number> {
-  const rows = await db.select().from(agentKeys).where(and(eq(agentKeys.agentId, agentId), eq(agentKeys.archived, false)));
+  const rows = await db
+    .select()
+    .from(agentKeys)
+    .where(and(eq(agentKeys.agentId, agentId), eq(agentKeys.archived, false)));
   return rows.length;
 }
 
@@ -33,7 +36,10 @@ function endpointFor(groupId: string): string {
 }
 
 async function ownedAgent(id: string, owner: string) {
-  const [row] = await db.select().from(agents).where(and(eq(agents.id, id), eq(agents.ownerId, owner)));
+  const [row] = await db
+    .select()
+    .from(agents)
+    .where(and(eq(agents.id, id), eq(agents.ownerId, owner)));
   return row ?? null;
 }
 
@@ -50,15 +56,36 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const owner = ownerOf(req);
     const body = createBody.parse(req.body);
     const key = newApiKey();
-    const row = { id: newId(), ownerId: owner, name: body.name, apiKeyHash: null, apiKeyPrefix: null, systemTools: [], createdAt: new Date() };
+    const row = {
+      id: newId(),
+      ownerId: owner,
+      name: body.name,
+      apiKeyHash: null,
+      apiKeyPrefix: null,
+      systemTools: [],
+      createdAt: new Date(),
+    };
     await db.insert(agents).values(row);
-    await db.insert(agentKeys).values({ id: newId(), agentId: row.id, hash: hashKey(key.token), prefix: key.prefix, label: 'default', archived: false, createdAt: new Date() });
+    await db.insert(agentKeys).values({
+      id: newId(),
+      agentId: row.id,
+      hash: hashKey(key.token),
+      prefix: key.prefix,
+      label: 'default',
+      archived: false,
+      createdAt: new Date(),
+    });
     return reply.code(201).send({ ...publicAgent(row), apiKey: key.token, keyCount: 1, groups: [] });
   });
 
   app.get('/agents', async (req) => {
-    const rows = await db.select().from(agents).where(eq(agents.ownerId, ownerOf(req)));
-    return Promise.all(rows.map(async (a) => ({ ...publicAgent(a), keyCount: await keyCount(a.id), groups: await agentGrants(a.id) })));
+    const rows = await db
+      .select()
+      .from(agents)
+      .where(eq(agents.ownerId, ownerOf(req)));
+    return Promise.all(
+      rows.map(async (a) => ({ ...publicAgent(a), keyCount: await keyCount(a.id), groups: await agentGrants(a.id) })),
+    );
   });
 
   // Which built-in system.* introspection tools this agent exposes (all its V-MCPs + /a/mcp).
@@ -85,7 +112,15 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     if (!(await ownedAgent(id, ownerOf(req)))) return reply.code(404).send({ error: 'not_found' });
     const { label } = z.object({ label: z.string().optional() }).parse(req.body ?? {});
     const key = newApiKey();
-    const row = { id: newId(), agentId: id, hash: hashKey(key.token), prefix: key.prefix, label: label || null, archived: false, createdAt: new Date() };
+    const row = {
+      id: newId(),
+      agentId: id,
+      hash: hashKey(key.token),
+      prefix: key.prefix,
+      label: label || null,
+      archived: false,
+      createdAt: new Date(),
+    };
     await db.insert(agentKeys).values(row);
     return reply.code(201).send({ ...publicKey(row), apiKey: key.token });
   });
@@ -93,12 +128,21 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   app.patch('/agents/:id/keys/:keyId', async (req, reply) => {
     const { id, keyId } = req.params as { id: string; keyId: string };
     if (!(await ownedAgent(id, ownerOf(req)))) return reply.code(404).send({ error: 'not_found' });
-    const { archived, label } = z.object({ archived: z.boolean().optional(), label: z.string().optional() }).parse(req.body);
+    const { archived, label } = z
+      .object({ archived: z.boolean().optional(), label: z.string().optional() })
+      .parse(req.body);
     const patch: Record<string, unknown> = {};
     if (archived !== undefined) patch.archived = archived;
     if (label !== undefined) patch.label = label || null;
-    if (Object.keys(patch).length) await db.update(agentKeys).set(patch).where(and(eq(agentKeys.id, keyId), eq(agentKeys.agentId, id)));
-    const [row] = await db.select().from(agentKeys).where(and(eq(agentKeys.id, keyId), eq(agentKeys.agentId, id)));
+    if (Object.keys(patch).length)
+      await db
+        .update(agentKeys)
+        .set(patch)
+        .where(and(eq(agentKeys.id, keyId), eq(agentKeys.agentId, id)));
+    const [row] = await db
+      .select()
+      .from(agentKeys)
+      .where(and(eq(agentKeys.id, keyId), eq(agentKeys.agentId, id)));
     return row ? publicKey(row) : reply.code(404).send({ error: 'not_found' });
   });
 
@@ -136,7 +180,10 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const agent = await ownedAgent(id, owner);
     if (!agent) return reply.code(404).send({ error: 'not_found' });
     // group must belong to the same owner
-    const [grp] = await db.select().from(groups).where(and(eq(groups.id, groupId), eq(groups.ownerId, owner)));
+    const [grp] = await db
+      .select()
+      .from(groups)
+      .where(and(eq(groups.id, groupId), eq(groups.ownerId, owner)));
     if (!grp) return reply.code(400).send({ error: 'unknown_group' });
 
     const [exists] = await db

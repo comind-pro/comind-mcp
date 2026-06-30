@@ -28,8 +28,11 @@ const testBody = z.object({
 });
 
 /** Load a source owned by the requester, or null. */
-async function owned(req: { url: string }, id: string, owner: string) {
-  const [row] = await db.select().from(sources).where(and(eq(sources.id, id), eq(sources.ownerId, owner)));
+async function owned(_req: { url: string }, id: string, owner: string) {
+  const [row] = await db
+    .select()
+    .from(sources)
+    .where(and(eq(sources.id, id), eq(sources.ownerId, owner)));
   return row ?? null;
 }
 
@@ -52,7 +55,12 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(row);
   });
 
-  app.get('/sources', async (req) => db.select().from(sources).where(eq(sources.ownerId, ownerOf(req))));
+  app.get('/sources', async (req) =>
+    db
+      .select()
+      .from(sources)
+      .where(eq(sources.ownerId, ownerOf(req))),
+  );
 
   app.get('/sources/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -107,7 +115,10 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     const row = await owned(req, id, ownerOf(req));
     if (!row) return reply.code(404).send({ error: 'not_found' });
 
-    const connector = createConnector(row.kind, await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)));
+    const connector = createConnector(
+      row.kind,
+      await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)),
+    );
     const result = await connector.health();
     await db
       .update(sources)
@@ -121,7 +132,10 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     const row = await owned(req, id, ownerOf(req));
     if (!row) return reply.code(404).send({ error: 'not_found' });
-    const connector = createConnector(row.kind, await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)));
+    const connector = createConnector(
+      row.kind,
+      await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)),
+    );
     const objects = connector.listObjects ? await connector.listObjects() : [];
     const objectsCheckedAt = new Date();
     await db
@@ -140,10 +154,12 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     // `force`: overwrite existing tools too (refresh metadata/schemas). Default:
     // only create missing tools, leaving existing ones (and manual edits) intact.
     const force =
-      (req.body as { force?: boolean } | null)?.force === true ||
-      (req.query as { force?: string }).force === 'true';
+      (req.body as { force?: boolean } | null)?.force === true || (req.query as { force?: string }).force === 'true';
 
-    const connector = createConnector(row.kind, await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)));
+    const connector = createConnector(
+      row.kind,
+      await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)),
+    );
     const upstream = await connector.listTools();
     const prefix = slugify(row.name);
 

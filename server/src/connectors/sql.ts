@@ -85,7 +85,10 @@ export class SqlConnector implements Connector {
               sql: "select date(created_at) d, count(*) n from users where created_at > now() - interval '7 days' group by 1 order by 1",
             },
           },
-          { description: 'Lookup by id with a param', input: { sql: 'select * from users where id = $1', params: ['42'] } },
+          {
+            description: 'Lookup by id with a param',
+            input: { sql: 'select * from users where id = $1', params: ['42'] },
+          },
         ],
       },
     ];

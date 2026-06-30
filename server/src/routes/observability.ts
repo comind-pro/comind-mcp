@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, type SQL, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -39,7 +39,12 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
     if (q.from) filters.push(gte(callLogs.ts, new Date(q.from)));
     if (q.to) filters.push(lte(callLogs.ts, new Date(q.to)));
     const limit = Math.min(Number(q.limit ?? 100) || 100, 1000);
-    return db.select().from(callLogs).where(and(...filters)).orderBy(desc(callLogs.ts)).limit(limit);
+    return db
+      .select()
+      .from(callLogs)
+      .where(and(...filters))
+      .orderBy(desc(callLogs.ts))
+      .limit(limit);
   });
 
   // Aggregate usage metrics — computed in SQL (scales), with optional time window
@@ -51,8 +56,7 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
     // NB: drizzle field `ts` maps to DB column `created_at`.
     if (q.from) conds.push(sql`created_at >= ${new Date(q.from).toISOString()}`);
     if (q.to) conds.push(sql`created_at <= ${new Date(q.to).toISOString()}`);
-    if (q.source === 'live' || q.source === 'test' || q.source === 'schedule')
-      conds.push(sql`source = ${q.source}`);
+    if (q.source === 'live' || q.source === 'test' || q.source === 'schedule') conds.push(sql`source = ${q.source}`);
     const where = sql.join(conds, sql` and `);
 
     const totals = await db.execute(sql`
@@ -88,7 +92,10 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
   // What does this agent actually see through its endpoint?
   app.get('/agents/:id/inspect', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const [agent] = await db.select().from(agents).where(and(eq(agents.id, id), eq(agents.ownerId, ownerOf(req))));
+    const [agent] = await db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.id, id), eq(agents.ownerId, ownerOf(req))));
     if (!agent) return reply.code(404).send({ error: 'not_found' });
 
     // What the agent sees per granted group.
@@ -114,7 +121,10 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
       .object({ groupId: z.string(), tool: z.string(), args: z.record(z.unknown()).optional() })
       .parse(req.body);
     const owner = ownerOf(req);
-    const [agent] = await db.select().from(agents).where(and(eq(agents.id, id), eq(agents.ownerId, owner)));
+    const [agent] = await db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.id, id), eq(agents.ownerId, owner)));
     if (!agent) return reply.code(404).send({ error: 'not_found' });
 
     const [grant] = await db

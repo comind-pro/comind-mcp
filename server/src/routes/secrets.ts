@@ -28,7 +28,10 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
     const body = createBody.parse(req.body);
 
     if (body.sourceId) {
-      const [src] = await db.select().from(sources).where(and(eq(sources.id, body.sourceId), eq(sources.ownerId, owner)));
+      const [src] = await db
+        .select()
+        .from(sources)
+        .where(and(eq(sources.id, body.sourceId), eq(sources.ownerId, owner)));
       if (!src) return reply.code(400).send({ error: 'unknown_source' });
     }
 
@@ -52,7 +55,10 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/secrets', async (req) => {
-    const rows = await db.select().from(secrets).where(eq(secrets.ownerId, ownerOf(req)));
+    const rows = await db
+      .select()
+      .from(secrets)
+      .where(eq(secrets.ownerId, ownerOf(req)));
     return Promise.all(rows.map(publicSecret));
   });
 
@@ -60,7 +66,10 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
     const owner = ownerOf(req);
     const { id } = req.params as { id: string };
     const body = updateBody.parse(req.body);
-    const [existing] = await db.select().from(secrets).where(and(eq(secrets.id, id), eq(secrets.ownerId, owner)));
+    const [existing] = await db
+      .select()
+      .from(secrets)
+      .where(and(eq(secrets.id, id), eq(secrets.ownerId, owner)));
     if (!existing) return reply.code(404).send({ error: 'not_found' });
 
     // value → re-encrypt (blind: old plaintext is never read). envRef → store the
@@ -73,7 +82,10 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
       patch.envRef = body.envRef;
       patch.encryptedValue = null;
     }
-    await db.update(secrets).set(patch).where(and(eq(secrets.id, id), eq(secrets.ownerId, owner)));
+    await db
+      .update(secrets)
+      .set(patch)
+      .where(and(eq(secrets.id, id), eq(secrets.ownerId, owner)));
     const [row] = await db.select().from(secrets).where(eq(secrets.id, id));
     return publicSecret(row);
   });

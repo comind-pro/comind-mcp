@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Source, type Tool } from '../api.js';
-import { DEFAULTS, KIND_META, SourceFields, type Cfg, type Kind } from './SourceFields.js';
+import { type Cfg, DEFAULTS, KIND_META, type Kind, SourceFields } from './SourceFields.js';
 
 const KINDS: Kind[] = ['mcp', 'openapi', 'http', 'imap', 'sql', 'ga'];
 
@@ -29,7 +29,11 @@ export function SourcesTab() {
   const [ed, setEd] = useState<Editing | null>(null);
   const [busy, setBusy] = useState('');
 
-  const load = () => api.get<Source[]>('/sources').then(setSources).catch((e) => setErr(String(e.message)));
+  const load = () =>
+    api
+      .get<Source[]>('/sources')
+      .then(setSources)
+      .catch((e) => setErr(String(e.message)));
   useEffect(() => void load(), []);
 
   const patch = (p: Partial<Editing>) => setEd((e) => (e ? { ...e, ...p } : e));
@@ -37,16 +41,34 @@ export function SourcesTab() {
 
   const openNew = () =>
     setEd({
-      id: 'new', name: '', kind: 'mcp', cfg: DEFAULTS.mcp, jsonRaw: null, jsonError: null,
-      testState: 'idle', testMsg: '', created: false, importedTools: null, secrets: [],
+      id: 'new',
+      name: '',
+      kind: 'mcp',
+      cfg: DEFAULTS.mcp,
+      jsonRaw: null,
+      jsonError: null,
+      testState: 'idle',
+      testMsg: '',
+      created: false,
+      importedTools: null,
+      secrets: [],
     });
 
   const openEdit = (s: Source) => {
     if (ed && ed.id === s.id) return close();
     setErr('');
     setEd({
-      id: s.id, name: s.name, kind: s.kind as Kind, cfg: s.config as Cfg, jsonRaw: null, jsonError: null,
-      testState: 'idle', testMsg: '', created: false, importedTools: null, secrets: [],
+      id: s.id,
+      name: s.name,
+      kind: s.kind as Kind,
+      cfg: s.config as Cfg,
+      jsonRaw: null,
+      jsonError: null,
+      testState: 'idle',
+      testMsg: '',
+      created: false,
+      importedTools: null,
+      secrets: [],
     });
   };
 
@@ -128,7 +150,12 @@ export function SourcesTab() {
       const pending: Record<string, string> = {};
       for (const s of ed.secrets) if (s.mode === 'value' && s.name && s.value) pending[s.name] = s.value;
       const r = isDraft
-        ? await api.post<{ ok: boolean; message?: string }>('/sources/test', { name: ed.name || 'draft', kind: ed.kind, config: buildConfig(ed), secrets: pending })
+        ? await api.post<{ ok: boolean; message?: string }>('/sources/test', {
+            name: ed.name || 'draft',
+            kind: ed.kind,
+            config: buildConfig(ed),
+            secrets: pending,
+          })
         : await api.post<{ ok: boolean; message?: string }>(`/sources/${ed.id}/test`);
       patch({ testState: r.ok ? 'ok' : 'error', testMsg: r.message ?? '' });
       if (!isDraft) await load();
@@ -179,7 +206,8 @@ export function SourcesTab() {
     close();
   };
 
-  const dotColor = (status: string) => (status === 'ok' ? 'var(--ok)' : status === 'error' ? 'var(--err)' : 'var(--muted)');
+  const dotColor = (status: string) =>
+    status === 'ok' ? 'var(--ok)' : status === 'error' ? 'var(--err)' : 'var(--muted)';
 
   const editor = (e: Editing, isNew: boolean) => {
     const jsonText = e.jsonRaw != null ? e.jsonRaw : JSON.stringify(e.cfg, null, 2);
@@ -191,14 +219,19 @@ export function SourcesTab() {
           {e.created && e.importedTools && (
             <div style={{ marginBottom: 20 }}>
               <div className="status-line" style={{ color: 'var(--ok)', marginBottom: 10 }}>
-                <span className="status-dot" style={{ background: 'var(--ok)' }} /> Imported — {e.importedTools.length} tools
+                <span className="status-dot" style={{ background: 'var(--ok)' }} /> Imported — {e.importedTools.length}{' '}
+                tools
               </div>
               <div className="hint">Toggle off to hide a tool from agents.</div>
               {e.importedTools.map((t) => (
                 <div key={t.id} className="tool-check" onClick={() => toggleToolVisible(t)}>
                   <span className={`box ${t.visible ? 'on' : ''}`}>{t.visible ? '✓' : ''}</span>
-                  <span className="mono" style={{ color: 'var(--accent)', fontSize: 13 }}>{t.name}</span>
-                  <span className="muted" style={{ fontSize: 12 }}>{t.description ?? ''}</span>
+                  <span className="mono" style={{ color: 'var(--accent)', fontSize: 13 }}>
+                    {t.name}
+                  </span>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {t.description ?? ''}
+                  </span>
                 </div>
               ))}
             </div>
@@ -245,9 +278,24 @@ export function SourcesTab() {
                     style={{ width: 160 }}
                     placeholder="NAME"
                     value={s.name}
-                    onChange={(ev) => patch({ secrets: e.secrets.map((x, j) => (j === i ? { ...x, name: ev.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') } : x)) })}
+                    onChange={(ev) =>
+                      patch({
+                        secrets: e.secrets.map((x, j) =>
+                          j === i ? { ...x, name: ev.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') } : x,
+                        ),
+                      })
+                    }
                   />
-                  <select value={s.mode} onChange={(ev) => patch({ secrets: e.secrets.map((x, j) => (j === i ? { ...x, mode: ev.target.value as 'value' | 'envRef' } : x)) })}>
+                  <select
+                    value={s.mode}
+                    onChange={(ev) =>
+                      patch({
+                        secrets: e.secrets.map((x, j) =>
+                          j === i ? { ...x, mode: ev.target.value as 'value' | 'envRef' } : x,
+                        ),
+                      })
+                    }
+                  >
                     <option value="value">value</option>
                     <option value="envRef">envRef</option>
                   </select>
@@ -256,37 +304,62 @@ export function SourcesTab() {
                     type={s.mode === 'value' ? 'password' : 'text'}
                     placeholder={s.mode === 'value' ? 'secret value' : 'ENV_VAR_NAME'}
                     value={s.value}
-                    onChange={(ev) => patch({ secrets: e.secrets.map((x, j) => (j === i ? { ...x, value: ev.target.value } : x)) })}
+                    onChange={(ev) =>
+                      patch({ secrets: e.secrets.map((x, j) => (j === i ? { ...x, value: ev.target.value } : x)) })
+                    }
                   />
-                  <button className="danger mini" onClick={() => patch({ secrets: e.secrets.filter((_, j) => j !== i) })}>×</button>
+                  <button
+                    className="danger mini"
+                    onClick={() => patch({ secrets: e.secrets.filter((_, j) => j !== i) })}
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
-              <button className="ghost mini" onClick={() => patch({ secrets: [...e.secrets, { name: 'API_TOKEN', mode: 'value', value: '' }] })}>+ secret</button>
+              <button
+                className="ghost mini"
+                onClick={() => patch({ secrets: [...e.secrets, { name: 'API_TOKEN', mode: 'value', value: '' }] })}
+              >
+                + secret
+              </button>
             </div>
           )}
 
           {/* objects: queryable entities inside the source (GA properties, DB schemas) */}
-          {(!isNew || e.created) && (() => {
-            const objs = sources.find((s) => s.id === e.id)?.objects ?? [];
-            return (
-              <>
-                <div className="editor-section" style={{ marginTop: 18 }}>Objects</div>
-                <div className="hint">Queryable entities inside this source (GA properties, DB schemas) — surfaced to agents via <code className="mono">system.context</code>.</div>
-                <div className="row" style={{ marginBottom: objs.length ? 8 : 0 }}>
-                  <button className="ghost" onClick={() => refreshObjects(e.id)} disabled={busy === 'objects'}>
-                    {busy === 'objects' ? 'Refreshing…' : 'Refresh objects'}
-                  </button>
-                  <span className="muted" style={{ fontSize: 12 }}>{objs.length} object{objs.length === 1 ? '' : 's'}</span>
-                </div>
-                {objs.map((o) => (
-                  <div key={o.id} className="row" style={{ marginBottom: 4, alignItems: 'baseline' }}>
-                    <span className="mono" style={{ fontSize: 12.5 }}>{o.id}</span>
-                    <span className="muted" style={{ fontSize: 12 }}>{o.name}{o.product_hint ? ` · ${o.product_hint}` : ''}</span>
+          {(!isNew || e.created) &&
+            (() => {
+              const objs = sources.find((s) => s.id === e.id)?.objects ?? [];
+              return (
+                <>
+                  <div className="editor-section" style={{ marginTop: 18 }}>
+                    Objects
                   </div>
-                ))}
-              </>
-            );
-          })()}
+                  <div className="hint">
+                    Queryable entities inside this source (GA properties, DB schemas) — surfaced to agents via{' '}
+                    <code className="mono">system.context</code>.
+                  </div>
+                  <div className="row" style={{ marginBottom: objs.length ? 8 : 0 }}>
+                    <button className="ghost" onClick={() => refreshObjects(e.id)} disabled={busy === 'objects'}>
+                      {busy === 'objects' ? 'Refreshing…' : 'Refresh objects'}
+                    </button>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {objs.length} object{objs.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  {objs.map((o) => (
+                    <div key={o.id} className="row" style={{ marginBottom: 4, alignItems: 'baseline' }}>
+                      <span className="mono" style={{ fontSize: 12.5 }}>
+                        {o.id}
+                      </span>
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {o.name}
+                        {o.product_hint ? ` · ${o.product_hint}` : ''}
+                      </span>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
 
           {/* actions */}
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
@@ -305,13 +378,27 @@ export function SourcesTab() {
             </button>
             {(!isNew || e.created) && (
               <>
-                <button className="ghost" onClick={() => importTools(false)} disabled={!!busy} title="Create new tools only — leaves existing tools and your edits untouched">
+                <button
+                  className="ghost"
+                  onClick={() => importTools(false)}
+                  disabled={!!busy}
+                  title="Create new tools only — leaves existing tools and your edits untouched"
+                >
                   {busy === 'import' ? 'Importing…' : e.importedTools ? 'Import new tools' : 'Import tools →'}
                 </button>
-                <button className="ghost" onClick={() => importTools(true)} disabled={!!busy} title="Overwrite existing tools too — refreshes schemas & metadata from the source (discards manual edits)">
+                <button
+                  className="ghost"
+                  onClick={() => importTools(true)}
+                  disabled={!!busy}
+                  title="Overwrite existing tools too — refreshes schemas & metadata from the source (discards manual edits)"
+                >
                   {busy === 'import-force' ? 'Refreshing…' : 'Force re-import'}
                 </button>
-                {interactive && <button className="ghost" onClick={connect}>Connect</button>}
+                {interactive && (
+                  <button className="ghost" onClick={connect}>
+                    Connect
+                  </button>
+                )}
               </>
             )}
 
@@ -327,7 +414,9 @@ export function SourcesTab() {
             )}
 
             {!isNew && (
-              <button className="danger" style={{ marginLeft: 'auto' }} onClick={del}>Delete</button>
+              <button className="danger" style={{ marginLeft: 'auto' }} onClick={del}>
+                Delete
+              </button>
             )}
           </div>
           {err && <div className="err-msg">{err}</div>}
@@ -336,12 +425,21 @@ export function SourcesTab() {
         {/* RIGHT: JSON config */}
         <div className="editor-right">
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-            <span className="field-label" style={{ margin: 0 }}>Config · JSON</span>
+            <span className="field-label" style={{ margin: 0 }}>
+              Config · JSON
+            </span>
             <span className="tbadge">edits ↔ form</span>
           </div>
-          <textarea className="json-area" spellCheck={false} value={jsonText} onChange={(ev) => onJson(ev.target.value)} />
+          <textarea
+            className="json-area"
+            spellCheck={false}
+            value={jsonText}
+            onChange={(ev) => onJson(ev.target.value)}
+          />
           {e.jsonError ? (
-            <div className="err-msg" style={{ marginTop: 8 }}>⚠ {e.jsonError}</div>
+            <div className="err-msg" style={{ marginTop: 8 }}>
+              ⚠ {e.jsonError}
+            </div>
           ) : (
             <div className="hint" style={{ marginTop: 8 }}>
               Edits here update the form. Secrets stay as references <code>{'${secret.NAME}'}</code>.
@@ -364,7 +462,9 @@ export function SourcesTab() {
           <span className="title">Sources</span>
           <span className="sub">{sources.length} connected</span>
         </div>
-        <button className="btn-primary" onClick={openNew}>+ New source</button>
+        <button className="btn-primary" onClick={openNew}>
+          + New source
+        </button>
       </div>
 
       {err && !ed && <div className="err-msg">{err}</div>}
@@ -395,15 +495,17 @@ export function SourcesTab() {
               <span className="edit-link">{open ? 'Close' : 'Edit'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
             </div>
-            {s.status === 'error' && s.statusMessage && !open && (
-              <div className="src-err">{s.statusMessage}</div>
-            )}
+            {s.status === 'error' && s.statusMessage && !open && <div className="src-err">{s.statusMessage}</div>}
             {open && ed && <div className="scard-body">{editor(ed, false)}</div>}
           </div>
         );
       })}
 
-      {!sources.length && !ed && <div className="muted" style={{ padding: '20px 2px' }}>No sources yet.</div>}
+      {!sources.length && !ed && (
+        <div className="muted" style={{ padding: '20px 2px' }}>
+          No sources yet.
+        </div>
+      )}
     </>
   );
 }

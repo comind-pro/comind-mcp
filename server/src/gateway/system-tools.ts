@@ -2,11 +2,11 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { applyAuth } from '../auth/apply.js';
 import { config } from '../config.js';
 import { createConnector } from '../connectors/index.js';
+import type { CallResult, ToolDef } from '../connectors/types.js';
+import { textResult } from '../connectors/types.js';
 import { db, pool } from '../db/client.js';
 import { callLogs, groupTools, sources, tools } from '../db/schema.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
-import type { CallResult, ToolDef } from '../connectors/types.js';
-import { textResult } from '../connectors/types.js';
 
 /** Server identity surfaced via system.version. Mirrors server/package.json. */
 const SERVER_NAME = 'ComindMCP';
@@ -191,8 +191,7 @@ const TOOL_HINTS: Record<string, string> = {
   'system.context':
     'call system.context first to learn your identity, scope, timezone, reachable V-MCPs, ' +
     'connected sources and the full tool catalog — do not guess timezone or what you can do',
-  'system.debug':
-    'call system.debug when a tool returns empty or errors, to tell apart "no data" from a broken source',
+  'system.debug': 'call system.debug when a tool returns empty or errors, to tell apart "no data" from a broken source',
 };
 
 /** Build the MCP `instructions` string for the enabled system tools (empty when none). */
@@ -223,8 +222,7 @@ function recommendedUseOf(t: ToolRow): Record<string, unknown> {
   return {
     daily_report: stored.daily_report ?? null,
     safe_for_automation: stored.safe_for_automation ?? (ro == null ? null : ro === true && dng !== true),
-    requires_user_confirmation:
-      stored.requires_user_confirmation ?? (dng === true ? true : ro === false ? true : null),
+    requires_user_confirmation: stored.requires_user_confirmation ?? (dng === true ? true : ro === false ? true : null),
   };
 }
 
@@ -300,7 +298,13 @@ type SourceStatus = { status: SourceRow['status']; message: string | null; check
 function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => T): Promise<T> {
   return new Promise((resolve) => {
     const t = setTimeout(() => resolve(onTimeout()), ms);
-    p.then((v) => { clearTimeout(t); resolve(v); }).catch(() => { clearTimeout(t); resolve(onTimeout()); });
+    p.then((v) => {
+      clearTimeout(t);
+      resolve(v);
+    }).catch(() => {
+      clearTimeout(t);
+      resolve(onTimeout());
+    });
   });
 }
 
@@ -333,7 +337,12 @@ async function sourceStatuses(rows: SourceRow[], live: boolean): Promise<Map<str
     await Promise.all(rows.map(async (r) => map.set(r.id, await liveHealth(r))));
   } else {
     for (const r of rows)
-      map.set(r.id, { status: r.status, message: r.statusMessage ?? null, checkedAt: r.statusCheckedAt ?? null, cached: true });
+      map.set(r.id, {
+        status: r.status,
+        message: r.statusMessage ?? null,
+        checkedAt: r.statusCheckedAt ?? null,
+        cached: true,
+      });
   }
   return map;
 }
@@ -352,11 +361,7 @@ export async function handleSystemTool(
   }
 }
 
-async function dispatch(
-  ctx: SystemCtx,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<CallResult> {
+async function dispatch(ctx: SystemCtx, name: string, args: Record<string, unknown>): Promise<CallResult> {
   switch (name) {
     case 'system.context': {
       const groupIds = groupIdsOf(ctx);
@@ -402,7 +407,7 @@ async function dispatch(
           callable: t.name,
           description: t.displayName
             ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
-            : t.description ?? null,
+            : (t.description ?? null),
           category: src ? categoryOf(src.kind) : t.kind === 'virtual' ? 'virtual' : 'custom',
           source: src?.name ?? null,
           read_only: t.readOnly ?? null,
@@ -420,7 +425,7 @@ async function dispatch(
           owner_id: ctx.ownerId,
           scope: ctx.scope,
           // group: the single group on a group VMCP; null on the agent-wide endpoint.
-          group: ctx.scope === 'group' ? ctx.groups[0]?.slug ?? null : null,
+          group: ctx.scope === 'group' ? (ctx.groups[0]?.slug ?? null) : null,
           groups: ctx.groups.map((g) => g.slug),
         },
         server: {
@@ -446,10 +451,7 @@ async function dispatch(
 
     case 'system.debug': {
       const limit = clampLimit(args);
-      const [calls, errs] = await Promise.all([
-        recentLogs(ctx, limit, false),
-        recentLogs(ctx, limit, true),
-      ]);
+      const [calls, errs] = await Promise.all([recentLogs(ctx, limit, false), recentLogs(ctx, limit, true)]);
       return json({
         calls: calls.map((r) => ({
           tool: r.toolName,

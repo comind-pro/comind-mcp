@@ -108,12 +108,48 @@ export class ImapSmtpConnector implements Connector {
 
     // Curated discovery metadata: reads are safe, send needs confirmation.
     const META: Record<string, Partial<ToolDef>> = {
-      list_folders: { readOnly: true, dangerous: false, permissions: ['mail.read'], recommendedUse: { safe_for_automation: true, requires_user_confirmation: false }, examples: [{ description: 'List folders', input: {} }] },
-      list_messages: { readOnly: true, dangerous: false, permissions: ['mail.read'], recommendedUse: { safe_for_automation: true, requires_user_confirmation: false }, examples: [{ description: 'Latest 20 unread in INBOX', input: { folder: 'INBOX', limit: 20, unseen: true } }] },
-      search_messages: { readOnly: true, dangerous: false, permissions: ['mail.read'], recommendedUse: { safe_for_automation: true, requires_user_confirmation: false }, examples: [{ description: 'From a sender since a date', input: { from: 'boss@acme.com', since: '2026-06-01' } }] },
-      get_message: { readOnly: true, dangerous: false, permissions: ['mail.read'], examples: [{ description: 'Fetch one message by UID', input: { uid: 123, folder: 'INBOX' } }] },
-      send_message: { readOnly: false, dangerous: true, permissions: ['mail.send'], recommendedUse: { safe_for_automation: false, requires_user_confirmation: true }, examples: [{ description: 'Send a plain email', input: { to: 'a@b.com', subject: 'Hi', text: 'Hello' } }] },
-      mark_seen: { readOnly: false, dangerous: false, permissions: ['mail.write'], examples: [{ description: 'Mark a message read', input: { uid: 123 } }] },
+      list_folders: {
+        readOnly: true,
+        dangerous: false,
+        permissions: ['mail.read'],
+        recommendedUse: { safe_for_automation: true, requires_user_confirmation: false },
+        examples: [{ description: 'List folders', input: {} }],
+      },
+      list_messages: {
+        readOnly: true,
+        dangerous: false,
+        permissions: ['mail.read'],
+        recommendedUse: { safe_for_automation: true, requires_user_confirmation: false },
+        examples: [{ description: 'Latest 20 unread in INBOX', input: { folder: 'INBOX', limit: 20, unseen: true } }],
+      },
+      search_messages: {
+        readOnly: true,
+        dangerous: false,
+        permissions: ['mail.read'],
+        recommendedUse: { safe_for_automation: true, requires_user_confirmation: false },
+        examples: [
+          { description: 'From a sender since a date', input: { from: 'boss@acme.com', since: '2026-06-01' } },
+        ],
+      },
+      get_message: {
+        readOnly: true,
+        dangerous: false,
+        permissions: ['mail.read'],
+        examples: [{ description: 'Fetch one message by UID', input: { uid: 123, folder: 'INBOX' } }],
+      },
+      send_message: {
+        readOnly: false,
+        dangerous: true,
+        permissions: ['mail.send'],
+        recommendedUse: { safe_for_automation: false, requires_user_confirmation: true },
+        examples: [{ description: 'Send a plain email', input: { to: 'a@b.com', subject: 'Hi', text: 'Hello' } }],
+      },
+      mark_seen: {
+        readOnly: false,
+        dangerous: false,
+        permissions: ['mail.write'],
+        examples: [{ description: 'Mark a message read', input: { uid: 123 } }],
+      },
     };
     return list.map((t) => ({ ...t, ...META[t.name] }));
   }
@@ -221,6 +257,7 @@ export class ImapSmtpConnector implements Connector {
     const lock = await c.getMailboxLock(folder);
     try {
       const msg = await c.fetchOne(uid, { uid: true, source: true }, { uid: true });
+      // biome-ignore lint/complexity/useOptionalChain: msg is `false | T`; ?. won't narrow `false`
       if (!msg || !msg.source) return textResult(`Message uid ${uid} not found`, true);
       const p = await simpleParser(msg.source);
       return textResult(

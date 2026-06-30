@@ -42,7 +42,13 @@ function prop(p: string): string {
 }
 
 const dimsMetrics = (names: unknown): { name: string }[] =>
-  (Array.isArray(names) ? names : String(names ?? '').split(',').map((s) => s.trim()).filter(Boolean)).map((n) => ({ name: String(n) }));
+  (Array.isArray(names)
+    ? names
+    : String(names ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+  ).map((n) => ({ name: String(n) }));
 
 export class GaConnector implements Connector {
   constructor(private readonly cfg: GaConfig) {}
@@ -66,7 +72,9 @@ export class GaConnector implements Connector {
     const tokenUri = sa.token_uri || 'https://oauth2.googleapis.com/token';
     const now = Math.floor(Date.now() / 1000);
     const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-    const claim = b64url(JSON.stringify({ iss: sa.client_email, scope: SCOPE, aud: tokenUri, exp: now + 3600, iat: now }));
+    const claim = b64url(
+      JSON.stringify({ iss: sa.client_email, scope: SCOPE, aud: tokenUri, exp: now + 3600, iat: now }),
+    );
     const signingInput = `${header}.${claim}`;
     const sig = crypto.createSign('RSA-SHA256').update(signingInput).sign(sa.private_key);
     const jwt = `${signingInput}.${b64url(sig)}`;
@@ -76,8 +84,14 @@ export class GaConnector implements Connector {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
     });
-    const body = (await res.json()) as { access_token?: string; expires_in?: number; error?: string; error_description?: string };
-    if (!res.ok || !body.access_token) throw new Error(`Token exchange failed: ${body.error_description || body.error || res.status}`);
+    const body = (await res.json()) as {
+      access_token?: string;
+      expires_in?: number;
+      error?: string;
+      error_description?: string;
+    };
+    if (!res.ok || !body.access_token)
+      throw new Error(`Token exchange failed: ${body.error_description || body.error || res.status}`);
     tokenCache.set(sa.client_email, { token: body.access_token, exp: Date.now() + (body.expires_in ?? 3600) * 1000 });
     return body.access_token;
   }
@@ -117,13 +131,29 @@ export class GaConnector implements Connector {
 
     // account discovery lists ALL properties the SA can see — hide it when locked
     if (!locked) {
-      tools.push({ name: 'get_account_summaries', description: 'List GA accounts and their GA4 properties.', inputSchema: { type: 'object', properties: {} } });
+      tools.push({
+        name: 'get_account_summaries',
+        description: 'List GA accounts and their GA4 properties.',
+        inputSchema: { type: 'object', properties: {} },
+      });
     }
 
     tools.push(
-      { name: 'get_property_details', description: 'Details of the GA4 property.', inputSchema: { type: 'object', required: req('property'), properties: { ...propProp } } },
-      { name: 'list_google_ads_links', description: 'Google Ads links for the property.', inputSchema: { type: 'object', required: req('property'), properties: { ...propProp } } },
-      { name: 'get_custom_dimensions_and_metrics', description: 'Property metadata: available dimensions and metrics.', inputSchema: { type: 'object', required: req('property'), properties: { ...propProp } } },
+      {
+        name: 'get_property_details',
+        description: 'Details of the GA4 property.',
+        inputSchema: { type: 'object', required: req('property'), properties: { ...propProp } },
+      },
+      {
+        name: 'list_google_ads_links',
+        description: 'Google Ads links for the property.',
+        inputSchema: { type: 'object', required: req('property'), properties: { ...propProp } },
+      },
+      {
+        name: 'get_custom_dimensions_and_metrics',
+        description: 'Property metadata: available dimensions and metrics.',
+        inputSchema: { type: 'object', required: req('property'), properties: { ...propProp } },
+      },
       {
         name: 'run_report',
         description: 'Run a GA4 core report.',
@@ -132,8 +162,16 @@ export class GaConnector implements Connector {
           required: req('property', 'dimensions', 'metrics'),
           properties: {
             ...propProp,
-            dimensions: { type: 'array', items: { type: 'string' }, description: 'e.g. date, country, sessionDefaultChannelGroup' },
-            metrics: { type: 'array', items: { type: 'string' }, description: 'e.g. activeUsers, sessions, screenPageViews' },
+            dimensions: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'e.g. date, country, sessionDefaultChannelGroup',
+            },
+            metrics: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'e.g. activeUsers, sessions, screenPageViews',
+            },
             startDate: { type: 'string', description: 'e.g. 7daysAgo, 2024-01-01 (default 7daysAgo)' },
             endDate: { type: 'string', description: 'e.g. today, yesterday (default today)' },
             limit: { type: 'integer', description: 'Max rows (default 100)' },
@@ -171,37 +209,71 @@ export class GaConnector implements Connector {
       type: 'object',
       properties: {
         dimensionHeaders: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' } } } },
-        metricHeaders: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, type: { type: 'string' } } } },
-        rows: { type: 'array', items: { type: 'object', properties: { dimensionValues: valueArr, metricValues: valueArr } } },
+        metricHeaders: {
+          type: 'array',
+          items: { type: 'object', properties: { name: { type: 'string' }, type: { type: 'string' } } },
+        },
+        rows: {
+          type: 'array',
+          items: { type: 'object', properties: { dimensionValues: valueArr, metricValues: valueArr } },
+        },
         rowCount: { type: 'number' },
       },
     };
-    const propItem = { type: 'object', properties: { property: { type: 'string' }, displayName: { type: 'string' }, propertyType: { type: 'string' } } };
+    const propItem = {
+      type: 'object',
+      properties: { property: { type: 'string' }, displayName: { type: 'string' }, propertyType: { type: 'string' } },
+    };
     const accountSummariesOut = {
       type: 'object',
       properties: {
         accountSummaries: {
           type: 'array',
-          items: { type: 'object', properties: { account: { type: 'string' }, displayName: { type: 'string' }, propertySummaries: { type: 'array', items: propItem } } },
+          items: {
+            type: 'object',
+            properties: {
+              account: { type: 'string' },
+              displayName: { type: 'string' },
+              propertySummaries: { type: 'array', items: propItem },
+            },
+          },
         },
       },
     };
-    const dimItem = { type: 'object', properties: { apiName: { type: 'string' }, uiName: { type: 'string' }, category: { type: 'string' } } };
+    const dimItem = {
+      type: 'object',
+      properties: { apiName: { type: 'string' }, uiName: { type: 'string' }, category: { type: 'string' } },
+    };
     const metadataOut = {
       type: 'object',
       properties: {
         dimensions: { type: 'array', items: dimItem },
-        metrics: { type: 'array', items: { type: 'object', properties: { apiName: { type: 'string' }, uiName: { type: 'string' }, type: { type: 'string' } } } },
+        metrics: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { apiName: { type: 'string' }, uiName: { type: 'string' }, type: { type: 'string' } },
+          },
+        },
       },
     };
     const propertyOut = {
       type: 'object',
-      properties: { name: { type: 'string' }, displayName: { type: 'string' }, timeZone: { type: 'string' }, currencyCode: { type: 'string' }, createTime: { type: 'string' } },
+      properties: {
+        name: { type: 'string' },
+        displayName: { type: 'string' },
+        timeZone: { type: 'string' },
+        currencyCode: { type: 'string' },
+        createTime: { type: 'string' },
+      },
     };
     const adsLinksOut = {
       type: 'object',
       properties: {
-        googleAdsLinks: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, customerId: { type: 'string' } } } },
+        googleAdsLinks: {
+          type: 'array',
+          items: { type: 'object', properties: { name: { type: 'string' }, customerId: { type: 'string' } } },
+        },
       },
     };
     const outputByName: Record<string, Record<string, unknown>> = {
@@ -217,11 +289,24 @@ export class GaConnector implements Connector {
       run_report: [
         {
           description: '7d active users & sessions by date',
-          input: { ...exProp, dimensions: ['date'], metrics: ['activeUsers', 'sessions'], startDate: '7daysAgo', endDate: 'today' },
+          input: {
+            ...exProp,
+            dimensions: ['date'],
+            metrics: ['activeUsers', 'sessions'],
+            startDate: '7daysAgo',
+            endDate: 'today',
+          },
         },
         {
           description: 'Top countries by users, last 28 days',
-          input: { ...exProp, dimensions: ['country'], metrics: ['activeUsers'], startDate: '28daysAgo', endDate: 'today', limit: 10 },
+          input: {
+            ...exProp,
+            dimensions: ['country'],
+            metrics: ['activeUsers'],
+            startDate: '28daysAgo',
+            endDate: 'today',
+            limit: 10,
+          },
         },
       ],
       run_realtime_report: [{ description: 'Active users right now', input: { ...exProp, metrics: ['activeUsers'] } }],
@@ -281,7 +366,12 @@ export class GaConnector implements Connector {
   async listObjects(): Promise<SourceObject[]> {
     const r = await this.call('GET', `${ADMIN}/accountSummaries`);
     if (r.isError) return [];
-    let data: { accountSummaries?: Array<{ displayName?: string; propertySummaries?: Array<{ property?: string; displayName?: string }> }> };
+    let data: {
+      accountSummaries?: Array<{
+        displayName?: string;
+        propertySummaries?: Array<{ property?: string; displayName?: string }>;
+      }>;
+    };
     try {
       data = JSON.parse(r.content[0]?.text ?? '{}');
     } catch {
@@ -293,7 +383,12 @@ export class GaConnector implements Connector {
       for (const p of acc.propertySummaries ?? []) {
         if (!p.property) continue;
         if (locked && prop(p.property) !== locked) continue;
-        out.push({ id: p.property, name: p.displayName ?? p.property, type: 'property', product_hint: acc.displayName ?? null });
+        out.push({
+          id: p.property,
+          name: p.displayName ?? p.property,
+          type: 'property',
+          product_hint: acc.displayName ?? null,
+        });
       }
     }
     return out;

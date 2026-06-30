@@ -36,7 +36,10 @@ const patchBody = z.object({
 });
 
 async function ownedVirtual(id: string, owner: string) {
-  const [tool] = await db.select().from(tools).where(and(eq(tools.id, id), eq(tools.ownerId, owner)));
+  const [tool] = await db
+    .select()
+    .from(tools)
+    .where(and(eq(tools.id, id), eq(tools.ownerId, owner)));
   return tool && tool.kind === 'virtual' ? tool : null;
 }
 
@@ -55,7 +58,11 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
     if (body.executable === false || !body.request) {
       // descriptive: return the static response body if set, else a catalog note.
       if (body.response !== undefined && body.response !== null) return staticResult(body.response);
-      const note = { kind: 'virtual', executable: false, note: 'Descriptive tool — not executed. No static response body set.' };
+      const note = {
+        kind: 'virtual',
+        executable: false,
+        note: 'Descriptive tool — not executed. No static response body set.',
+      };
       return { content: [{ type: 'text', text: JSON.stringify(note) }], structuredContent: note };
     }
     return runVirtual(body.request as Record<string, unknown>, body.args ?? {}, ownerOf(req));
@@ -67,7 +74,10 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
     const executable = body.executable ?? true;
     if (executable && !body.request) return reply.code(400).send({ error: 'request_required' });
 
-    const [clash] = await db.select().from(tools).where(and(eq(tools.name, body.name), eq(tools.ownerId, owner)));
+    const [clash] = await db
+      .select()
+      .from(tools)
+      .where(and(eq(tools.name, body.name), eq(tools.ownerId, owner)));
     if (clash) return reply.code(409).send({ error: 'name_taken' });
 
     const toolId = newId();
@@ -86,7 +96,9 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
         visible: true,
         createdAt: new Date(),
       });
-      await tx.insert(virtuals).values({ id: newId(), toolId, executable, request: body.request ?? {}, response: body.response ?? null });
+      await tx
+        .insert(virtuals)
+        .values({ id: newId(), toolId, executable, request: body.request ?? {}, response: body.response ?? null });
     });
 
     const [row] = await db.select().from(tools).where(eq(tools.id, toolId));

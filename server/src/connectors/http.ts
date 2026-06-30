@@ -1,4 +1,4 @@
-import type { Connector, CallResult, HealthResult, ToolDef } from './types.js';
+import type { CallResult, Connector, HealthResult, ToolDef } from './types.js';
 import { textResult } from './types.js';
 
 export interface HttpEndpoint {

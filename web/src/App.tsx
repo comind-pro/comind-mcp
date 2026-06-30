@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, tokenStore, type AuthUser } from './api.js';
 import { AuthPage } from './AuthPage.js';
+import { type AuthUser, api, tokenStore } from './api.js';
 import { AgentsTab } from './tabs/AgentsTab.js';
 import { GroupsTab } from './tabs/GroupsTab.js';
 import { LogsTab } from './tabs/LogsTab.js';
@@ -21,7 +21,11 @@ export function App() {
     const drop = () => setUser(null);
     window.addEventListener('comind-unauthorized', drop);
     if (tokenStore.get()) {
-      api.me().then(setUser).catch(() => setUser(null)).finally(() => setLoading(false));
+      api
+        .me()
+        .then(setUser)
+        .catch(() => setUser(null))
+        .finally(() => setLoading(false));
     } else {
       setLoading(false);
     }
@@ -40,7 +44,12 @@ export function App() {
     setUser(null);
   };
 
-  if (loading) return <div style={{ padding: 40 }} className="muted">Loading…</div>;
+  if (loading)
+    return (
+      <div style={{ padding: 40 }} className="muted">
+        Loading…
+      </div>
+    );
   if (!user) return <AuthPage onAuth={setUser} />;
 
   return (
@@ -63,7 +72,9 @@ export function App() {
             {menu && (
               <div className="menu-pop">
                 <div className="menu-email">{user.email}</div>
-                <div className="menu-item" onClick={logout}>Log out</div>
+                <div className="menu-item" onClick={logout}>
+                  Log out
+                </div>
               </div>
             )}
           </div>

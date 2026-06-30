@@ -5,14 +5,8 @@ import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, tools } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
 import { invokeTool } from '../runtime/invoker.js';
-import {
-  createSchedule,
-  deleteSchedule,
-  isValidCron,
-  listByGroup,
-  toolInGroup,
-} from '../scheduler/service.js';
-import { SYSTEM_TOOL_NAMES, handleSystemTool, pickSystemTools, systemInstructions } from './system-tools.js';
+import { createSchedule, deleteSchedule, isValidCron, listByGroup, toolInGroup } from '../scheduler/service.js';
+import { handleSystemTool, pickSystemTools, SYSTEM_TOOL_NAMES, systemInstructions } from './system-tools.js';
 
 export interface AgentAuth {
   agentId: string;
@@ -58,7 +52,10 @@ async function resolveBearer(authHeader: string | undefined): Promise<Resolved |
       return { agentId: agent.id, ownerId: agent.ownerId, systemTools: agent.systemTools ?? [], restrictGroupId: null };
   }
 
-  const [tok] = await db.select().from(oauthAccessTokens).where(eq(oauthAccessTokens.tokenHash, hashKey(token)));
+  const [tok] = await db
+    .select()
+    .from(oauthAccessTokens)
+    .where(eq(oauthAccessTokens.tokenHash, hashKey(token)));
   if (!tok || tok.expiresAt.getTime() <= Date.now()) return null;
   const [ag] = await db.select().from(agents).where(eq(agents.id, tok.agentId));
   if (!ag) return null;
@@ -66,10 +63,7 @@ async function resolveBearer(authHeader: string | undefined): Promise<Resolved |
 }
 
 /** Resolve a Bearer token to an agent and verify it belongs to group `groupId`. */
-export async function authenticateAgent(
-  groupId: string,
-  authHeader: string | undefined,
-): Promise<AgentAuth | null> {
+export async function authenticateAgent(groupId: string, authHeader: string | undefined): Promise<AgentAuth | null> {
   const r = await resolveBearer(authHeader);
   if (!r) return null;
   // Group-scoped OAuth token only works on its own group.
@@ -104,8 +98,7 @@ export async function authenticateAgentAll(authHeader: string | undefined): Prom
   const grants = await db.select().from(agentGroups).where(eq(agentGroups.agentId, r.agentId));
   let groupIds = grants.map((g) => g.groupId);
   if (r.restrictGroupId) groupIds = groupIds.filter((id) => id === r.restrictGroupId);
-  if (!groupIds.length)
-    return { agentId: r.agentId, ownerId: r.ownerId, systemTools: r.systemTools, groups: [] };
+  if (!groupIds.length) return { agentId: r.agentId, ownerId: r.ownerId, systemTools: r.systemTools, groups: [] };
 
   const grps = await db.select().from(groups).where(inArray(groups.id, groupIds));
   return {
@@ -124,8 +117,7 @@ export async function authenticateAgentAll(authHeader: string | undefined): Prom
 const SELF_CRON_TOOLS = [
   {
     name: 'schedule_task',
-    description:
-      'Schedule a tool in this group to run on a cron expression. Returns the schedule id.',
+    description: 'Schedule a tool in this group to run on a cron expression. Returns the schedule id.',
     inputSchema: {
       type: 'object',
       required: ['cron', 'tool'],
@@ -179,11 +171,7 @@ async function handleSelfCron(auth: AgentAuth, name: string, args: Record<string
 
   if (name === 'list_schedules') {
     const rows = await listByGroup(auth.groupId);
-    return text(
-      JSON.stringify(
-        rows.map((r) => ({ id: r.id, cron: r.cron, tool: r.toolName, lastRun: r.lastRun })),
-      ),
-    );
+    return text(JSON.stringify(rows.map((r) => ({ id: r.id, cron: r.cron, tool: r.toolName, lastRun: r.lastRun }))));
   }
 
   if (name === 'cancel_schedule') {
@@ -220,7 +208,9 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
     const list = await groupVisibleTools(auth.groupId);
     const toolDefs = list.map((t) => ({
       name: t.name,
-      description: t.displayName ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}` : t.description ?? undefined,
+      description: t.displayName
+        ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
+        : (t.description ?? undefined),
       inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
       ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
     }));
@@ -306,7 +296,9 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
       tools: [
         ...[...map.values()].map(({ tool: t }) => ({
           name: t.name,
-          description: t.displayName ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}` : t.description ?? undefined,
+          description: t.displayName
+            ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
+            : (t.description ?? undefined),
           inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
           ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
         })),

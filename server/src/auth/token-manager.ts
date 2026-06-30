@@ -104,7 +104,12 @@ async function authorizationCode(
   if (auth.clientSecret) params.client_secret = auth.clientSecret;
   const r = await form(auth.tokenUrl, params);
   if (!r.access_token) throw new Error('Refresh failed: no access_token');
-  await saveTokens(sourceId, r.access_token, (r.refresh_token as string) ?? decrypt(row.refreshEnc), r.expires_in ?? 3600);
+  await saveTokens(
+    sourceId,
+    r.access_token,
+    (r.refresh_token as string) ?? decrypt(row.refreshEnc),
+    r.expires_in ?? 3600,
+  );
   return r.access_token;
 }
 
@@ -119,7 +124,7 @@ export async function saveTokens(
   const [existing] = await db.select().from(oauthTokens).where(eq(oauthTokens.sourceId, sourceId));
   const values = {
     accessEnc: encrypt(access),
-    refreshEnc: refreshToken ? encrypt(refreshToken) : existing?.refreshEnc ?? null,
+    refreshEnc: refreshToken ? encrypt(refreshToken) : (existing?.refreshEnc ?? null),
     expiresAt,
   };
   if (existing) await db.update(oauthTokens).set(values).where(eq(oauthTokens.sourceId, sourceId));
@@ -163,6 +168,9 @@ function headerFor(auth: AuthConfig, token: string): AuthHeader {
 }
 
 export function clearTokenCache(sourceId?: string): void {
-  if (!sourceId) return cache.clear();
+  if (!sourceId) {
+    cache.clear();
+    return;
+  }
   for (const k of cache.keys()) if (k.startsWith(`${sourceId}:`)) cache.delete(k);
 }

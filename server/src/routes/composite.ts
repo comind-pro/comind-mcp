@@ -16,7 +16,10 @@ const createBody = z.object({
 });
 
 async function ownedComposite(id: string, owner: string) {
-  const [tool] = await db.select().from(tools).where(and(eq(tools.id, id), eq(tools.ownerId, owner)));
+  const [tool] = await db
+    .select()
+    .from(tools)
+    .where(and(eq(tools.id, id), eq(tools.ownerId, owner)));
   return tool && tool.kind === 'composite' ? tool : null;
 }
 

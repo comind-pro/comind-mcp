@@ -28,14 +28,45 @@ export const DEFAULTS: Record<Kind, Cfg> = {
 
 const AUTH_DEFAULTS: Record<string, Cfg> = {
   basic: { type: 'basic', username: '${secret.USERNAME}', password: '${secret.PASSWORD}' },
-  oauth2_client_credentials: { type: 'oauth2_client_credentials', tokenUrl: '', clientId: '', clientSecret: '${secret.CLIENT_SECRET}', scope: '' },
-  token_request: { type: 'token_request', tokenUrl: '', method: 'POST', body: {}, tokenPath: '$.access_token', injectHeader: 'Authorization', injectPrefix: 'Bearer ' },
+  oauth2_client_credentials: {
+    type: 'oauth2_client_credentials',
+    tokenUrl: '',
+    clientId: '',
+    clientSecret: '${secret.CLIENT_SECRET}',
+    scope: '',
+  },
+  token_request: {
+    type: 'token_request',
+    tokenUrl: '',
+    method: 'POST',
+    body: {},
+    tokenPath: '$.access_token',
+    injectHeader: 'Authorization',
+    injectPrefix: 'Bearer ',
+  },
   oauth2_refresh: { type: 'oauth2_refresh', tokenUrl: '', clientId: '', refreshToken: '${secret.REFRESH_TOKEN}' },
-  oauth2_authorization_code: { type: 'oauth2_authorization_code', authUrl: '', tokenUrl: '', clientId: '', clientSecret: '${secret.CLIENT_SECRET}', scope: '' },
+  oauth2_authorization_code: {
+    type: 'oauth2_authorization_code',
+    authUrl: '',
+    tokenUrl: '',
+    clientId: '',
+    clientSecret: '${secret.CLIENT_SECRET}',
+    scope: '',
+  },
   mcp_oauth: { type: 'mcp_oauth' },
 };
 
-export function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+export function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
   return (
     <label className="builder-field">
       <span>{label}</span>
@@ -49,58 +80,118 @@ const SETUP: Partial<Record<Kind, ReactNode>> = {
     <ol>
       <li>
         Enable both APIs in your Google Cloud project:{' '}
-        <a href="https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com" target="_blank" rel="noreferrer">Analytics Admin API</a>{' '}·{' '}
-        <a href="https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com" target="_blank" rel="noreferrer">Analytics Data API</a>.
+        <a
+          href="https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Analytics Admin API
+        </a>{' '}
+        ·{' '}
+        <a
+          href="https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Analytics Data API
+        </a>
+        .
       </li>
       <li>
-        Create a <a href="https://cloud.google.com/iam/docs/service-accounts-create" target="_blank" rel="noreferrer">service account</a>,
-        then <a href="https://cloud.google.com/iam/docs/keys-create-delete" target="_blank" rel="noreferrer">add a JSON key</a> and download the file.
+        Create a{' '}
+        <a href="https://cloud.google.com/iam/docs/service-accounts-create" target="_blank" rel="noreferrer">
+          service account
+        </a>
+        , then{' '}
+        <a href="https://cloud.google.com/iam/docs/keys-create-delete" target="_blank" rel="noreferrer">
+          add a JSON key
+        </a>{' '}
+        and download the file.
       </li>
       <li>
         In GA4 →{' '}
-        <a href="https://support.google.com/analytics/answer/9305587" target="_blank" rel="noreferrer">Admin → Property Access Management</a>,
-        add the service-account email (<code>…iam.gserviceaccount.com</code>) with the <b>Viewer</b> role.
+        <a href="https://support.google.com/analytics/answer/9305587" target="_blank" rel="noreferrer">
+          Admin → Property Access Management
+        </a>
+        , add the service-account email (<code>…iam.gserviceaccount.com</code>) with the <b>Viewer</b> role.
       </li>
-      <li>Paste the <b>whole JSON key file</b> into a secret below named <code>GA_SA_JSON</code> (keep the reference <code>{'${secret.GA_SA_JSON}'}</code> in the config).</li>
-      <li><b>Lock to GA4 property</b> (recommended): set one property id — the source then only ever reads that property and account discovery is hidden, so agents can’t reach your other properties. Leave empty to let the agent choose any property the SA can access (use a separate source per property to scope access).</li>
-      <li>Leave <b>GCP project id</b> empty (quota then bills the service account’s own project). Only set it if you have a dedicated quota project where the SA has <code>serviceusage.serviceUsageConsumer</code> — otherwise you’ll get a 403.</li>
       <li>
-        <a href="https://developers.google.com/analytics/devguides/reporting/data/v1" target="_blank" rel="noreferrer">Data API v1 docs</a>.
-        Read-only scope <code>analytics.readonly</code>.
+        Paste the <b>whole JSON key file</b> into a secret below named <code>GA_SA_JSON</code> (keep the reference{' '}
+        <code>{'${secret.GA_SA_JSON}'}</code> in the config).
+      </li>
+      <li>
+        <b>Lock to GA4 property</b> (recommended): set one property id — the source then only ever reads that property
+        and account discovery is hidden, so agents can’t reach your other properties. Leave empty to let the agent
+        choose any property the SA can access (use a separate source per property to scope access).
+      </li>
+      <li>
+        Leave <b>GCP project id</b> empty (quota then bills the service account’s own project). Only set it if you have
+        a dedicated quota project where the SA has <code>serviceusage.serviceUsageConsumer</code> — otherwise you’ll get
+        a 403.
+      </li>
+      <li>
+        <a href="https://developers.google.com/analytics/devguides/reporting/data/v1" target="_blank" rel="noreferrer">
+          Data API v1 docs
+        </a>
+        . Read-only scope <code>analytics.readonly</code>.
       </li>
     </ol>
   ),
   mcp: (
     <ol>
-      <li>Get the remote MCP server’s <b>URL</b> (Streamable HTTP or SSE).</li>
-      <li>If it needs auth, pick an <b>Authorization</b> type below and store the token in <b>Secrets</b>.</li>
-      <li>For user-OAuth remote MCPs, choose <code>mcp_oauth</code>, Create, then press <b>Connect</b>.</li>
+      <li>
+        Get the remote MCP server’s <b>URL</b> (Streamable HTTP or SSE).
+      </li>
+      <li>
+        If it needs auth, pick an <b>Authorization</b> type below and store the token in <b>Secrets</b>.
+      </li>
+      <li>
+        For user-OAuth remote MCPs, choose <code>mcp_oauth</code>, Create, then press <b>Connect</b>.
+      </li>
     </ol>
   ),
   openapi: (
     <ol>
-      <li>Provide the <b>OpenAPI spec URL</b> (or paste an inline spec in JSON mode).</li>
-      <li>Set <b>Base URL</b> if the spec’s server URL is missing/relative.</li>
-      <li>Add auth below if the API needs it; tokens go through <b>Secrets</b>.</li>
+      <li>
+        Provide the <b>OpenAPI spec URL</b> (or paste an inline spec in JSON mode).
+      </li>
+      <li>
+        Set <b>Base URL</b> if the spec’s server URL is missing/relative.
+      </li>
+      <li>
+        Add auth below if the API needs it; tokens go through <b>Secrets</b>.
+      </li>
     </ol>
   ),
   http: (
     <ol>
-      <li>Set the <b>Base URL</b> and add each <b>endpoint</b> (name, method, path).</li>
-      <li>Use <code>{'{param}'}</code> in paths; configure auth/headers below.</li>
+      <li>
+        Set the <b>Base URL</b> and add each <b>endpoint</b> (name, method, path).
+      </li>
+      <li>
+        Use <code>{'{param}'}</code> in paths; configure auth/headers below.
+      </li>
     </ol>
   ),
   imap: (
     <ol>
-      <li>Use an <b>app password</b> (not your login password) from your mail provider.</li>
+      <li>
+        Use an <b>app password</b> (not your login password) from your mail provider.
+      </li>
       <li>Fill IMAP host/port; SMTP is optional (leave empty for a read-only mailbox).</li>
-      <li>Store the password as a secret <code>MAIL_PASS</code> and keep <code>{'${secret.MAIL_PASS}'}</code> here.</li>
+      <li>
+        Store the password as a secret <code>MAIL_PASS</code> and keep <code>{'${secret.MAIL_PASS}'}</code> here.
+      </li>
     </ol>
   ),
   sql: (
     <ol>
-      <li>Use a <b>read-only</b> Postgres user (every query runs in a READ ONLY transaction).</li>
-      <li>Store the connection string as a secret <code>DB_URL</code>; keep <code>{'${secret.DB_URL}'}</code> here.</li>
+      <li>
+        Use a <b>read-only</b> Postgres user (every query runs in a READ ONLY transaction).
+      </li>
+      <li>
+        Store the connection string as a secret <code>DB_URL</code>; keep <code>{'${secret.DB_URL}'}</code> here.
+      </li>
     </ol>
   ),
 };
@@ -111,7 +202,12 @@ function KvEditor({ obj, kv, valuePlaceholder }: { obj: Cfg; kv: any; valuePlace
       {Object.entries(obj).map(([k, v]) => (
         <div key={k} className="row" style={{ marginBottom: 4 }}>
           <input style={{ width: 160 }} value={k} onChange={(e) => kv.rename(k, e.target.value)} />
-          <input className="grow mono" value={String(v)} onChange={(e) => kv.set(k, e.target.value)} placeholder={valuePlaceholder} />
+          <input
+            className="grow mono"
+            value={String(v)}
+            onChange={(e) => kv.set(k, e.target.value)}
+            placeholder={valuePlaceholder}
+          />
           <button className="danger mini" onClick={() => kv.del(k)}>
             ×
           </button>
@@ -125,7 +221,15 @@ function KvEditor({ obj, kv, valuePlaceholder }: { obj: Cfg; kv: any; valuePlace
 }
 
 /** Per-kind connection form + authorization. Edits the whole config object via onChange. */
-export function SourceFields({ kind, cfg, onChange }: { kind: Kind; cfg: Cfg; onChange: (next: Cfg) => void }): ReactNode {
+export function SourceFields({
+  kind,
+  cfg,
+  onChange,
+}: {
+  kind: Kind;
+  cfg: Cfg;
+  onChange: (next: Cfg) => void;
+}): ReactNode {
   const patch = (p: Cfg) => onChange({ ...cfg, ...p });
   const setAuthField = (f: string, v: unknown) => onChange({ ...cfg, auth: { ...cfg.auth, [f]: v } });
 
@@ -180,7 +284,12 @@ export function SourceFields({ kind, cfg, onChange }: { kind: Kind; cfg: Cfg; on
       )}
       {kind === 'mcp' && (
         <>
-          <Field label="MCP URL" value={cfg.url} onChange={(v) => patch({ url: v })} placeholder="https://api.example.com/mcp" />
+          <Field
+            label="MCP URL"
+            value={cfg.url}
+            onChange={(v) => patch({ url: v })}
+            placeholder="https://api.example.com/mcp"
+          />
           <label className="builder-field">
             <span>transport</span>
             <select value={cfg.transport ?? 'http'} onChange={(e) => patch({ transport: e.target.value })}>
@@ -192,31 +301,84 @@ export function SourceFields({ kind, cfg, onChange }: { kind: Kind; cfg: Cfg; on
       )}
       {kind === 'openapi' && (
         <>
-          <Field label="OpenAPI spec URL" value={cfg.specUrl} onChange={(v) => patch({ specUrl: v })} placeholder="https://api.example.com/openapi.json" />
-          <Field label="Base URL (optional)" value={cfg.baseUrl} onChange={(v) => patch({ baseUrl: v })} placeholder="https://api.example.com" />
+          <Field
+            label="OpenAPI spec URL"
+            value={cfg.specUrl}
+            onChange={(v) => patch({ specUrl: v })}
+            placeholder="https://api.example.com/openapi.json"
+          />
+          <Field
+            label="Base URL (optional)"
+            value={cfg.baseUrl}
+            onChange={(v) => patch({ baseUrl: v })}
+            placeholder="https://api.example.com"
+          />
           <div className="hint">Set an inline spec (without a URL) in JSON mode.</div>
         </>
       )}
       {kind === 'http' && (
         <>
-          <Field label="Base URL" value={cfg.baseUrl} onChange={(v) => patch({ baseUrl: v })} placeholder="https://api.example.com" />
-          <Field label="Health path (optional)" value={cfg.healthPath} onChange={(v) => patch({ healthPath: v })} placeholder="/health" />
+          <Field
+            label="Base URL"
+            value={cfg.baseUrl}
+            onChange={(v) => patch({ baseUrl: v })}
+            placeholder="https://api.example.com"
+          />
+          <Field
+            label="Health path (optional)"
+            value={cfg.healthPath}
+            onChange={(v) => patch({ healthPath: v })}
+            placeholder="/health"
+          />
           <h3>Endpoints</h3>
           {(cfg.endpoints ?? []).map((ep: Cfg, i: number) => (
             <div key={i} className="row" style={{ marginBottom: 4 }}>
-              <input style={{ width: 120 }} placeholder="name" value={ep.name} onChange={(e) => patch({ endpoints: cfg.endpoints.map((x: Cfg, j: number) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-              <select value={ep.method} onChange={(e) => patch({ endpoints: cfg.endpoints.map((x: Cfg, j: number) => (j === i ? { ...x, method: e.target.value } : x)) })}>
+              <input
+                style={{ width: 120 }}
+                placeholder="name"
+                value={ep.name}
+                onChange={(e) =>
+                  patch({
+                    endpoints: cfg.endpoints.map((x: Cfg, j: number) => (j === i ? { ...x, name: e.target.value } : x)),
+                  })
+                }
+              />
+              <select
+                value={ep.method}
+                onChange={(e) =>
+                  patch({
+                    endpoints: cfg.endpoints.map((x: Cfg, j: number) =>
+                      j === i ? { ...x, method: e.target.value } : x,
+                    ),
+                  })
+                }
+              >
                 {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => (
                   <option key={m}>{m}</option>
                 ))}
               </select>
-              <input className="grow" placeholder="/path/{id}" value={ep.path} onChange={(e) => patch({ endpoints: cfg.endpoints.map((x: Cfg, j: number) => (j === i ? { ...x, path: e.target.value } : x)) })} />
-              <button className="danger mini" onClick={() => patch({ endpoints: cfg.endpoints.filter((_: Cfg, j: number) => j !== i) })}>
+              <input
+                className="grow"
+                placeholder="/path/{id}"
+                value={ep.path}
+                onChange={(e) =>
+                  patch({
+                    endpoints: cfg.endpoints.map((x: Cfg, j: number) => (j === i ? { ...x, path: e.target.value } : x)),
+                  })
+                }
+              />
+              <button
+                className="danger mini"
+                onClick={() => patch({ endpoints: cfg.endpoints.filter((_: Cfg, j: number) => j !== i) })}
+              >
                 ×
               </button>
             </div>
           ))}
-          <button className="ghost mini" onClick={() => patch({ endpoints: [...(cfg.endpoints ?? []), { name: '', method: 'GET', path: '' }] })}>
+          <button
+            className="ghost mini"
+            onClick={() => patch({ endpoints: [...(cfg.endpoints ?? []), { name: '', method: 'GET', path: '' }] })}
+          >
             + endpoint
           </button>
         </>
@@ -225,27 +387,67 @@ export function SourceFields({ kind, cfg, onChange }: { kind: Kind; cfg: Cfg; on
       {kind === 'imap' && (
         <>
           <h3>IMAP (incoming)</h3>
-          <Field label="IMAP host" value={cfg.imap?.host} onChange={(v) => patch({ imap: { ...cfg.imap, host: v } })} placeholder="imap.titan.email" />
-          <Field label="IMAP port" value={String(cfg.imap?.port ?? '')} onChange={(v) => patch({ imap: { ...cfg.imap, port: Number(v) || undefined } })} placeholder="993" />
+          <Field
+            label="IMAP host"
+            value={cfg.imap?.host}
+            onChange={(v) => patch({ imap: { ...cfg.imap, host: v } })}
+            placeholder="imap.titan.email"
+          />
+          <Field
+            label="IMAP port"
+            value={String(cfg.imap?.port ?? '')}
+            onChange={(v) => patch({ imap: { ...cfg.imap, port: Number(v) || undefined } })}
+            placeholder="993"
+          />
           <h3>SMTP (outgoing) — optional</h3>
           <div className="hint">Leave SMTP host empty for a read-only mailbox (no send_message tool).</div>
-          <Field label="SMTP host" value={cfg.smtp?.host} onChange={(v) => patch({ smtp: { ...cfg.smtp, host: v } })} placeholder="smtp.titan.email" />
-          <Field label="SMTP port" value={String(cfg.smtp?.port ?? '')} onChange={(v) => patch({ smtp: { ...cfg.smtp, port: Number(v) || undefined } })} placeholder="465" />
+          <Field
+            label="SMTP host"
+            value={cfg.smtp?.host}
+            onChange={(v) => patch({ smtp: { ...cfg.smtp, host: v } })}
+            placeholder="smtp.titan.email"
+          />
+          <Field
+            label="SMTP port"
+            value={String(cfg.smtp?.port ?? '')}
+            onChange={(v) => patch({ smtp: { ...cfg.smtp, port: Number(v) || undefined } })}
+            placeholder="465"
+          />
           <h3>Credentials</h3>
-          <Field label="User (email)" value={cfg.user} onChange={(v) => patch({ user: v })} placeholder="you@domain.com" />
-          <Field label="Password (secret ref)" value={cfg.pass} onChange={(v) => patch({ pass: v })} placeholder="${secret.MAIL_PASS}" />
+          <Field
+            label="User (email)"
+            value={cfg.user}
+            onChange={(v) => patch({ user: v })}
+            placeholder="you@domain.com"
+          />
+          <Field
+            label="Password (secret ref)"
+            value={cfg.pass}
+            onChange={(v) => patch({ pass: v })}
+            placeholder="${secret.MAIL_PASS}"
+          />
           <div className="hint">
-            Use an app password. Add it under “Secrets for this source” as <code>MAIL_PASS</code> and keep the
-            reference <code>{'${secret.MAIL_PASS}'}</code> here.
+            Use an app password. Add it under “Secrets for this source” as <code>MAIL_PASS</code> and keep the reference{' '}
+            <code>{'${secret.MAIL_PASS}'}</code> here.
           </div>
         </>
       )}
 
       {kind === 'sql' && (
         <>
-          <Field label="Connection URL" value={cfg.url} onChange={(v) => patch({ url: v })} placeholder="${secret.DB_URL}" />
+          <Field
+            label="Connection URL"
+            value={cfg.url}
+            onChange={(v) => patch({ url: v })}
+            placeholder="${secret.DB_URL}"
+          />
           <Field label="Schema" value={cfg.schema} onChange={(v) => patch({ schema: v })} placeholder="public" />
-          <Field label="Max rows" value={String(cfg.maxRows ?? '')} onChange={(v) => patch({ maxRows: Number(v) || undefined })} placeholder="1000" />
+          <Field
+            label="Max rows"
+            value={String(cfg.maxRows ?? '')}
+            onChange={(v) => patch({ maxRows: Number(v) || undefined })}
+            placeholder="1000"
+          />
           <div className="hint">
             Postgres only, <b>read-only</b> (every query runs in a READ ONLY transaction). Store the connection string
             as a Secret <code>DB_URL</code> and keep <code>{'${secret.DB_URL}'}</code> here. Tools: list_tables,
@@ -256,15 +458,30 @@ export function SourceFields({ kind, cfg, onChange }: { kind: Kind; cfg: Cfg; on
 
       {kind === 'ga' && (
         <>
-          <Field label="Lock to GA4 property (recommended)" value={cfg.propertyId} onChange={(v) => patch({ propertyId: v })} placeholder="GA4 property id" />
-          <Field label="GCP project id (quota — leave empty unless dedicated)" value={cfg.projectId} onChange={(v) => patch({ projectId: v })} placeholder="(optional)" />
-          <Field label="Service account JSON (secret ref)" value={cfg.sa} onChange={(v) => patch({ sa: v })} placeholder="${secret.GA_SA_JSON}" />
+          <Field
+            label="Lock to GA4 property (recommended)"
+            value={cfg.propertyId}
+            onChange={(v) => patch({ propertyId: v })}
+            placeholder="GA4 property id"
+          />
+          <Field
+            label="GCP project id (quota — leave empty unless dedicated)"
+            value={cfg.projectId}
+            onChange={(v) => patch({ projectId: v })}
+            placeholder="(optional)"
+          />
+          <Field
+            label="Service account JSON (secret ref)"
+            value={cfg.sa}
+            onChange={(v) => patch({ sa: v })}
+            placeholder="${secret.GA_SA_JSON}"
+          />
           <div className="hint">
             Create a GA4 service account, download the JSON key, and add it under “Secrets for this source” as
             <code>GA_SA_JSON</code> (paste the whole file). Grant that service-account email <b>Viewer</b> on the GA4
-            property. Keep the reference <code>{'${secret.GA_SA_JSON}'}</code> here. The GA4 <b>property</b> is passed per
-            tool call. Project id sets the API quota project (defaults to the service account’s). Read-only
-            (<code>analytics.readonly</code>). Tools: run_report, run_realtime_report, get_account_summaries, …
+            property. Keep the reference <code>{'${secret.GA_SA_JSON}'}</code> here. The GA4 <b>property</b> is passed
+            per tool call. Project id sets the API quota project (defaults to the service account’s). Read-only (
+            <code>analytics.readonly</code>). Tools: run_report, run_realtime_report, get_account_summaries, …
           </div>
         </>
       )}
@@ -290,47 +507,108 @@ export function SourceFields({ kind, cfg, onChange }: { kind: Kind; cfg: Cfg; on
             <Field
               label="Secret name"
               value={staticName}
-              onChange={(v) => patch({ headers: { ...cfg.headers, Authorization: `Bearer \${secret.${v || 'API_TOKEN'}}` } })}
+              onChange={(v) =>
+                patch({ headers: { ...cfg.headers, Authorization: `Bearer \${secret.${v || 'API_TOKEN'}}` } })
+              }
               placeholder="API_TOKEN"
             />
           )}
           {authType === 'basic' && (
             <>
-              <Field label="Username" value={cfg.auth.username} onChange={(v) => setAuthField('username', v)} placeholder="${secret.USERNAME}" />
-              <Field label="Password" value={cfg.auth.password} onChange={(v) => setAuthField('password', v)} placeholder="${secret.PASSWORD}" />
-              <Field label="Header name (optional)" value={cfg.auth.header ?? ''} onChange={(v) => setAuthField('header', v || undefined)} placeholder="Authorization" />
-              <div className="hint">→ <code>Authorization: Basic base64(user:pass)</code>. Take values from Secrets.</div>
+              <Field
+                label="Username"
+                value={cfg.auth.username}
+                onChange={(v) => setAuthField('username', v)}
+                placeholder="${secret.USERNAME}"
+              />
+              <Field
+                label="Password"
+                value={cfg.auth.password}
+                onChange={(v) => setAuthField('password', v)}
+                placeholder="${secret.PASSWORD}"
+              />
+              <Field
+                label="Header name (optional)"
+                value={cfg.auth.header ?? ''}
+                onChange={(v) => setAuthField('header', v || undefined)}
+                placeholder="Authorization"
+              />
+              <div className="hint">
+                → <code>Authorization: Basic base64(user:pass)</code>. Take values from Secrets.
+              </div>
             </>
           )}
-          {(authType === 'oauth2_client_credentials' || authType === 'oauth2_refresh' || authType === 'oauth2_authorization_code') && (
+          {(authType === 'oauth2_client_credentials' ||
+            authType === 'oauth2_refresh' ||
+            authType === 'oauth2_authorization_code') && (
             <>
-              {authType === 'oauth2_authorization_code' && <Field label="Authorize URL" value={cfg.auth.authUrl} onChange={(v) => setAuthField('authUrl', v)} />}
+              {authType === 'oauth2_authorization_code' && (
+                <Field label="Authorize URL" value={cfg.auth.authUrl} onChange={(v) => setAuthField('authUrl', v)} />
+              )}
               <Field label="Token URL" value={cfg.auth.tokenUrl} onChange={(v) => setAuthField('tokenUrl', v)} />
               <Field label="Client ID" value={cfg.auth.clientId} onChange={(v) => setAuthField('clientId', v)} />
-              {authType !== 'oauth2_refresh' && <Field label="Client secret" value={cfg.auth.clientSecret} onChange={(v) => setAuthField('clientSecret', v)} placeholder="${secret.CLIENT_SECRET}" />}
-              {authType === 'oauth2_refresh' && <Field label="Refresh token" value={cfg.auth.refreshToken} onChange={(v) => setAuthField('refreshToken', v)} placeholder="${secret.REFRESH_TOKEN}" />}
+              {authType !== 'oauth2_refresh' && (
+                <Field
+                  label="Client secret"
+                  value={cfg.auth.clientSecret}
+                  onChange={(v) => setAuthField('clientSecret', v)}
+                  placeholder="${secret.CLIENT_SECRET}"
+                />
+              )}
+              {authType === 'oauth2_refresh' && (
+                <Field
+                  label="Refresh token"
+                  value={cfg.auth.refreshToken}
+                  onChange={(v) => setAuthField('refreshToken', v)}
+                  placeholder="${secret.REFRESH_TOKEN}"
+                />
+              )}
               <Field label="Scope (optional)" value={cfg.auth.scope} onChange={(v) => setAuthField('scope', v)} />
             </>
           )}
           {authType === 'token_request' && (
             <>
               <Field label="Login URL" value={cfg.auth.tokenUrl} onChange={(v) => setAuthField('tokenUrl', v)} />
-              <Field label="Token JSON-path" value={cfg.auth.tokenPath} onChange={(v) => setAuthField('tokenPath', v)} placeholder="$.data.token" />
-              <Field label="Inject header" value={cfg.auth.injectHeader} onChange={(v) => setAuthField('injectHeader', v)} placeholder="Authorization" />
-              <Field label="Inject prefix" value={cfg.auth.injectPrefix} onChange={(v) => setAuthField('injectPrefix', v)} placeholder="Bearer " />
-              <div className="hint" style={{ marginTop: 6 }}>Body (login payload — custom field names)</div>
+              <Field
+                label="Token JSON-path"
+                value={cfg.auth.tokenPath}
+                onChange={(v) => setAuthField('tokenPath', v)}
+                placeholder="$.data.token"
+              />
+              <Field
+                label="Inject header"
+                value={cfg.auth.injectHeader}
+                onChange={(v) => setAuthField('injectHeader', v)}
+                placeholder="Authorization"
+              />
+              <Field
+                label="Inject prefix"
+                value={cfg.auth.injectPrefix}
+                onChange={(v) => setAuthField('injectPrefix', v)}
+                placeholder="Bearer "
+              />
+              <div className="hint" style={{ marginTop: 6 }}>
+                Body (login payload — custom field names)
+              </div>
               <KvEditor obj={body} kv={bodyKv} valuePlaceholder="${secret.PASSWORD} or value" />
             </>
           )}
           {authType === 'mcp_oauth' && (
             <>
-              <Field label="Client ID (optional — Titan: claude)" value={cfg.auth.clientId ?? ''} onChange={(v) => setAuthField('clientId', v || undefined)} placeholder="claude" />
+              <Field
+                label="Client ID (optional — Titan: claude)"
+                value={cfg.auth.clientId ?? ''}
+                onChange={(v) => setAuthField('clientId', v || undefined)}
+                placeholder="claude"
+              />
               <div className="hint">User-OAuth remote MCP. After Create → Connect button.</div>
             </>
           )}
 
           <h3>Custom headers</h3>
-          <div className="hint">Arbitrary headers (e.g. <code>X-Api-Key: {'${secret.KEY}'}</code>). Suitable for static tokens.</div>
+          <div className="hint">
+            Arbitrary headers (e.g. <code>X-Api-Key: {'${secret.KEY}'}</code>). Suitable for static tokens.
+          </div>
           <KvEditor obj={headers} kv={headersKv} valuePlaceholder="${secret.API_TOKEN} / value" />
         </>
       )}

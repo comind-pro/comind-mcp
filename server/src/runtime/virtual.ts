@@ -2,9 +2,9 @@ import dns from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { Agent, fetch as undiciFetch } from 'undici';
+import { config } from '../config.js';
 import type { CallResult } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
-import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { rateLimits } from '../db/schema.js';
 import { injectSecrets, loadSecretMap } from '../secrets/loader.js';
@@ -113,7 +113,8 @@ export function safeLookup(
       const addrs = await dns.lookup(hostname, { all: true });
       if (!addrs.length) throw new Error(`Cannot resolve host: ${hostname}`);
       if (!hostAllowed(hostname)) {
-        for (const a of addrs) if (isPrivateIp(a.address)) throw new Error(`Blocked: ${hostname} → private ${a.address}`);
+        for (const a of addrs)
+          if (isPrivateIp(a.address)) throw new Error(`Blocked: ${hostname} → private ${a.address}`);
       }
       // undici's connector requests all addresses (opts.all); honor both contracts.
       if (opts?.all) cb(null, addrs);
@@ -167,7 +168,10 @@ async function overRateLimit(ownerId: string): Promise<boolean> {
 }
 
 /** Read a response body up to a byte cap, flagging truncation. */
-async function readCapped(body: ReadableStream<Uint8Array> | null, max: number): Promise<{ text: string; truncated: boolean }> {
+async function readCapped(
+  body: ReadableStream<Uint8Array> | null,
+  max: number,
+): Promise<{ text: string; truncated: boolean }> {
   if (!body) return { text: '', truncated: false };
   const reader = body.getReader();
   const parts: Uint8Array[] = [];
@@ -246,11 +250,19 @@ export async function runVirtual(
       redirect: 'manual', // no auto-follow (a redirect could bounce to a private host)
       dispatcher: pinnedAgent, // connect-time IP validation (rebinding-safe)
     });
-    const { text, truncated } = await readCapped(res.body as ReadableStream<Uint8Array> | null, config.virtualMaxResponseBytes);
+    const { text, truncated } = await readCapped(
+      res.body as ReadableStream<Uint8Array> | null,
+      config.virtualMaxResponseBytes,
+    );
     const out = truncated ? `${text}\n…[truncated at ${config.virtualMaxResponseBytes} bytes]` : text;
     return textResult(out, !(res.status >= 200 && res.status < 300));
   } catch (e) {
-    const msg = (e as Error)?.name === 'AbortError' ? `Request timed out after ${config.virtualTimeoutMs}ms` : e instanceof Error ? e.message : String(e);
+    const msg =
+      (e as Error)?.name === 'AbortError'
+        ? `Request timed out after ${config.virtualTimeoutMs}ms`
+        : e instanceof Error
+          ? e.message
+          : String(e);
     return textResult(msg, true);
   } finally {
     clearTimeout(timer);

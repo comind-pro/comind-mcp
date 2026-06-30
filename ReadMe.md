@@ -181,8 +181,8 @@ Built iteratively, module by module. Everything below is implemented and working
 The core is solid; the production hardening is not done yet. Roughly **60–65%** — usable for an internal/trusted, single-instance deployment after the quick fixes below; **not** ready for public, untrusted, multi-tenant SaaS until the blockers are closed.
 
 ### 🔴 Blockers
-1. **Rate limiting — missing everywhere.** `/auth` (password brute-force), the gateway (abuse), per-agent quotas. Critical for any public exposure.
-2. **No timeouts on upstream calls.** `fetch` runs without abort/timeout → a hung upstream hangs the request/worker. A DoS vector.
+1. **Rate limiting — mostly missing.** Executable virtual tools are now rate-limited per owner (in-memory or shared via Postgres) and SSRF-guarded, but `/auth` (password brute-force), the gateway (abuse) and per-agent quotas still aren't. Critical for any public exposure.
+2. **Timeouts — partial.** Executable virtual tools now run with a 15s timeout + `AbortController` (and a connect-time SSRF pin). Remaining: connector upstream calls (GA / HTTP / OpenAPI / MCP `fetch`) still run without an explicit per-call timeout → a hung upstream can hang the request.
 3. **Scheduler is not multi-replica safe.** In-memory cron → with more than one instance every schedule fires N times. Needs a distributed lock (Postgres advisory lock / a dedicated worker).
 4. **Migrations run on every instance boot** — a race with multiple replicas. Move migrations to a separate deploy step.
 5. **JWTs cannot be revoked.** A 7-day token can't be invalidated before it expires (logout is local-only); a leaked token stays valid for a week. Needs revocation, or short-lived access + refresh tokens.

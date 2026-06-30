@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  SYSTEM_TOOLS,
-  SYSTEM_TOOL_NAMES,
   handleSystemTool,
   pickSystemTools,
-  systemInstructions,
+  SYSTEM_TOOL_NAMES,
+  SYSTEM_TOOLS,
   type SystemCtx,
+  systemInstructions,
 } from './system-tools.js';
 
 const groupCtx: SystemCtx = {

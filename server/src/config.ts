@@ -69,4 +69,17 @@ export const config = {
     .filter(Boolean),
 };
 
+// Fail-fast: never silently run in a non-dev environment on the insecure dev
+// fallback secrets (the defaults are public in the repo — anyone could decrypt a
+// vault / forge a JWT for a deployment that forgot to set them).
+if (config.serverEnv !== 'dev' && config.serverEnv !== 'test') {
+  const missing = ['VAULT_KEY', 'JWT_SECRET'].filter((k) => process.env[k] === undefined);
+  if (missing.length) {
+    throw new Error(
+      `Refusing to start in '${config.serverEnv}' with insecure dev defaults: set ${missing.join(' and ')} ` +
+        `(or SERVER_ENV=dev for local development).`,
+    );
+  }
+}
+
 export type Config = typeof config;

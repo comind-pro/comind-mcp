@@ -2,17 +2,7 @@ import { inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { db, pool, runMigrations } from '../db/client.js';
-import {
-  agentGroups,
-  agentKeys,
-  agents,
-  callLogs,
-  groups,
-  groupTools,
-  sources,
-  tools,
-  users,
-} from '../db/schema.js';
+import { agentGroups, agentKeys, agents, callLogs, groups, groupTools, sources, tools, users } from '../db/schema.js';
 import { signJwt } from '../lib/auth.js';
 import { hashKey } from '../lib/crypto.js';
 import { newId } from '../lib/id.js';
@@ -42,35 +32,86 @@ const userIds: string[] = [];
 async function seedOwner(suffix: string): Promise<Seed> {
   const ownerId = newId();
   userIds.push(ownerId);
-  await db.insert(users).values({ id: ownerId, email: `iso_${tag}_${suffix}@t.local`, passwordHash: 'x', createdAt: new Date() });
+  await db
+    .insert(users)
+    .values({ id: ownerId, email: `iso_${tag}_${suffix}@t.local`, passwordHash: 'x', createdAt: new Date() });
 
   const sourceId = newId();
   await db.insert(sources).values({
-    id: sourceId, ownerId, name: `src-${suffix}`, kind: 'ga', config: {}, status: 'ok',
-    objects: [{ id: `properties/${suffix}`, name: `prop-${suffix}`, type: 'property' }], createdAt: new Date(),
+    id: sourceId,
+    ownerId,
+    name: `src-${suffix}`,
+    kind: 'ga',
+    config: {},
+    status: 'ok',
+    objects: [{ id: `properties/${suffix}`, name: `prop-${suffix}`, type: 'property' }],
+    createdAt: new Date(),
   });
 
   const toolId = newId();
   const toolName = `${suffix}.run`;
   await db.insert(tools).values({
-    id: toolId, ownerId, sourceId, kind: 'native', name: toolName, upstreamName: 'run',
-    visible: true, inputSchema: {}, readOnly: true, dangerous: false,
-    permissions: ['ga4.read'], examples: [{ description: 'ex', input: { x: 1 } }],
-    recommendedUse: { daily_report: true }, createdAt: new Date(),
+    id: toolId,
+    ownerId,
+    sourceId,
+    kind: 'native',
+    name: toolName,
+    upstreamName: 'run',
+    visible: true,
+    inputSchema: {},
+    readOnly: true,
+    dangerous: false,
+    permissions: ['ga4.read'],
+    examples: [{ description: 'ex', input: { x: 1 } }],
+    recommendedUse: { daily_report: true },
+    createdAt: new Date(),
   });
 
   const groupId = newId();
   const groupSlug = `grp-${suffix}-${tag}`;
-  await db.insert(groups).values({ id: groupId, ownerId, slug: groupSlug, name: `grp-${suffix}`, schedulingEnabled: true, createdAt: new Date() });
+  await db.insert(groups).values({
+    id: groupId,
+    ownerId,
+    slug: groupSlug,
+    name: `grp-${suffix}`,
+    schedulingEnabled: true,
+    createdAt: new Date(),
+  });
   await db.insert(groupTools).values({ groupId, toolId });
 
   const agentId = newId();
-  await db.insert(agents).values({ id: agentId, ownerId, name: `agent-${suffix}`, apiKeyHash: null, apiKeyPrefix: null, systemTools: ['system.context', 'system.debug'], createdAt: new Date() });
+  await db.insert(agents).values({
+    id: agentId,
+    ownerId,
+    name: `agent-${suffix}`,
+    apiKeyHash: null,
+    apiKeyPrefix: null,
+    systemTools: ['system.context', 'system.debug'],
+    createdAt: new Date(),
+  });
   const token = `tok_${suffix}_${tag}`;
-  await db.insert(agentKeys).values({ id: newId(), agentId, hash: hashKey(token), prefix: token.slice(0, 8), label: 'test', archived: false, createdAt: new Date() });
+  await db.insert(agentKeys).values({
+    id: newId(),
+    agentId,
+    hash: hashKey(token),
+    prefix: token.slice(0, 8),
+    label: 'test',
+    archived: false,
+    createdAt: new Date(),
+  });
   await db.insert(agentGroups).values({ agentId, groupId });
 
-  await db.insert(callLogs).values({ id: newId(), ownerId, groupId, agentId, toolName, status: 'success', source: 'live', durationMs: 10, ts: new Date() });
+  await db.insert(callLogs).values({
+    id: newId(),
+    ownerId,
+    groupId,
+    agentId,
+    toolName,
+    status: 'success',
+    source: 'live',
+    durationMs: 10,
+    ts: new Date(),
+  });
 
   return { ownerId, token, sourceId, toolName, groupId, groupSlug, agentId };
 }
@@ -101,7 +142,7 @@ d('cross-owner isolation', () => {
     expect(await authenticateAgent(B.groupId, `Bearer ${A.token}`)).toBeNull();
   });
 
-  it("agent A authenticates into its own group", async () => {
+  it('agent A authenticates into its own group', async () => {
     const auth = await authenticateAgent(A.groupId, `Bearer ${A.token}`);
     expect(auth?.ownerId).toBe(A.ownerId);
     expect(auth?.groupId).toBe(A.groupId);
@@ -116,7 +157,7 @@ d('cross-owner isolation', () => {
 
   // ---- system.context scoping ----
 
-  it("system.context for A exposes only A’s sources and tools", async () => {
+  it('system.context for A exposes only A’s sources and tools', async () => {
     const auth = await authenticateAgent(A.groupId, `Bearer ${A.token}`);
     expect(auth).not.toBeNull();
     const ctx: SystemCtx = {
@@ -151,8 +192,13 @@ d('cross-owner isolation', () => {
     expect(src.objects).not.toContainEqual(expect.objectContaining({ id: 'properties/b' }));
   });
 
-  it("system.debug for A never surfaces B’s call logs", async () => {
-    const ctx: SystemCtx = { agentId: A.agentId, ownerId: A.ownerId, scope: 'group', groups: [{ id: A.groupId, slug: A.groupSlug }] };
+  it('system.debug for A never surfaces B’s call logs', async () => {
+    const ctx: SystemCtx = {
+      agentId: A.agentId,
+      ownerId: A.ownerId,
+      scope: 'group',
+      groups: [{ id: A.groupId, slug: A.groupSlug }],
+    };
     const sc = (await handleSystemTool(ctx, 'system.debug', {})).structuredContent as any;
     const tools = sc.calls.map((c: any) => c.tool);
     expect(tools).toContain(A.toolName);
@@ -162,20 +208,28 @@ d('cross-owner isolation', () => {
   // ---- control-plane owner scoping ----
 
   it('GET /sources returns only the caller’s sources', async () => {
-    const res = await app.inject({ method: 'GET', url: '/sources', headers: { authorization: `Bearer ${signJwt(A.ownerId)}` } });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/sources',
+      headers: { authorization: `Bearer ${signJwt(A.ownerId)}` },
+    });
     const ids = res.json().map((s: any) => s.id);
     expect(ids).toContain(A.sourceId);
     expect(ids).not.toContain(B.sourceId);
   });
 
   it('GET /groups returns only the caller’s groups', async () => {
-    const res = await app.inject({ method: 'GET', url: '/groups', headers: { authorization: `Bearer ${signJwt(A.ownerId)}` } });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/groups',
+      headers: { authorization: `Bearer ${signJwt(A.ownerId)}` },
+    });
     const ids = res.json().map((g: any) => g.id);
     expect(ids).toContain(A.groupId);
     expect(ids).not.toContain(B.groupId);
   });
 
-  it("A cannot set system-tools on B’s agent (404)", async () => {
+  it('A cannot set system-tools on B’s agent (404)', async () => {
     const res = await app.inject({
       method: 'PUT',
       url: `/agents/${B.agentId}/system-tools`,

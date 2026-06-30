@@ -16,8 +16,7 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
   const setStep = (i: number, patch: Cfg) =>
     setDef((d) => ({ ...d, steps: d.steps.map((s: Cfg, j: number) => (j === i ? { ...s, ...patch } : s)) }));
 
-  const setArg = (i: number, k: string, v: string) =>
-    setStep(i, { args: { ...def.steps[i].args, [k]: v } });
+  const setArg = (i: number, k: string, v: string) => setStep(i, { args: { ...def.steps[i].args, [k]: v } });
   const renameArg = (i: number, oldK: string, newK: string) => {
     const a = { ...def.steps[i].args };
     const val = a[oldK];
@@ -46,7 +45,7 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
         setJsonErr('');
         setMode('form');
       } catch (e) {
-        setJsonErr('Invalid JSON: ' + (e as Error).message);
+        setJsonErr(`Invalid JSON: ${(e as Error).message}`);
       }
     }
   };
@@ -87,10 +86,18 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
           </button>
         </div>
       </div>
-      <div className="hint">One tool = a sequence of calls to other tools. Substitution: ${'{$.steps.ID.text}'} / ${'{$.input.x}'}.</div>
+      <div className="hint">
+        One tool = a sequence of calls to other tools. Substitution: ${'{$.steps.ID.text}'} / ${'{$.input.x}'}.
+      </div>
 
       <div className="spacer" />
-      <input className="grow" style={{ width: '100%' }} placeholder="name (e.g. ops.report)" value={name} onChange={(e) => setName(e.target.value)} />
+      <input
+        className="grow"
+        style={{ width: '100%' }}
+        placeholder="name (e.g. ops.report)"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
       <div className="spacer" />
 
       {mode === 'json' ? (
@@ -103,7 +110,12 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
           {def.steps.map((s: Cfg, i: number) => (
             <div key={i} className="picker-group" style={{ padding: 10 }}>
               <div className="row">
-                <input style={{ width: 70 }} placeholder="id" value={s.id} onChange={(e) => setStep(i, { id: e.target.value })} />
+                <input
+                  style={{ width: 70 }}
+                  placeholder="id"
+                  value={s.id}
+                  onChange={(e) => setStep(i, { id: e.target.value })}
+                />
                 <select className="grow" value={s.tool} onChange={(e) => setStep(i, { tool: e.target.value })}>
                   <option value="">— tool —</option>
                   {tools.map((t) => (
@@ -117,18 +129,33 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
                 </button>
               </div>
               <div className="spacer" />
-              <Field label="when (opt.)" value={s.when ?? ''} onChange={(v) => setStep(i, { when: v || undefined })} placeholder="$.input.flag" />
-              <div className="hint" style={{ marginTop: 6 }}>args</div>
+              <Field
+                label="when (opt.)"
+                value={s.when ?? ''}
+                onChange={(v) => setStep(i, { when: v || undefined })}
+                placeholder="$.input.flag"
+              />
+              <div className="hint" style={{ marginTop: 6 }}>
+                args
+              </div>
               {Object.entries(s.args ?? {}).map(([k, v]) => (
                 <div key={k} className="row" style={{ marginBottom: 4 }}>
                   <input style={{ width: 140 }} value={k} onChange={(e) => renameArg(i, k, e.target.value)} />
-                  <input className="grow mono" value={String(v)} onChange={(e) => setArg(i, k, e.target.value)} placeholder='value or ${$.steps.s1.text}' />
+                  <input
+                    className="grow mono"
+                    value={String(v)}
+                    onChange={(e) => setArg(i, k, e.target.value)}
+                    placeholder="value or ${$.steps.s1.text}"
+                  />
                   <button className="danger mini" onClick={() => delArg(i, k)}>
                     ×
                   </button>
                 </div>
               ))}
-              <button className="ghost mini" onClick={() => setArg(i, `arg${Object.keys(s.args ?? {}).length + 1}`, '')}>
+              <button
+                className="ghost mini"
+                onClick={() => setArg(i, `arg${Object.keys(s.args ?? {}).length + 1}`, '')}
+              >
                 + arg
               </button>
             </div>
@@ -139,15 +166,16 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
 
           <h3>Output (optional)</h3>
           <div className="hint">
-            <b>text</b>: a string template, e.g. <code>{'Found: ${$.steps.s1.text}'}</code>.{' '}
-            <b>json</b>: an object template → returned as <b>structured output</b> (describe it in Output schema below).
-            Empty → raw result of the last step.
+            <b>text</b>: a string template, e.g. <code>{'Found: ${$.steps.s1.text}'}</code>. <b>json</b>: an object
+            template → returned as <b>structured output</b> (describe it in Output schema below). Empty → raw result of
+            the last step.
           </div>
           <OutputField value={def.output} onChange={(v) => setDef((d) => ({ ...d, output: v }))} />
 
           <h3>Input schema (JSON) — params the tool accepts</h3>
           <div className="hint">
-            e.g. <code>{'{ "type":"object", "properties": { "from":{"type":"string"}, "to":{"type":"string"} } }'}</code> —
+            e.g.{' '}
+            <code>{'{ "type":"object", "properties": { "from":{"type":"string"}, "to":{"type":"string"} } }'}</code> —
             reference values in steps as <code>$.input.from</code>.
           </div>
           <SchemaField value={def.inputSchema} onParsed={(v) => setDef((d) => ({ ...d, inputSchema: v }))} />
@@ -169,7 +197,13 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
 
 /** JSON-schema textarea: parses to an object (or undefined when empty), shows
  *  a parse error inline. Keeps its own text so partial typing isn't lost. */
-function SchemaField({ value, onParsed }: { value: unknown; onParsed: (v: Record<string, unknown> | undefined) => void }) {
+function SchemaField({
+  value,
+  onParsed,
+}: {
+  value: unknown;
+  onParsed: (v: Record<string, unknown> | undefined) => void;
+}) {
   const [text, setText] = useState(value ? JSON.stringify(value, null, 2) : '');
   const [err, setErr] = useState('');
   const onChange = (v: string) => {
@@ -257,7 +291,17 @@ export function OutputField({
   );
 }
 
-function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
   return (
     <label className="builder-field">
       <span>{label}</span>

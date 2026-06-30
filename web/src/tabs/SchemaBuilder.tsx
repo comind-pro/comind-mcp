@@ -13,7 +13,10 @@ export interface SchemaNode {
   items: SchemaNode | null; // array
   rest: Cfg;
 }
-export interface Field { name: string; schema: SchemaNode }
+export interface Field {
+  name: string;
+  schema: SchemaNode;
+}
 
 export function emptyNode(type = 'string'): SchemaNode {
   return { type, description: '', properties: [], required: [], items: null, rest: {} };
@@ -75,7 +78,11 @@ export function FieldRows({
   onChange: (fields: Field[], required: string[]) => void;
   depth?: number;
 }): ReactNode {
-  const setField = (i: number, schema: SchemaNode) => onChange(fields.map((f, j) => (j === i ? { ...f, schema } : f)), required);
+  const setField = (i: number, schema: SchemaNode) =>
+    onChange(
+      fields.map((f, j) => (j === i ? { ...f, schema } : f)),
+      required,
+    );
   const rename = (i: number, name: string) => {
     const old = fields[i].name;
     onChange(
@@ -85,7 +92,10 @@ export function FieldRows({
   };
   const remove = (i: number) => {
     const gone = fields[i].name;
-    onChange(fields.filter((_, j) => j !== i), required.filter((r) => r !== gone));
+    onChange(
+      fields.filter((_, j) => j !== i),
+      required.filter((r) => r !== gone),
+    );
   };
   const add = () => onChange([...fields, { name: '', schema: emptyNode() }], required);
   const toggleReq = (name: string) =>
@@ -96,24 +106,51 @@ export function FieldRows({
       {fields.map((f, i) => (
         <div key={i} style={{ marginBottom: 8 }}>
           <div className="row" style={{ alignItems: 'center' }}>
-            <input style={{ width: 120 }} className="mono" value={f.name} onChange={(e) => rename(i, e.target.value)} placeholder="name" />
+            <input
+              style={{ width: 120 }}
+              className="mono"
+              value={f.name}
+              onChange={(e) => rename(i, e.target.value)}
+              placeholder="name"
+            />
             <TypeSelect value={f.schema.type} onChange={(t) => setField(i, changeType(f.schema, t))} />
-            <input className="grow" value={f.schema.description} onChange={(e) => setField(i, { ...f.schema, description: e.target.value })} placeholder="description" />
-            <label className="muted" style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }} title="required">
+            <input
+              className="grow"
+              value={f.schema.description}
+              onChange={(e) => setField(i, { ...f.schema, description: e.target.value })}
+              placeholder="description"
+            />
+            <label
+              className="muted"
+              style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              title="required"
+            >
               <input type="checkbox" checked={required.includes(f.name)} onChange={() => toggleReq(f.name)} /> req
             </label>
-            <span className="inline-x" onClick={() => remove(i)}>×</span>
+            <span className="inline-x" onClick={() => remove(i)}>
+              ×
+            </span>
           </div>
           <NodeChildren schema={f.schema} onChange={(s) => setField(i, s)} depth={depth + 1} />
         </div>
       ))}
-      <button className="ghost mini" onClick={add}>+ {depth ? 'field' : 'param'}</button>
+      <button className="ghost mini" onClick={add}>
+        + {depth ? 'field' : 'param'}
+      </button>
     </div>
   );
 }
 
 /** Renders the nested structure of a node (object props / array items). */
-function NodeChildren({ schema, onChange, depth }: { schema: SchemaNode; onChange: (s: SchemaNode) => void; depth: number }): ReactNode {
+function NodeChildren({
+  schema,
+  onChange,
+  depth,
+}: {
+  schema: SchemaNode;
+  onChange: (s: SchemaNode) => void;
+  depth: number;
+}): ReactNode {
   if (schema.type === 'object') {
     return (
       <FieldRows
@@ -129,9 +166,16 @@ function NodeChildren({ schema, onChange, depth }: { schema: SchemaNode; onChang
     return (
       <div style={{ marginLeft: 14, paddingLeft: 12, borderLeft: '1px solid var(--border)', marginTop: 6 }}>
         <div className="row" style={{ alignItems: 'center' }}>
-          <span className="muted" style={{ fontSize: 11, minWidth: 40 }}>items</span>
+          <span className="muted" style={{ fontSize: 11, minWidth: 40 }}>
+            items
+          </span>
           <TypeSelect value={items.type} onChange={(t) => onChange({ ...schema, items: changeType(items, t) })} />
-          <input className="grow" value={items.description} onChange={(e) => onChange({ ...schema, items: { ...items, description: e.target.value } })} placeholder="item description" />
+          <input
+            className="grow"
+            value={items.description}
+            onChange={(e) => onChange({ ...schema, items: { ...items, description: e.target.value } })}
+            placeholder="item description"
+          />
         </div>
         <NodeChildren schema={items} onChange={(s) => onChange({ ...schema, items: s })} depth={depth + 1} />
       </div>
@@ -142,9 +186,15 @@ function NodeChildren({ schema, onChange, depth }: { schema: SchemaNode; onChang
 
 function TypeSelect({ value, onChange }: { value: string; onChange: (t: string) => void }) {
   return (
-    <select style={{ width: 100 }} value={PARAM_TYPES.includes(value) ? value : 'string'} onChange={(e) => onChange(e.target.value)}>
+    <select
+      style={{ width: 100 }}
+      value={PARAM_TYPES.includes(value) ? value : 'string'}
+      onChange={(e) => onChange(e.target.value)}
+    >
       {PARAM_TYPES.map((t) => (
-        <option key={t} value={t}>{t}</option>
+        <option key={t} value={t}>
+          {t}
+        </option>
       ))}
     </select>
   );
@@ -177,7 +227,11 @@ export function ValueInput({
 
   if (schema.type === 'boolean') {
     return (
-      <select style={{ width: '100%', ...errStyle }} value={value === true ? 'true' : value === false ? 'false' : ''} onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value === 'true')}>
+      <select
+        style={{ width: '100%', ...errStyle }}
+        value={value === true ? 'true' : value === false ? 'false' : ''}
+        onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value === 'true')}
+      >
         <option value="">—</option>
         <option value="true">true</option>
         <option value="false">false</option>
@@ -204,13 +258,22 @@ export function ValueInput({
         {schema.properties.map((f, i) => (
           <div key={i} style={{ marginBottom: 8 }}>
             <div className="field-label" style={{ marginBottom: 4 }}>
-              <span className="mono" style={{ color: 'var(--text)' }}>{f.name || '(unnamed)'}</span>{' '}
-              <span style={{ fontWeight: 400 }}>{f.schema.type}{schema.required.includes(f.name) ? ' · required' : ''}</span>
+              <span className="mono" style={{ color: 'var(--text)' }}>
+                {f.name || '(unnamed)'}
+              </span>{' '}
+              <span style={{ fontWeight: 400 }}>
+                {f.schema.type}
+                {schema.required.includes(f.name) ? ' · required' : ''}
+              </span>
             </div>
             <ValueInput schema={f.schema} value={obj[f.name]} onChange={(v) => onChange({ ...obj, [f.name]: v })} />
           </div>
         ))}
-        {!schema.properties.length && <div className="hint" style={{ margin: 0 }}>no fields</div>}
+        {!schema.properties.length && (
+          <div className="hint" style={{ margin: 0 }}>
+            no fields
+          </div>
+        )}
       </div>
     );
   }
@@ -224,12 +287,19 @@ export function ValueInput({
           <div key={i} style={{ marginBottom: 8 }}>
             <div className="field-label" style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className="muted">#{i + 1}</span>
-              <span className="inline-x" onClick={() => onChange(arr.filter((_, j) => j !== i))}>×</span>
+              <span className="inline-x" onClick={() => onChange(arr.filter((_, j) => j !== i))}>
+                ×
+              </span>
             </div>
             <ValueInput schema={items} value={it} onChange={(v) => onChange(arr.map((x, j) => (j === i ? v : x)))} />
           </div>
         ))}
-        <button className="ghost mini" onClick={() => onChange([...arr, items.type === 'object' ? {} : items.type === 'array' ? [] : undefined])}>+ item</button>
+        <button
+          className="ghost mini"
+          onClick={() => onChange([...arr, items.type === 'object' ? {} : items.type === 'array' ? [] : undefined])}
+        >
+          + item
+        </button>
       </div>
     );
   }

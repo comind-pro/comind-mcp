@@ -11,12 +11,16 @@ export function SecretsTab() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
 
-  const load = () => api.get<Secret[]>('/secrets').then(setSecrets).catch((e) => setErr(String(e.message)));
+  const load = () =>
+    api
+      .get<Secret[]>('/secrets')
+      .then(setSecrets)
+      .catch((e) => setErr(String(e.message)));
   useEffect(() => void load(), []);
 
   const startEdit = (s: Secret) => {
     setEditId(s.id);
-    setEditVal(s.kind === 'env' ? s.envRef ?? '' : '');
+    setEditVal(s.kind === 'env' ? (s.envRef ?? '') : '');
     setErr('');
   };
 
@@ -66,7 +70,9 @@ export function SecretsTab() {
           <span className="title">Secrets</span>
           <span className="sub">{secrets.length} stored</span>
         </div>
-        <button className="btn-primary" onClick={() => setDraft(!draft)}>+ New secret</button>
+        <button className="btn-primary" onClick={() => setDraft(!draft)}>
+          + New secret
+        </button>
       </div>
 
       {err && !draft && <div className="err-msg">{err}</div>}
@@ -83,7 +89,11 @@ export function SecretsTab() {
                   placeholder="NAME"
                   value={name}
                   onChange={(e) => setName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
-                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} name="comind-secret-name" autoFocus
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  name="comind-secret-name"
                 />
                 <select value={mode} onChange={(e) => setMode(e.target.value as 'value' | 'envRef')}>
                   <option value="value">value (encrypt)</option>
@@ -95,12 +105,22 @@ export function SecretsTab() {
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
                   type={mode === 'value' ? 'password' : 'text'}
-                  autoComplete={mode === 'value' ? 'new-password' : 'off'} autoCorrect="off" autoCapitalize="off" spellCheck={false} name="comind-secret-value"
+                  autoComplete={mode === 'value' ? 'new-password' : 'off'}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  name="comind-secret-value"
                 />
-                <button className="btn-primary" onClick={create} disabled={!name || !value}>Create</button>
-                <button className="ghost" onClick={() => setDraft(false)}>Cancel</button>
+                <button className="btn-primary" onClick={create} disabled={!name || !value}>
+                  Create
+                </button>
+                <button className="ghost" onClick={() => setDraft(false)}>
+                  Cancel
+                </button>
               </div>
-              <div className="hint">Reference it in configs as <code>{`\${secret.${name || 'NAME'}}`}</code>.</div>
+              <div className="hint">
+                Reference it in configs as <code>{`\${secret.${name || 'NAME'}}`}</code>.
+              </div>
               {err && <div className="err-msg">{err}</div>}
             </div>
           </div>
@@ -123,7 +143,11 @@ export function SecretsTab() {
               <tr key={s.id}>
                 <td className="mono">{s.displayName}</td>
                 <td>
-                  {s.sourceName ? <span className="tbadge">{s.sourceName}</span> : <span className="badge muted">global</span>}
+                  {s.sourceName ? (
+                    <span className="tbadge">{s.sourceName}</span>
+                  ) : (
+                    <span className="badge muted">global</span>
+                  )}
                 </td>
                 <td className="mono muted">{`\${secret.${s.name}}`}</td>
                 <td>
@@ -134,21 +158,33 @@ export function SecretsTab() {
                   {editId === s.id ? (
                     <div className="row" style={{ gap: 4 }}>
                       <input
-                        className="grow" autoFocus
+                        className="grow"
                         type={s.kind === 'env' ? 'text' : 'password'}
                         placeholder={s.kind === 'env' ? 'ENV_VAR_NAME' : 'new value (current hidden)'}
                         value={editVal}
                         onChange={(e) => setEditVal(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && saveEdit(s)}
-                        autoComplete={s.kind === 'env' ? 'off' : 'new-password'} autoCorrect="off" autoCapitalize="off" spellCheck={false} name="comind-secret-edit"
+                        autoComplete={s.kind === 'env' ? 'off' : 'new-password'}
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        name="comind-secret-edit"
                       />
-                      <button className="mini" onClick={() => saveEdit(s)} disabled={!editVal}>Save</button>
-                      <button className="ghost mini" onClick={() => setEditId(null)}>Cancel</button>
+                      <button className="mini" onClick={() => saveEdit(s)} disabled={!editVal}>
+                        Save
+                      </button>
+                      <button className="ghost mini" onClick={() => setEditId(null)}>
+                        Cancel
+                      </button>
                     </div>
                   ) : (
                     <div className="row" style={{ gap: 4 }}>
-                      <button className="ghost mini" onClick={() => startEdit(s)}>Edit</button>
-                      <button className="danger mini" onClick={() => del(s.id)}>Delete</button>
+                      <button className="ghost mini" onClick={() => startEdit(s)}>
+                        Edit
+                      </button>
+                      <button className="danger mini" onClick={() => del(s.id)}>
+                        Delete
+                      </button>
                     </div>
                   )}
                 </td>
@@ -156,7 +192,9 @@ export function SecretsTab() {
             ))}
             {!secrets.length && (
               <tr>
-                <td colSpan={5} className="muted">No secrets yet.</td>
+                <td colSpan={5} className="muted">
+                  No secrets yet.
+                </td>
               </tr>
             )}
           </tbody>

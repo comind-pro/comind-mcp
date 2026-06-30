@@ -112,7 +112,12 @@ export async function startMcpOAuth(sourceId: string, mcpUrl: string, cfg: Provi
 }
 
 /** Finish the flow: exchange the authorization code for tokens. */
-export async function completeMcpOAuth(sourceId: string, mcpUrl: string, code: string, cfg: ProviderCfg): Promise<void> {
+export async function completeMcpOAuth(
+  sourceId: string,
+  mcpUrl: string,
+  code: string,
+  cfg: ProviderCfg,
+): Promise<void> {
   const provider = buildMcpOAuthProvider(sourceId, cfg);
   await auth(provider, { serverUrl: mcpUrl, authorizationCode: code });
 }

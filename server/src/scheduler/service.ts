@@ -1,5 +1,5 @@
-import cron, { type ScheduledTask } from 'node-cron';
 import { and, eq, lt } from 'drizzle-orm';
+import cron, { type ScheduledTask } from 'node-cron';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { callLogs, groupTools, jobRuns, rateLimits, schedules, tools } from '../db/schema.js';
@@ -90,9 +90,7 @@ export async function execute(scheduleId: string) {
 
   const runId = newId();
   const startedAt = new Date();
-  await db
-    .insert(jobRuns)
-    .values({ id: runId, scheduleId, status: 'running', startedAt, finishedAt: null });
+  await db.insert(jobRuns).values({ id: runId, scheduleId, status: 'running', startedAt, finishedAt: null });
 
   try {
     const result = await invokeTool(sch.toolName, (sch.args ?? {}) as Record<string, unknown>, {
@@ -140,6 +138,9 @@ export async function initScheduler(): Promise<void> {
   // Prune stale rate-limit buckets hourly (keep only the last few minutes).
   cron.schedule('0 * * * *', () => {
     const cutoff = Math.floor(Date.now() / 60_000) - 5;
-    void db.delete(rateLimits).where(lt(rateLimits.bucket, cutoff)).catch(() => {});
+    void db
+      .delete(rateLimits)
+      .where(lt(rateLimits.bucket, cutoff))
+      .catch(() => {});
   });
 }

@@ -1,12 +1,24 @@
-import { useState, type ReactNode } from 'react';
-import { api, type AuthUser } from './api.js';
+import { type ReactNode, useState } from 'react';
+import { type AuthUser, api } from './api.js';
 
 const STEPS = [
-  ['Connect sources', 'Add any MCP server or HTTP/OpenAPI API. comind-mcp introspects it and lists every tool it exposes.'],
-  ['Curate tools', 'Pick the tools that matter, rename them, tweak schemas, or merge several calls into one composite tool.'],
-  ['Build a V-MCP', 'Bundle the curated tools into a virtual MCP — a single clean endpoint that hides the messy upstreams.'],
+  [
+    'Connect sources',
+    'Add any MCP server or HTTP/OpenAPI API. comind-mcp introspects it and lists every tool it exposes.',
+  ],
+  [
+    'Curate tools',
+    'Pick the tools that matter, rename them, tweak schemas, or merge several calls into one composite tool.',
+  ],
+  [
+    'Build a V-MCP',
+    'Bundle the curated tools into a virtual MCP — a single clean endpoint that hides the messy upstreams.',
+  ],
   ['Grant agents', 'Issue per-agent keys with scoped access to specific V-MCPs. Rotate or revoke any key instantly.'],
-  ['Observe', 'Every call is logged: which agent, which tool, latency, errors. Schedule jobs and store secrets in the vault.'],
+  [
+    'Observe',
+    'Every call is logged: which agent, which tool, latency, errors. Schedule jobs and store secrets in the vault.',
+  ],
 ] as const;
 
 // crisp UI mock — looks like a screenshot, rendered from markup (no images)
@@ -44,9 +56,15 @@ function SourcesShot() {
 function VmcpShot() {
   return (
     <Shot title="V-MCP · support-bot">
-      <div className="shot-row"><input type="checkbox" checked readOnly /> github.create_issue</div>
-      <div className="shot-row"><input type="checkbox" checked readOnly /> stripe.refund_charge</div>
-      <div className="shot-row"><input type="checkbox" checked readOnly /> crm.lookup_customer</div>
+      <div className="shot-row">
+        <input type="checkbox" checked readOnly /> github.create_issue
+      </div>
+      <div className="shot-row">
+        <input type="checkbox" checked readOnly /> stripe.refund_charge
+      </div>
+      <div className="shot-row">
+        <input type="checkbox" checked readOnly /> crm.lookup_customer
+      </div>
       <div className="shot-endpoint">https://mcp.comind.pro/g/support-bot</div>
     </Shot>
   );
@@ -101,12 +119,7 @@ export function AuthPage({ onAuth }: { onAuth: (u: AuthUser) => void }) {
         <div className="landing-copy">
           <div className="landing-top">
             <span className="brand landing-brand">comind-mcp</span>
-            <a
-              className="landing-gh"
-              href="https://github.com/comind-pro/comind-mcp"
-              target="_blank"
-              rel="noreferrer"
-            >
+            <a className="landing-gh" href="https://github.com/comind-pro/comind-mcp" target="_blank" rel="noreferrer">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
               </svg>
@@ -115,10 +128,9 @@ export function AuthPage({ onAuth }: { onAuth: (u: AuthUser) => void }) {
           </div>
           <h1 className="landing-h1">One gateway for all your MCP tools.</h1>
           <p className="landing-tagline">
-            Agents shouldn't juggle a dozen MCP servers and APIs. comind-mcp <b>aggregates</b> them,
-            lets you <b>curate &amp; combine</b> the tools, and exposes <b>curated virtual MCP
-            endpoints</b> your agents can call — with per-agent keys, secrets vault, schedules and
-            full logs. Self-hosted, zero-infra.
+            Agents shouldn't juggle a dozen MCP servers and APIs. comind-mcp <b>aggregates</b> them, lets you{' '}
+            <b>curate &amp; combine</b> the tools, and exposes <b>curated virtual MCP endpoints</b> your agents can call
+            — with per-agent keys, secrets vault, schedules and full logs. Self-hosted, zero-infra.
           </p>
           <div className="landing-flow">
             {STEPS.map(([s], i) => (
@@ -181,8 +193,8 @@ export function AuthPage({ onAuth }: { onAuth: (u: AuthUser) => void }) {
       <section className="landing-section">
         <h2 className="landing-h2">What it looks like</h2>
         <p className="landing-sub">
-          Connect raw sources on the left, shape them into a clean V-MCP in the middle, hand scoped
-          keys to agents on the right.
+          Connect raw sources on the left, shape them into a clean V-MCP in the middle, hand scoped keys to agents on
+          the right.
         </p>
         <div className="landing-shots">
           <div>

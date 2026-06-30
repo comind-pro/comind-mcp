@@ -29,7 +29,10 @@ const patchBody = z.object({
 });
 
 async function ownedTool(id: string, owner: string) {
-  const [row] = await db.select().from(tools).where(and(eq(tools.id, id), eq(tools.ownerId, owner)));
+  const [row] = await db
+    .select()
+    .from(tools)
+    .where(and(eq(tools.id, id), eq(tools.ownerId, owner)));
   return row ?? null;
 }
 
@@ -40,7 +43,10 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
     if (q.sourceId) filters.push(eq(tools.sourceId, q.sourceId));
     if (q.kind === 'native' || q.kind === 'composite') filters.push(eq(tools.kind, q.kind));
     if (q.visible === 'true' || q.visible === 'false') filters.push(eq(tools.visible, q.visible === 'true'));
-    return db.select().from(tools).where(and(...filters));
+    return db
+      .select()
+      .from(tools)
+      .where(and(...filters));
   });
 
   app.get('/tools/:id', async (req, reply) => {

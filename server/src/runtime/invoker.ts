@@ -1,15 +1,15 @@
 import { and, eq } from 'drizzle-orm';
+import { applyAuth } from '../auth/apply.js';
+import { buildMcpOAuthProvider } from '../auth/mcp-oauth.js';
+import { runComposite } from '../composite/engine.js';
 import { createConnector } from '../connectors/index.js';
 import type { CallResult } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
 import { db } from '../db/client.js';
 import { callLogs, composites, sources, tools, virtuals } from '../db/schema.js';
-import { runComposite } from '../composite/engine.js';
-import { runVirtual, staticResult } from './virtual.js';
-import { applyAuth } from '../auth/apply.js';
-import { buildMcpOAuthProvider } from '../auth/mcp-oauth.js';
 import { newId } from '../lib/id.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
+import { runVirtual, staticResult } from './virtual.js';
 
 export interface InvokeContext {
   ownerId: string; // tools are resolved only within this user's namespace
@@ -65,7 +65,12 @@ export async function invokeTool(
       status: result.isError ? 'error' : 'success',
       durationMs: Date.now() - startedAt,
       tokensEst: estimateTokens(result),
-      error: result.isError ? result.content.map((c) => c.text).join('\n').slice(0, 500) : null,
+      error: result.isError
+        ? result.content
+            .map((c) => c.text)
+            .join('\n')
+            .slice(0, 500)
+        : null,
       ts: new Date(),
     })
     .catch(() => {});

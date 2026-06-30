@@ -19,8 +19,7 @@ export function verifyPassword(password: string, stored: string): boolean {
 
 // --- minimal HS256 JWT ---
 
-const b64url = (buf: Buffer | string) =>
-  Buffer.from(buf).toString('base64url');
+const b64url = (buf: Buffer | string) => Buffer.from(buf).toString('base64url');
 
 function sign(data: string): string {
   return createHmac('sha256', config.jwtSecret).update(data).digest('base64url');

@@ -165,10 +165,7 @@ export const agents = pgTable('agents', {
   apiKeyPrefix: text('api_key_prefix'),
   // names of built-in system.* introspection tools this agent exposes (subset of
   // SYSTEM_TOOL_NAMES). Applies to every V-MCP the agent connects to and /a/mcp.
-  systemTools: jsonb('system_tools')
-    .$type<string[]>()
-    .notNull()
-    .default(sql`'[]'::jsonb`),
+  systemTools: jsonb('system_tools').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   createdAt: createdAt(),
 });
 
@@ -222,7 +219,9 @@ export const schedules = pgTable('schedules', {
   toolName: text('tool_name').notNull(),
   args: jsonb('args').$type<Record<string, unknown>>(),
   enabled: boolean('enabled').notNull().default(true),
-  createdBy: text('created_by', { enum: ['agent', 'ui'] }).notNull().default('ui'),
+  createdBy: text('created_by', { enum: ['agent', 'ui'] })
+    .notNull()
+    .default('ui'),
   lastRun: timestamp('last_run', { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -322,7 +321,9 @@ export const oauthAuthCodes = pgTable(
     id: id(),
     codeHash: text('code_hash').notNull(),
     clientId: text('client_id').notNull(),
-    agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
     // null = agent-wide (all the agent's groups, via the /a/mcp endpoint)
     groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
     redirectUri: text('redirect_uri').notNull(),
@@ -341,7 +342,9 @@ export const oauthAccessTokens = pgTable(
     tokenHash: text('token_hash').notNull(),
     refreshHash: text('refresh_hash'),
     clientId: text('client_id').notNull(),
-    agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
     // null = agent-wide (all the agent's groups, via the /a/mcp endpoint)
     groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
@@ -364,7 +367,9 @@ export const callLogs = pgTable(
     status: text('status', { enum: ['success', 'error'] }).notNull(),
     // how the call was triggered: live = agent via gateway, test = control-plane
     // try-run, schedule = scheduler. Lets analytics exclude dry runs.
-    source: text('source', { enum: ['live', 'test', 'schedule'] }).notNull().default('live'),
+    source: text('source', { enum: ['live', 'test', 'schedule'] })
+      .notNull()
+      .default('live'),
     durationMs: integer('duration_ms').notNull(),
     tokensEst: integer('tokens_est'),
     error: text('error'),

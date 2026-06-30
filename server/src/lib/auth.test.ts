@@ -25,7 +25,7 @@ describe('JWT', () => {
 
   it('rejects a tampered token', () => {
     const token = signJwt('user-123');
-    const tampered = token.slice(0, -3) + 'aaa';
+    const tampered = `${token.slice(0, -3)}aaa`;
     expect(verifyJwt(tampered)).toBeNull();
   });
 

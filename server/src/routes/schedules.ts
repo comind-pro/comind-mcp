@@ -26,11 +26,13 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     const owner = ownerOf(req);
     const body = createBody.parse(req.body);
-    const [grp] = await db.select().from(groups).where(and(eq(groups.id, id), eq(groups.ownerId, owner)));
+    const [grp] = await db
+      .select()
+      .from(groups)
+      .where(and(eq(groups.id, id), eq(groups.ownerId, owner)));
     if (!grp) return reply.code(404).send({ error: 'not_found' });
     if (!isValidCron(body.cron)) return reply.code(400).send({ error: 'invalid_cron' });
-    if (!(await toolInGroup(id, body.toolName, owner)))
-      return reply.code(400).send({ error: 'tool_not_in_group' });
+    if (!(await toolInGroup(id, body.toolName, owner))) return reply.code(400).send({ error: 'tool_not_in_group' });
 
     const row = await createSchedule({
       ownerId: owner,
@@ -45,7 +47,10 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/groups/:id/schedules', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const [grp] = await db.select().from(groups).where(and(eq(groups.id, id), eq(groups.ownerId, ownerOf(req))));
+    const [grp] = await db
+      .select()
+      .from(groups)
+      .where(and(eq(groups.id, id), eq(groups.ownerId, ownerOf(req))));
     if (!grp) return reply.code(404).send({ error: 'not_found' });
     return listByGroup(id);
   });

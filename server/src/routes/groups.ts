@@ -21,13 +21,19 @@ const patchBody = z.object({
 
 async function uniqueSlug(base: string, owner: string): Promise<string> {
   const slug = slugify(base);
-  const [clash] = await db.select().from(groups).where(and(eq(groups.slug, slug), eq(groups.ownerId, owner)));
+  const [clash] = await db
+    .select()
+    .from(groups)
+    .where(and(eq(groups.slug, slug), eq(groups.ownerId, owner)));
   if (!clash) return slug;
   return `${slug}-${newId().slice(0, 4).toLowerCase()}`;
 }
 
 async function ownedGroup(id: string, owner: string) {
-  const [row] = await db.select().from(groups).where(and(eq(groups.id, id), eq(groups.ownerId, owner)));
+  const [row] = await db
+    .select()
+    .from(groups)
+    .where(and(eq(groups.id, id), eq(groups.ownerId, owner)));
   return row ?? null;
 }
 
@@ -48,7 +54,12 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(row);
   });
 
-  app.get('/groups', async (req) => db.select().from(groups).where(eq(groups.ownerId, ownerOf(req))));
+  app.get('/groups', async (req) =>
+    db
+      .select()
+      .from(groups)
+      .where(eq(groups.ownerId, ownerOf(req))),
+  );
 
   app.get('/groups/:id', async (req, reply) => {
     const { id } = req.params as { id: string };

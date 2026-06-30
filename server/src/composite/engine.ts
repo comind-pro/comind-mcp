@@ -80,9 +80,7 @@ function isTruthy(when: string, ctx: Ctx): boolean {
 }
 
 function contentText(content: CallResult['content']): string {
-  return content
-    .map((c) => (typeof c.text === 'string' ? c.text : JSON.stringify(c)))
-    .join('\n');
+  return content.map((c) => (typeof c.text === 'string' ? c.text : JSON.stringify(c))).join('\n');
 }
 
 type Invoke = (tool: string, args: Record<string, unknown>, depth: number) => Promise<CallResult>;

@@ -98,41 +98,81 @@ export function GroupsTab() {
 
   const body = (g: Group) => (
     <div className="editor-left" style={{ borderRight: 'none' }}>
-      <div className="hint">Endpoint <code className="mono">/g/{g.slug}/mcp</code> — connect it from the <b>Agents</b> tab (pick an agent → Connect → Single V-MCP).</div>
+      <div className="hint">
+        Endpoint <code className="mono">/g/{g.slug}/mcp</code> — connect it from the <b>Agents</b> tab (pick an agent →
+        Connect → Single V-MCP).
+      </div>
 
-      <div className="editor-section" style={{ marginTop: 14 }}>Toolset</div>
+      <div className="editor-section" style={{ marginTop: 14 }}>
+        Toolset
+      </div>
       <div className="hint">Tools this V-MCP exposes to agents. Don't forget to save.</div>
       <ToolPicker tools={tools} sources={sources} selected={assigned} onChange={setAssigned} />
       <div className="spacer" />
-      <button className="btn-primary" onClick={() => saveToolset(g)}>Save toolset ({assigned.size})</button>
+      <button className="btn-primary" onClick={() => saveToolset(g)}>
+        Save toolset ({assigned.size})
+      </button>
 
-      <div className="editor-section" style={{ marginTop: 22 }}>Schedules</div>
-      <div className="hint">Cron schedules that auto-run a group tool. Run now — execute immediately. Agents can also self-schedule via schedule_task / list_schedules / cancel_schedule.</div>
+      <div className="editor-section" style={{ marginTop: 22 }}>
+        Schedules
+      </div>
+      <div className="hint">
+        Cron schedules that auto-run a group tool. Run now — execute immediately. Agents can also self-schedule via
+        schedule_task / list_schedules / cancel_schedule.
+      </div>
       <div className="row">
-        <input className="mono" style={{ width: 160 }} placeholder="0 9 * * *" value={cron} onChange={(e) => setCron(e.target.value)} />
+        <input
+          className="mono"
+          style={{ width: 160 }}
+          placeholder="0 9 * * *"
+          value={cron}
+          onChange={(e) => setCron(e.target.value)}
+        />
         <select className="grow" value={schTool} onChange={(e) => setSchTool(e.target.value)}>
           <option value="">— tool —</option>
           {assignedNames.map((n) => (
-            <option key={n} value={n}>{n}</option>
+            <option key={n} value={n}>
+              {n}
+            </option>
           ))}
         </select>
-        <button onClick={() => addSchedule(g)} disabled={!schTool}>Add</button>
+        <button onClick={() => addSchedule(g)} disabled={!schTool}>
+          Add
+        </button>
       </div>
       <div className="spacer" />
       {schedules.map((s) => (
-        <div key={s.id} className="row" style={{ marginBottom: 6, alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
-          <span className="mono" style={{ width: 120 }}>{s.cron}</span>
+        <div
+          key={s.id}
+          className="row"
+          style={{ marginBottom: 6, alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 6 }}
+        >
+          <span className="mono" style={{ width: 120 }}>
+            {s.cron}
+          </span>
           <span className="mono grow">{s.toolName}</span>
           <span className="tbadge">{s.createdBy}</span>
-          <span className="muted" style={{ fontSize: 12, width: 150, textAlign: 'right' }}>{s.lastRun ? new Date(s.lastRun).toLocaleString() : '—'}</span>
-          <button className="ghost mini" onClick={() => runNow(g, s.id)}>Run now</button>
-          <button className="danger mini" onClick={() => delSchedule(g, s.id)}>Delete</button>
+          <span className="muted" style={{ fontSize: 12, width: 150, textAlign: 'right' }}>
+            {s.lastRun ? new Date(s.lastRun).toLocaleString() : '—'}
+          </span>
+          <button className="ghost mini" onClick={() => runNow(g, s.id)}>
+            Run now
+          </button>
+          <button className="danger mini" onClick={() => delSchedule(g, s.id)}>
+            Delete
+          </button>
         </div>
       ))}
-      {!schedules.length && <div className="muted" style={{ fontSize: 12 }}>No schedules.</div>}
+      {!schedules.length && (
+        <div className="muted" style={{ fontSize: 12 }}>
+          No schedules.
+        </div>
+      )}
 
       <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
-        <button className="danger" onClick={() => delGroup(g)}>Delete V-MCP</button>
+        <button className="danger" onClick={() => delGroup(g)}>
+          Delete V-MCP
+        </button>
       </div>
       {err && <div className="err-msg">{err}</div>}
     </div>
@@ -151,7 +191,9 @@ export function GroupsTab() {
           <span className="title">V-MCP</span>
           <span className="sub">{groups.length} servers</span>
         </div>
-        <button className="btn-primary" onClick={() => setDraft(draft === null ? '' : null)}>+ New V-MCP</button>
+        <button className="btn-primary" onClick={() => setDraft(draft === null ? '' : null)}>
+          + New V-MCP
+        </button>
       </div>
 
       {err && !openId && draft === null && <div className="err-msg">{err}</div>}
@@ -162,9 +204,18 @@ export function GroupsTab() {
             <div className="editor-left" style={{ borderRight: 'none' }}>
               <div className="field-label">Name · slug auto-generated</div>
               <div className="row">
-                <input className="grow" placeholder="e.g. ops-reporting" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus />
-                <button className="btn-primary" onClick={create} disabled={!draft}>Create</button>
-                <button className="ghost" onClick={() => setDraft(null)}>Cancel</button>
+                <input
+                  className="grow"
+                  placeholder="e.g. ops-reporting"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                />
+                <button className="btn-primary" onClick={create} disabled={!draft}>
+                  Create
+                </button>
+                <button className="ghost" onClick={() => setDraft(null)}>
+                  Cancel
+                </button>
               </div>
               {err && <div className="err-msg">{err}</div>}
             </div>
@@ -178,8 +229,12 @@ export function GroupsTab() {
           <div key={g.id} className={`scard ${open ? 'open' : ''}`}>
             <div className="scard-head" onClick={() => select(g)}>
               <span className="name src-name">{g.name}</span>
-              <span className="mono muted" style={{ fontSize: 12, width: 120 }}>/{g.slug}</span>
-              <span className="muted" style={{ fontSize: 12.5 }}>{counts[g.id] ?? '…'} tools</span>
+              <span className="mono muted" style={{ fontSize: 12, width: 120 }}>
+                /{g.slug}
+              </span>
+              <span className="muted" style={{ fontSize: 12.5 }}>
+                {counts[g.id] ?? '…'} tools
+              </span>
               <span style={{ marginLeft: 'auto' }} />
               <span className="edit-link">{open ? 'Close' : 'Configure'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
@@ -189,7 +244,11 @@ export function GroupsTab() {
         );
       })}
 
-      {!groups.length && draft === null && <div className="muted" style={{ padding: '20px 2px' }}>No V-MCP servers yet.</div>}
+      {!groups.length && draft === null && (
+        <div className="muted" style={{ padding: '20px 2px' }}>
+          No V-MCP servers yet.
+        </div>
+      )}
     </>
   );
 }

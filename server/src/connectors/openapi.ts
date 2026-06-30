@@ -1,4 +1,4 @@
-import type { Connector, CallResult, HealthResult, ToolDef } from './types.js';
+import type { CallResult, Connector, HealthResult, ToolDef } from './types.js';
 import { textResult } from './types.js';
 
 export interface OpenApiConfig {
@@ -69,7 +69,7 @@ function deepDeref(spec: any, node: any, depth = 0): any {
 /** Pull a JSON success-response schema from an operation, if declared. */
 function responseSchema(spec: any, op: any): Record<string, unknown> | undefined {
   const resp = op.responses ?? {};
-  const pick = resp['200'] ?? resp['201'] ?? resp['2XX'] ?? resp['default'];
+  const pick = resp['200'] ?? resp['201'] ?? resp['2XX'] ?? resp.default;
   const schema = deref(spec, pick)?.content?.['application/json']?.schema;
   if (!schema) return undefined;
   const resolved = deepDeref(spec, schema);

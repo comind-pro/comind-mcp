@@ -69,7 +69,7 @@ export async function oauthRoutes(app: FastifyInstance): Promise<void> {
       if (Date.now() - entry.at > STATE_TTL) return reply.send(html('Expired state.'));
       pending.delete(state);
       const loaded = await loadAuth(entry.sourceId);
-      if (!loaded || loaded.auth.type !== 'oauth2_authorization_code') return reply.send(html('Invalid source.'));
+      if (loaded?.auth.type !== 'oauth2_authorization_code') return reply.send(html('Invalid source.'));
       return reply.send(await exchangeGeneric(entry.sourceId, loaded.auth, code));
     }
 

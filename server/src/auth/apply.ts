@@ -6,10 +6,7 @@ import { getAuthHeader } from './token-manager.js';
  * merge it into the outgoing headers. Returns config with `auth` stripped so the
  * connector only sees concrete headers.
  */
-export async function applyAuth(
-  sourceId: string,
-  config: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+export async function applyAuth(sourceId: string, config: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (!config.auth) return config;
   const auth = authConfigSchema.parse(config.auth);
   // MCP-native OAuth is handled by the SDK provider on the transport, not via a header.

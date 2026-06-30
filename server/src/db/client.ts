@@ -1,7 +1,7 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { config } from '../config.js';
 import { schema } from './schema.js';
@@ -13,8 +13,7 @@ import { schema } from './schema.js';
 // provider's self-signed CA. `rejectUnauthorized:false` accepts that CA; set
 // DATABASE_CA to pin a real cert instead.
 function sslConfig(url: string): { connectionString: string; ssl: pg.PoolConfig['ssl'] } {
-  const wantSsl =
-    /[?&]sslmode=(require|verify-ca|verify-full)/.test(url) || process.env.DATABASE_SSL === 'true';
+  const wantSsl = /[?&]sslmode=(require|verify-ca|verify-full)/.test(url) || process.env.DATABASE_SSL === 'true';
   const connectionString = url.replace(/([?&])sslmode=[^&]*/, '$1').replace(/[?&]+$/, '');
   if (!wantSsl) return { connectionString, ssl: undefined };
   const ca = process.env.DATABASE_CA;

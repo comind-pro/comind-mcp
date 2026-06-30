@@ -24,11 +24,26 @@ async function makeVirtual(opts: {
 }) {
   const toolId = newId();
   await db.insert(tools).values({
-    id: toolId, ownerId, sourceId: null, kind: 'virtual', name: opts.name,
-    upstreamName: null, displayName: opts.name, description: 'd', inputSchema: {},
-    readOnly: opts.readOnly ?? null, visible: true, createdAt: new Date(),
+    id: toolId,
+    ownerId,
+    sourceId: null,
+    kind: 'virtual',
+    name: opts.name,
+    upstreamName: null,
+    displayName: opts.name,
+    description: 'd',
+    inputSchema: {},
+    readOnly: opts.readOnly ?? null,
+    visible: true,
+    createdAt: new Date(),
   });
-  await db.insert(virtuals).values({ id: newId(), toolId, executable: opts.executable, request: opts.request ?? {}, response: opts.response ?? null });
+  await db.insert(virtuals).values({
+    id: newId(),
+    toolId,
+    executable: opts.executable,
+    request: opts.request ?? {},
+    response: opts.response ?? null,
+  });
   return opts.name;
 }
 
@@ -37,7 +52,9 @@ const d = dbUp ? describe : describe.skip;
 d('virtual tool invocation', () => {
   beforeAll(async () => {
     await runMigrations();
-    await db.insert(users).values({ id: ownerId, email: `vt_${tag}@t.local`, passwordHash: 'x', createdAt: new Date() });
+    await db
+      .insert(users)
+      .values({ id: ownerId, email: `vt_${tag}@t.local`, passwordHash: 'x', createdAt: new Date() });
   });
   afterAll(async () => {
     await db.delete(users).where(inArray(users.id, [ownerId])); // cascades tools/virtuals
@@ -64,21 +81,34 @@ d('virtual tool invocation', () => {
   });
 
   it('executable to a private address is blocked (SSRF)', async () => {
-    const name = await makeVirtual({ name: `vt_${tag}_ssrf`, executable: true, request: { method: 'GET', url: 'http://10.0.0.1:9/x' } });
+    const name = await makeVirtual({
+      name: `vt_${tag}_ssrf`,
+      executable: true,
+      request: { method: 'GET', url: 'http://10.0.0.1:9/x' },
+    });
     const r = await invokeTool(name, {}, { ownerId });
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toMatch(/private/i);
   });
 
   it('executable to this server itself is blocked', async () => {
-    const name = await makeVirtual({ name: `vt_${tag}_self`, executable: true, request: { method: 'GET', url: 'http://localhost:8787/healthz' } });
+    const name = await makeVirtual({
+      name: `vt_${tag}_self`,
+      executable: true,
+      request: { method: 'GET', url: 'http://localhost:8787/healthz' },
+    });
     const r = await invokeTool(name, {}, { ownerId });
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toMatch(/this server/i);
   });
 
   it('read-only tool cannot use a mutating method', async () => {
-    const name = await makeVirtual({ name: `vt_${tag}_ro`, executable: true, readOnly: true, request: { method: 'POST', url: 'https://example.com/x' } });
+    const name = await makeVirtual({
+      name: `vt_${tag}_ro`,
+      executable: true,
+      readOnly: true,
+      request: { method: 'POST', url: 'https://example.com/x' },
+    });
     const r = await invokeTool(name, {}, { ownerId });
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toMatch(/read-only/i);

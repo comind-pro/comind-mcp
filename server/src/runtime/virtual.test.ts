@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { assertSafeUrl, deepInterp, interpArgs, isPrivateIp, rateLimited, safeLookup, sanitizeHeaders, staticResult } from './virtual.js';
+import {
+  assertSafeUrl,
+  deepInterp,
+  interpArgs,
+  isPrivateIp,
+  rateLimited,
+  safeLookup,
+  sanitizeHeaders,
+  staticResult,
+} from './virtual.js';
 
 describe('arg interpolation', () => {
   it('substitutes ${args.x} in strings', () => {
@@ -29,7 +38,19 @@ describe('staticResult', () => {
 
 describe('isPrivateIp (SSRF guard)', () => {
   it('blocks loopback / private / link-local / metadata', () => {
-    for (const ip of ['127.0.0.1', '10.0.0.5', '172.16.3.4', '192.168.1.1', '169.254.169.254', '0.0.0.0', '100.64.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1']) {
+    for (const ip of [
+      '127.0.0.1',
+      '10.0.0.5',
+      '172.16.3.4',
+      '192.168.1.1',
+      '169.254.169.254',
+      '0.0.0.0',
+      '100.64.0.1',
+      '::1',
+      'fd00::1',
+      'fe80::1',
+      '::ffff:127.0.0.1',
+    ]) {
       expect(isPrivateIp(ip), ip).toBe(true);
     }
   });
@@ -87,7 +108,10 @@ describe('rateLimited (per-owner)', () => {
     const t = 1_000_000;
     let blockedAt = -1;
     for (let i = 0; i < 200; i++) {
-      if (rateLimited(owner, t)) { blockedAt = i; break; }
+      if (rateLimited(owner, t)) {
+        blockedAt = i;
+        break;
+      }
     }
     expect(blockedAt).toBeGreaterThan(0); // eventually blocks within the window
   });

@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { agentGroups, agentKeys, agents, groups, oauthAccessTokens, oauthAuthCodes, oauthClients } from '../db/schema.js';
+import { agentGroups, agentKeys, agents, oauthAccessTokens, oauthAuthCodes, oauthClients } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
 import { newId } from '../lib/id.js';
 
@@ -148,13 +148,17 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
     if (grant === 'authorization_code') {
       const { code, code_verifier, redirect_uri, client_id } = b;
       if (!code || !code_verifier) return tokenError(reply, 'invalid_request', 'code and code_verifier required');
-      const [row] = await db.select().from(oauthAuthCodes).where(eq(oauthAuthCodes.codeHash, hashKey(code)));
+      const [row] = await db
+        .select()
+        .from(oauthAuthCodes)
+        .where(eq(oauthAuthCodes.codeHash, hashKey(code)));
       if (!row) return tokenError(reply, 'invalid_grant', 'unknown code');
       // single-use: drop immediately
       await db.delete(oauthAuthCodes).where(eq(oauthAuthCodes.id, row.id));
       if (row.expiresAt.getTime() < Date.now()) return tokenError(reply, 'invalid_grant', 'code expired');
       if (client_id && client_id !== row.clientId) return tokenError(reply, 'invalid_grant', 'client mismatch');
-      if (redirect_uri && redirect_uri !== row.redirectUri) return tokenError(reply, 'invalid_grant', 'redirect_uri mismatch');
+      if (redirect_uri && redirect_uri !== row.redirectUri)
+        return tokenError(reply, 'invalid_grant', 'redirect_uri mismatch');
       if (sha256b64url(code_verifier) !== row.codeChallenge) return tokenError(reply, 'invalid_grant', 'PKCE failed');
 
       return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId));
@@ -163,7 +167,10 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
     if (grant === 'refresh_token') {
       const refresh = b.refresh_token;
       if (!refresh) return tokenError(reply, 'invalid_request', 'refresh_token required');
-      const [row] = await db.select().from(oauthAccessTokens).where(eq(oauthAccessTokens.refreshHash, hashKey(refresh)));
+      const [row] = await db
+        .select()
+        .from(oauthAccessTokens)
+        .where(eq(oauthAccessTokens.refreshHash, hashKey(refresh)));
       if (!row) return tokenError(reply, 'invalid_grant', 'unknown refresh_token');
       await db.delete(oauthAccessTokens).where(eq(oauthAccessTokens.id, row.id)); // rotate
       return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId));
@@ -216,7 +223,16 @@ function tokenError(reply: { code: (n: number) => { send: (b: unknown) => unknow
 }
 
 function consentPage(p: Record<string, string | undefined>, error: string | null): string {
-  const hidden = ['response_type', 'client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'scope', 'resource']
+  const hidden = [
+    'response_type',
+    'client_id',
+    'redirect_uri',
+    'state',
+    'code_challenge',
+    'code_challenge_method',
+    'scope',
+    'resource',
+  ]
     .map((k) => `<input type="hidden" name="${k}" value="${escapeHtml(p[k] ?? '')}">`)
     .join('\n');
   const groupId = groupIdFromResource(p.resource);

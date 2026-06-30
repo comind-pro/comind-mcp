@@ -10,7 +10,10 @@ export const tokenStore = {
 /** Raised on 401 so the app can drop to the login screen. */
 export class Unauthorized extends Error {}
 
-interface ZodIssue { path?: (string | number)[]; message?: string }
+interface ZodIssue {
+  path?: (string | number)[];
+  message?: string;
+}
 
 /** Build a human-readable error from a server error body. For validation
  *  failures, spell out each offending field (path) and why. */
@@ -19,7 +22,7 @@ function formatApiError(data: any, status: number): string {
   const issues: ZodIssue[] | undefined = data?.issues;
   if (Array.isArray(issues) && issues.length) {
     const lines = issues.map((i) => {
-      const where = i.path && i.path.length ? i.path.join('.') : '(root)';
+      const where = i.path?.length ? i.path.join('.') : '(root)';
       return `• ${where}: ${i.message ?? 'invalid'}`;
     });
     return `${base}:\n${lines.join('\n')}`;

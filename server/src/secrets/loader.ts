@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { secrets } from '../db/schema.js';
 import { decrypt } from './vault.js';
 
-function valueOf(r: typeof secrets.$inferSelect): string {
+function resolveSecretValue(r: typeof secrets.$inferSelect): string {
   if (r.encryptedValue) return decrypt(r.encryptedValue);
   if (r.envRef) return process.env[r.envRef] ?? '';
   return '';
@@ -15,8 +15,8 @@ function valueOf(r: typeof secrets.$inferSelect): string {
 export async function loadSecretMap(ownerId: string, sourceId?: string): Promise<Record<string, string>> {
   const rows = await db.select().from(secrets).where(eq(secrets.ownerId, ownerId));
   const map: Record<string, string> = {};
-  for (const r of rows) if (r.sourceId == null) map[r.name] = valueOf(r); // globals
-  if (sourceId) for (const r of rows) if (r.sourceId === sourceId) map[r.name] = valueOf(r); // overrides
+  for (const r of rows) if (r.sourceId == null) map[r.name] = resolveSecretValue(r); // globals
+  if (sourceId) for (const r of rows) if (r.sourceId === sourceId) map[r.name] = resolveSecretValue(r); // overrides
   return map;
 }
 
