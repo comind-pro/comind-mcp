@@ -39,6 +39,7 @@ export interface QueryClient {
 let dbInst: NodePgDatabase<typeof schema>;
 let poolInst: QueryClient;
 let migrateFn: (folder: string) => Promise<void>;
+let pgPool: pg.Pool | null = null; // set in the Postgres branch; used to serialize migrations
 
 if (embedded) {
   // file:/abs/dir | file:///abs/dir | file:./rel → a directory path; memory: → in-memory.
@@ -56,6 +57,7 @@ if (embedded) {
   migrateFn = (folder) => migratePglite(dbInst as never, { migrationsFolder: folder });
 } else {
   const p = new pg.Pool(sslConfig(url));
+  pgPool = p;
   poolInst = p as unknown as QueryClient;
   dbInst = drizzlePg(p, { schema });
   migrateFn = (folder) => migratePg(dbInst, { migrationsFolder: folder });
@@ -64,11 +66,28 @@ if (embedded) {
 export const db = dbInst;
 export const pool = poolInst;
 
-/** Apply generated migrations on boot (so a fresh DB is ready without manual steps). */
+// Arbitrary, stable key for the migration advisory lock.
+const MIGRATION_LOCK = 4242;
+
+/** Apply generated migrations on boot. On Postgres a session-level advisory lock
+ *  serializes concurrent callers (parallel test workers, multi-replica boot) so
+ *  they don't race on CREATE; the loser then sees the migrations already applied.
+ *  Embedded PGlite is single-connection, so no lock is needed. */
 export async function runMigrations(): Promise<void> {
   const dir = resolve(process.cwd(), 'drizzle');
   if (!existsSync(dir)) {
     throw new Error(`Migrations folder not found: ${dir}. Run \`pnpm db:generate\` first.`);
   }
-  await migrateFn(dir);
+  if (!pgPool) {
+    await migrateFn(dir);
+    return;
+  }
+  const lockClient = await pgPool.connect();
+  try {
+    await lockClient.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK]);
+    await migrateFn(dir);
+  } finally {
+    await lockClient.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK]).catch(() => {});
+    lockClient.release();
+  }
 }
