@@ -34,6 +34,23 @@ make dev          # Postgres + server :8787 + web :5173
 
 See `make help` for all targets. Underlying pnpm scripts (`pnpm dev`, `pnpm dev:server`, `pnpm dev:web`) still work but don't manage the Postgres container.
 
+### Database modes
+
+The store is selected by the `DATABASE_URL` scheme — same schema, same migrations:
+
+| `DATABASE_URL` | Mode | Use for |
+| --- | --- | --- |
+| `postgres://…` | External **Postgres** | Production, multi-instance (horizontal scale). |
+| `file:/data/comind` | Embedded **Postgres (PGlite)** | Zero-infra self-host, single container, demos, Glama. |
+| `memory:` | Embedded, in-memory | Throwaway / CI smoke. |
+
+PGlite *is* Postgres (WASM), so everything (jsonb, `percentile_cont`, migrations) runs unchanged — no external DB process. **Persistence:** the `file:` directory is a real Postgres data dir; mount it as a volume (e.g. `/data`) to keep data across releases. Migrations are additive and idempotent, so an upgrade never wipes existing data. Embedded mode is single-node (no multi-instance — one writer).
+
+```bash
+# zero-infra: no Docker/Postgres needed
+DATABASE_URL=file:/data/comind SERVER_ENV=dev pnpm --filter comind-server start
+```
+
 ---
 
 ## End-to-end scenario
@@ -196,6 +213,35 @@ The core is solid; the production hardening is not done yet. Roughly **60–65%*
 - Thin tests — only pure modules. No automated route / auth / isolation / e2e tests in the repo (those were manual smokes). Scheduler has no retry/backoff/alerting.
 - The OpenAPI parser is minimal — complex specs (`allOf`, deep `$ref`) may not parse correctly.
 - No password reset / email verification; no user audit log.
+
+---
+
+## Distribution
+
+Packaged as an **OCI image** (`ghcr.io/comind-pro/comind-mcp`) and listed in the
+**official MCP Registry** (`registry.modelcontextprotocol.io`) — the canonical
+source that downstream catalogs (PulseMCP, Smithery, Docker Hub, …) consume. The
+metadata lives in [`server.json`](./server.json) under the GitHub-verified
+namespace `io.github.comind-pro/comind-mcp`.
+
+Run the image (zero-infra, embedded Postgres):
+
+```bash
+docker run -p 8787:8787 -v comind-data:/data \
+  -e SERVER_ENV=dev ghcr.io/comind-pro/comind-mcp:latest
+# prod: drop SERVER_ENV=dev and set VAULT_KEY + JWT_SECRET
+```
+
+Releasing is automated — push a version tag and CI ([`release.yml`](./.github/workflows/release.yml))
+builds & pushes the image to GHCR, then publishes `server.json` to the registry
+via GitHub OIDC (no tokens):
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+> Note: ComindMCP is a multi-tenant **gateway** (HTTP MCP at `/g/:slug/mcp`, agent-key auth),
+> not a single stdio server — registry clients self-deploy it and connect their own agents.
 
 ---
 

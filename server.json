@@ -1,0 +1,62 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.comind-pro/comind-mcp",
+  "title": "ComindMCP Gateway",
+  "description": "Self-hosted MCP gateway: aggregate MCP servers & APIs, compose & curate tools, expose virtual MCP endpoints to agents.",
+  "version": "0.2.0",
+  "websiteUrl": "https://github.com/comind-pro/comind-mcp#readme",
+  "repository": {
+    "url": "https://github.com/comind-pro/comind-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/comind-pro/comind-mcp:0.2.0",
+      "version": "0.2.0",
+      "transport": {
+        "type": "streamable-http"
+      },
+      "environmentVariables": [
+        {
+          "name": "DATABASE_URL",
+          "description": "Store selector. 'file:/data/comind' = embedded Postgres (PGlite, zero-infra, mount /data); 'postgres://…' = external Postgres for multi-instance.",
+          "isRequired": false,
+          "default": "file:/data/comind"
+        },
+        {
+          "name": "SERVER_ENV",
+          "description": "Deployment environment. Use 'dev' to allow insecure default secrets; any other value requires VAULT_KEY and JWT_SECRET.",
+          "isRequired": false,
+          "default": "dev",
+          "choices": ["dev", "staging", "prod"]
+        },
+        {
+          "name": "VAULT_KEY",
+          "description": "base64-encoded 32-byte AES-256-GCM key for the secrets vault. Required when SERVER_ENV is not 'dev'.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "JWT_SECRET",
+          "description": "HMAC secret for signing user session JWTs. Required when SERVER_ENV is not 'dev'.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "PUBLIC_BASE_URL",
+          "description": "Externally reachable base URL (OAuth issuer / endpoint base), e.g. https://mcp.comind.pro.",
+          "isRequired": false
+        },
+        {
+          "name": "PORT",
+          "description": "HTTP port the gateway listens on.",
+          "isRequired": false,
+          "default": "8787"
+        }
+      ]
+    }
+  ]
+}
