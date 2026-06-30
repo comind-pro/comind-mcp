@@ -25,8 +25,8 @@
     "test": "pnpm -r test",
     "lint": "biome check server/src web/src",
     "lint:fix": "biome check --write server/src web/src",
+    "lint:ci": "biome ci server/src web/src",
     "format": "biome format --write server/src web/src",
-    "ci": "biome ci server/src web/src",
     "db:generate": "pnpm --filter comind-server db:generate"
   },
   "devDependencies": {
