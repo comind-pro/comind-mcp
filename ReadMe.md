@@ -34,6 +34,23 @@ make dev          # Postgres + server :8787 + web :5173
 
 See `make help` for all targets. Underlying pnpm scripts (`pnpm dev`, `pnpm dev:server`, `pnpm dev:web`) still work but don't manage the Postgres container.
 
+### Database modes
+
+The store is selected by the `DATABASE_URL` scheme — same schema, same migrations:
+
+| `DATABASE_URL` | Mode | Use for |
+| --- | --- | --- |
+| `postgres://…` | External **Postgres** | Production, multi-instance (horizontal scale). |
+| `file:/data/comind` | Embedded **Postgres (PGlite)** | Zero-infra self-host, single container, demos, Glama. |
+| `memory:` | Embedded, in-memory | Throwaway / CI smoke. |
+
+PGlite *is* Postgres (WASM), so everything (jsonb, `percentile_cont`, migrations) runs unchanged — no external DB process. **Persistence:** the `file:` directory is a real Postgres data dir; mount it as a volume (e.g. `/data`) to keep data across releases. Migrations are additive and idempotent, so an upgrade never wipes existing data. Embedded mode is single-node (no multi-instance — one writer).
+
+```bash
+# zero-infra: no Docker/Postgres needed
+DATABASE_URL=file:/data/comind SERVER_ENV=dev pnpm --filter comind-server start
+```
+
 ---
 
 ## End-to-end scenario

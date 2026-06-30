@@ -14,6 +14,9 @@ importers:
 
   server:
     dependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.3
+        version: 0.5.3
       '@fastify/cors':
         specifier: ^10.0.1
         version: 10.1.0
@@ -22,7 +25,7 @@ importers:
         version: 1.29.0(zod@3.25.76)
       drizzle-orm:
         specifier: ^0.38.3
-        version: 0.38.4(@prisma/client@5.22.0(prisma@5.22.0))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(@types/react@18.3.31)(better-sqlite3@11.10.0)(pg@8.22.0)(prisma@5.22.0)(react@18.3.1)
+        version: 0.38.4(@electric-sql/pglite@0.5.3)(@prisma/client@5.22.0(prisma@5.22.0))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(@types/react@18.3.31)(better-sqlite3@11.10.0)(pg@8.22.0)(prisma@5.22.0)(react@18.3.1)
       fastify:
         specifier: ^5.2.0
         version: 5.8.5
@@ -244,6 +247,9 @@ packages:
 
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
+
+  '@electric-sql/pglite@0.5.3':
+    resolution: {integrity: sha512-iTTYbA5Uesrl+N7zss0J5LopT7KE4j9aymYo+EZZh+rZbARQCUQOs+n2pay64JRUpc3fCkpfrniTNJnvYzOE+g==}
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
@@ -2705,6 +2711,8 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
+  '@electric-sql/pglite@0.5.3': {}
+
   '@esbuild-kit/core-utils@3.3.2':
     dependencies:
       esbuild: 0.18.20
@@ -3585,8 +3593,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-orm@0.38.4(@prisma/client@5.22.0(prisma@5.22.0))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(@types/react@18.3.31)(better-sqlite3@11.10.0)(pg@8.22.0)(prisma@5.22.0)(react@18.3.1):
+  drizzle-orm@0.38.4(@electric-sql/pglite@0.5.3)(@prisma/client@5.22.0(prisma@5.22.0))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(@types/react@18.3.31)(better-sqlite3@11.10.0)(pg@8.22.0)(prisma@5.22.0)(react@18.3.1):
     optionalDependencies:
+      '@electric-sql/pglite': 0.5.3
       '@prisma/client': 5.22.0(prisma@5.22.0)
       '@types/better-sqlite3': 7.6.13
       '@types/pg': 8.20.0

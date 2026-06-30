@@ -2,7 +2,7 @@
   "name": "comind-mcp",
   "version": "0.2.0",
   "private": true,
-  "description": "MCP gateway — aggregate MCP servers & APIs, compose tools, expose curated virtual MCP endpoints to agents. Self-hosted, zero-infra (SQLite).",
+  "description": "MCP gateway — aggregate MCP servers & APIs, compose tools, expose curated virtual MCP endpoints to agents. Self-hosted; runs on Postgres, or zero-infra with embedded Postgres (PGlite).",
   "license": "MIT",
   "homepage": "https://github.com/comind-pro/comind-mcp#readme",
   "repository": {
