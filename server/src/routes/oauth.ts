@@ -1,9 +1,11 @@
+import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { authConfigSchema } from '../auth/config.js';
 import { completeMcpOAuth, startMcpOAuth } from '../auth/mcp-oauth.js';
 import { saveTokens } from '../auth/token-manager.js';
 import { config } from '../config.js';
+import { fetchWithTimeout } from '../connectors/fetch.js';
 import { db } from '../db/client.js';
 import { sources } from '../db/schema.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
@@ -41,7 +43,8 @@ export async function oauthRoutes(app: FastifyInstance): Promise<void> {
 
     // Generic authorization_code.
     if (auth.type === 'oauth2_authorization_code') {
-      const state = `${id}.${Math.abs(hash(id + auth.clientId)).toString(36)}`;
+      // Random, unguessable state (CSRF) — the source id lives in `pending`, not the state.
+      const state = randomBytes(24).toString('base64url');
       pending.set(state, { sourceId: id, at: Date.now() });
       const redirectUri = auth.redirectUri ?? defaultRedirect();
       const u = new URL(auth.authUrl);
@@ -105,7 +108,7 @@ async function exchangeGeneric(
   };
   if (auth.clientSecret) params.client_secret = auth.clientSecret;
   try {
-    const res = await fetch(auth.tokenUrl, {
+    const res = await fetchWithTimeout(auth.tokenUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(params).toString(),
@@ -124,10 +127,4 @@ async function exchangeGeneric(
 
 function html(msg: string): string {
   return `<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;background:#0f1216;color:#e6edf3;padding:40px"><h2>comind-mcp</h2><p>${msg}</p></body>`;
-}
-
-function hash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return h;
 }

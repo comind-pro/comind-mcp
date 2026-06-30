@@ -176,26 +176,18 @@ Built iteratively, module by module. Everything below is implemented and working
 
 ---
 
-## Production readiness
+## Roadmap
 
-The core is solid; the production hardening is not done yet. Roughly **60–65%** — usable for an internal/trusted, single-instance deployment after the quick fixes below; **not** ready for public, untrusted, multi-tenant SaaS until the blockers are closed.
-
-### 🔴 Blockers
-1. **Rate limiting — mostly missing.** Executable virtual tools are now rate-limited per owner (in-memory or shared via Postgres) and SSRF-guarded, but `/auth` (password brute-force), the gateway (abuse) and per-agent quotas still aren't. Critical for any public exposure.
-2. **Timeouts — partial.** Executable virtual tools now run with a 15s timeout + `AbortController` (and a connect-time SSRF pin). Remaining: connector upstream calls (GA / HTTP / OpenAPI / MCP `fetch`) still run without an explicit per-call timeout → a hung upstream can hang the request.
-3. **Scheduler is not multi-replica safe.** In-memory cron → with more than one instance every schedule fires N times. Needs a distributed lock (Postgres advisory lock / a dedicated worker).
-4. **Migrations run on every instance boot** — a race with multiple replicas. Move migrations to a separate deploy step.
-5. **JWTs cannot be revoked.** A 7-day token can't be invalidated before it expires (logout is local-only); a leaked token stays valid for a week. Needs revocation, or short-lived access + refresh tokens.
-6. **OAuth `state` is predictable** (`sourceId` / a hash) — a CSRF risk. Use a random nonce.
-7. **TLS & secrets.** `VAULT_KEY` / `JWT_SECRET` live in env with no KMS or rotation; CORS defaults to `*`; no HTTPS (must sit behind a TLS reverse proxy).
-
-### 🟡 Important
-- No Dockerfile / CI (lint + test + build); no production web serving (Vite dev today — build & serve `dist` behind a CDN/proxy).
-- No graceful shutdown (close the pool, drain in-flight requests, stop the scheduler).
-- `call_logs` grow unbounded — no retention/cleanup; list endpoints have no pagination (thousands of tools).
-- Thin tests — only pure modules. No automated route / auth / isolation / e2e tests in the repo (those were manual smokes). Scheduler has no retry/backoff/alerting.
-- The OpenAPI parser is minimal — complex specs (`allOf`, deep `$ref`) may not parse correctly.
-- No password reset / email verification; no user audit log.
+- [ ] Rate-limit `/auth` (password brute-force), the gateway, and per-agent quotas.
+- [ ] Make the scheduler multi-replica safe (Postgres advisory lock or a dedicated worker) — today in-memory cron fires N times with N instances.
+- [ ] Move migrations to a separate deploy step (they run on every instance boot → race with multiple replicas).
+- [ ] JWT revocation — short-lived access + refresh tokens (a leaked 7-day token can't be invalidated; logout is local-only).
+- [ ] Secret management — KMS + rotation for `VAULT_KEY` / `JWT_SECRET`; tighten CORS (defaults to `*`); document the TLS reverse proxy.
+- [ ] Serve the web UI for production (build & serve `dist` behind a CDN/proxy; Vite dev only today).
+- [ ] Pagination on list endpoints (tools, logs).
+- [ ] Scheduler retry / backoff / alerting.
+- [ ] OpenAPI parser — handle complex specs (`allOf`, deep `$ref`).
+- [ ] Password reset / email verification; user audit log.
 
 ---
 

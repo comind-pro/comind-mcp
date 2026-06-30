@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from './fetch.js';
 import type { CallResult, Connector, HealthResult, ToolDef } from './types.js';
 import { textResult } from './types.js';
 
@@ -46,7 +47,7 @@ export class HttpConnector implements Connector {
     const headers: Record<string, string> = { ...(this.cfg.headers ?? {}) };
     if (hasBody) headers['content-type'] = headers['content-type'] ?? 'application/json';
 
-    const res = await fetch(`${this.cfg.baseUrl.replace(/\/$/, '')}${path}`, {
+    const res = await fetchWithTimeout(`${this.cfg.baseUrl.replace(/\/$/, '')}${path}`, {
       method,
       headers,
       body: hasBody ? JSON.stringify(body) : undefined,
@@ -57,7 +58,7 @@ export class HttpConnector implements Connector {
   async health(): Promise<HealthResult> {
     try {
       const url = `${this.cfg.baseUrl.replace(/\/$/, '')}${this.cfg.healthPath ?? '/'}`;
-      const res = await fetch(url, { headers: this.cfg.headers });
+      const res = await fetchWithTimeout(url, { headers: this.cfg.headers });
       return { ok: res.ok, message: `HTTP ${res.status}` };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) };

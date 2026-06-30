@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from './fetch.js';
 import type { CallResult, Connector, HealthResult, ToolDef } from './types.js';
 import { textResult } from './types.js';
 
@@ -161,7 +162,7 @@ export class OpenApiConnector implements Connector {
 
     let spec = this.cfg.spec;
     if (!spec && this.cfg.specUrl) {
-      const res = await fetch(this.cfg.specUrl, { headers: this.cfg.headers });
+      const res = await fetchWithTimeout(this.cfg.specUrl, { headers: this.cfg.headers });
       if (!res.ok) throw new Error(`Fetch spec failed: ${res.status} ${res.statusText}`);
       spec = (await res.json()) as Record<string, unknown>;
     }
@@ -205,7 +206,7 @@ export class OpenApiConnector implements Connector {
     const hasBody = op.bodyKeys.size > 0 && op.method !== 'get';
     if (hasBody) headers['content-type'] = headers['content-type'] ?? 'application/json';
 
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: op.method.toUpperCase(),
       headers,
       body: hasBody ? JSON.stringify('body' in body ? body.body : body) : undefined,
