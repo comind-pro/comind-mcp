@@ -216,6 +216,35 @@ The core is solid; the production hardening is not done yet. Roughly **60–65%*
 
 ---
 
+## Distribution
+
+Packaged as an **OCI image** (`ghcr.io/comind-pro/comind-mcp`) and listed in the
+**official MCP Registry** (`registry.modelcontextprotocol.io`) — the canonical
+source that downstream catalogs (PulseMCP, Smithery, Docker Hub, …) consume. The
+metadata lives in [`server.json`](./server.json) under the GitHub-verified
+namespace `io.github.comind-pro/comind-mcp`.
+
+Run the image (zero-infra, embedded Postgres):
+
+```bash
+docker run -p 8787:8787 -v comind-data:/data \
+  -e SERVER_ENV=dev ghcr.io/comind-pro/comind-mcp:latest
+# prod: drop SERVER_ENV=dev and set VAULT_KEY + JWT_SECRET
+```
+
+Releasing is automated — push a version tag and CI ([`release.yml`](./.github/workflows/release.yml))
+builds & pushes the image to GHCR, then publishes `server.json` to the registry
+via GitHub OIDC (no tokens):
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+> Note: ComindMCP is a multi-tenant **gateway** (HTTP MCP at `/g/:slug/mcp`, agent-key auth),
+> not a single stdio server — registry clients self-deploy it and connect their own agents.
+
+---
+
 ## Contributing
 
 **comind-mcp is open source** (MIT) and contributions are welcome — bug reports, features, docs, tests.
