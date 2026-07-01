@@ -6,6 +6,7 @@ import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, oauthAccessTokens, oauthAuthCodes, oauthClients } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
 import { newId } from '../lib/id.js';
+import { jwks, signAccessToken } from '../auth/oauth-jwt.js';
 
 /**
  * Inbound OAuth 2.0 Authorization Server — lets MCP clients that require OAuth
@@ -19,6 +20,12 @@ import { newId } from '../lib/id.js';
 const BASE = config.publicBaseUrl;
 const CODE_TTL_MS = 5 * 60 * 1000;
 const TOKEN_TTL_S = 30 * 24 * 60 * 60; // 30 days
+const SCOPES = ['mcp', 'offline_access'];
+
+/** The V-MCP resource URL a token is bound to (its JWT `aud`). */
+function resourceFor(groupId: string | null): string {
+  return groupId ? `${BASE}/g/${groupId}/mcp` : `${BASE}/a/mcp`;
+}
 
 const sha256b64url = (s: string) => createHash('sha256').update(s).digest('base64url');
 const randomToken = () => randomBytes(32).toString('base64url');
@@ -39,27 +46,36 @@ function isAgentResource(resource: string | undefined): boolean {
 
 export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
   // ── Discovery metadata ──────────────────────────────────────────────
-  app.get('/.well-known/oauth-authorization-server', async () => ({
+  const asMetadata = () => ({
     issuer: BASE,
     authorization_endpoint: `${BASE}/oauth/authorize`,
     token_endpoint: `${BASE}/oauth/token`,
     registration_endpoint: `${BASE}/oauth/register`,
+    jwks_uri: `${BASE}/.well-known/jwks.json`,
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
-    scopes_supported: ['mcp'],
-  }));
+    scopes_supported: SCOPES,
+  });
+  app.get('/.well-known/oauth-authorization-server', async () => asMetadata());
+  // Some clients probe OpenID Connect Discovery first; serve the same document.
+  app.get('/.well-known/openid-configuration', async () => asMetadata());
+  // Public signing key set — lets clients verify the RS256 access-token JWTs.
+  app.get('/.well-known/jwks.json', async () => jwks());
 
   // Root metadata advertises the base; per-path metadata (RFC 9728) echoes the
   // actual endpoint as the resource so the client carries it into /authorize.
-  app.get('/.well-known/oauth-protected-resource', async () => ({
-    resource: BASE,
+  const prMetadata = (resource: string) => ({
+    resource,
     authorization_servers: [BASE],
-  }));
+    bearer_methods_supported: ['header'],
+    scopes_supported: SCOPES,
+  });
+  app.get('/.well-known/oauth-protected-resource', async () => prMetadata(BASE));
   app.get('/.well-known/oauth-protected-resource/*', async (req) => {
     const star = (req.params as Record<string, string>)['*'] || '';
-    return { resource: `${BASE}/${star}`.replace(/\/$/, ''), authorization_servers: [BASE] };
+    return prMetadata(`${BASE}/${star}`.replace(/\/$/, ''));
   });
 
   // ── Dynamic Client Registration (RFC 7591) ──────────────────────────
@@ -142,6 +158,7 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
 
   // ── Token ────────────────────────────────────────────────────────────
   app.post('/oauth/token', async (req, reply) => {
+    reply.header('cache-control', 'no-store').header('pragma', 'no-cache'); // RFC 6749 §5.1
     const b = (req.body ?? {}) as Record<string, string | undefined>;
     const grant = b.grant_type;
 
@@ -197,7 +214,17 @@ async function validateAuthorizeParams(p: Record<string, string | undefined>): P
 }
 
 async function issueTokens(clientId: string, agentId: string, groupId: string | null) {
-  const access = randomToken();
+  // Access token is an RS256 JWT bound (aud) to the V-MCP resource, so clients
+  // that inspect the token accept it. The gateway still validates by tokenHash
+  // (see gateway/server.ts) — the JWT signature is for the client, not us.
+  const access = signAccessToken({
+    iss: BASE,
+    sub: agentId,
+    aud: resourceFor(groupId),
+    scope: 'mcp',
+    clientId,
+    expiresInS: TOKEN_TTL_S,
+  });
   const refresh = randomToken();
   await db.insert(oauthAccessTokens).values({
     id: newId(),
