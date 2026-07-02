@@ -459,7 +459,6 @@ export function SourcesTab() {
 
       <div className="page-head">
         <div>
-          <span className="title">Sources</span>
           <span className="sub">{sources.length} connected</span>
         </div>
         <button className="btn-primary" onClick={openNew}>

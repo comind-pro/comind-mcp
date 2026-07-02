@@ -1375,7 +1375,6 @@ export function ToolsTab() {
 
       <div className="page-head">
         <div>
-          <span className="title">Tools</span>
           <span className="sub">
             {tools.length} tools · {visibleTotal} visible to agents
           </span>
