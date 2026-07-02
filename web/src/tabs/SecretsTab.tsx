@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Secret } from '../api.js';
+import { EmptyState } from '../ui.js';
 
 export function SecretsTab() {
   const [secrets, setSecrets] = useState<Secret[]>([]);
@@ -60,9 +61,7 @@ export function SecretsTab() {
   return (
     <>
       <div className="intro">
-        <b>Secrets</b> — tokens, keys, passwords. Stored encrypted (AES-256-GCM). In a source config you write only a
-        reference <code>{'${secret.NAME}'}</code>; at runtime comind substitutes the real value — the agent and JSON
-        never see it. <b>value</b> = encrypted value · <b>envRef</b> = name of a process env variable.
+        Secrets hold tokens and passwords your connections need. They're stored encrypted; agents never see them.
       </div>
 
       <div className="page-head">
@@ -95,8 +94,8 @@ export function SecretsTab() {
                   name="comind-secret-name"
                 />
                 <select value={mode} onChange={(e) => setMode(e.target.value as 'value' | 'envRef')}>
-                  <option value="value">value (encrypt)</option>
-                  <option value="envRef">envRef (env variable)</option>
+                  <option value="value">Paste a value (stored encrypted)</option>
+                  <option value="envRef">Reference a server env variable</option>
                 </select>
                 <input
                   className="grow"
@@ -191,8 +190,13 @@ export function SecretsTab() {
             ))}
             {!secrets.length && (
               <tr>
-                <td colSpan={5} className="muted">
-                  No secrets yet.
+                <td colSpan={5}>
+                  <EmptyState
+                    title="No secrets yet"
+                    body="Add a secret to reference it from your source configs."
+                    actionLabel="+ New secret"
+                    onAction={() => setDraft(true)}
+                  />
                 </td>
               </tr>
             )}

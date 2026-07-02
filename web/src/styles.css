@@ -1568,6 +1568,17 @@ tr.sec-head:hover td {
 .tools-table tbody tr:hover {
   background: var(--panel2);
 }
+tr.clickable {
+  cursor: pointer;
+}
+tr.clickable:hover {
+  background: var(--panel2);
+}
+tr.detail-row td {
+  background: var(--panel2);
+  color: var(--muted);
+  font-size: 12px;
+}
 .tools-table tr.active {
   background: var(--panel2);
 }
