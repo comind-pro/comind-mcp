@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Source, type Tool } from '../api.js';
+import { Advanced, EmptyState } from '../ui.js';
 import { type Cfg, DEFAULTS, KIND_META, type Kind, SourceFields } from './SourceFields.js';
 
 const KINDS: Kind[] = ['mcp', 'openapi', 'http', 'imap', 'sql', 'ga'];
@@ -212,10 +213,13 @@ export function SourcesTab() {
   const editor = (e: Editing, isNew: boolean) => {
     const jsonText = e.jsonRaw != null ? e.jsonRaw : JSON.stringify(e.cfg, null, 2);
     const interactive = hasInteractiveOAuth(e.cfg);
+    const toolCount = /(\d+)\s*(tools?|operations?)/i.exec(e.testMsg)?.[1];
+    const testFirstLine = e.testMsg.split('\n')[0];
+    const testIsLong = e.testMsg.length > 140 || e.testMsg.includes('\n');
     return (
       <div className="editor-split">
         {/* LEFT: form */}
-        <div className="editor-left">
+        <div className="editor-left" style={{ borderRight: 'none' }}>
           {e.created && e.importedTools && (
             <div style={{ marginBottom: 20 }}>
               <div className="status-line" style={{ color: 'var(--ok)', marginBottom: 10 }}>
@@ -248,15 +252,12 @@ export function SourcesTab() {
           {isNew && (
             <>
               <div className="field-label">Type</div>
-              <div className="type-grid" style={{ marginBottom: 18 }}>
+              <div className="kind-cards">
                 {KINDS.map((k) => (
-                  <div key={k} className={`type-card ${e.kind === k ? 'on' : ''}`} onClick={() => setKind(k)}>
-                    <div style={{ flex: 1 }}>
-                      <div className="tc-title">{KIND_META[k].title}</div>
-                      <div className="tc-desc">{KIND_META[k].desc}</div>
-                    </div>
-                    <div className="tc-dot">{e.kind === k ? '✓' : ''}</div>
-                  </div>
+                  <button key={k} className={`kind-card ${e.kind === k ? 'active' : ''}`} onClick={() => setKind(k)}>
+                    <span className="kind-card-title">{KIND_META[k].title}</span>
+                    <span className="kind-card-desc">{KIND_META[k].desc}</span>
+                  </button>
                 ))}
               </div>
             </>
@@ -404,12 +405,8 @@ export function SourcesTab() {
 
             {e.testState === 'ok' && (
               <span className="status-line" style={{ color: 'var(--ok)' }}>
-                <span className="status-dot" style={{ background: 'var(--ok)' }} /> connected
-              </span>
-            )}
-            {e.testState === 'error' && (
-              <span className="status-line" style={{ color: 'var(--err)' }}>
-                <span className="status-dot" style={{ background: 'var(--err)' }} /> {e.testMsg || 'failed'}
+                <span className="status-dot" style={{ background: 'var(--ok)' }} /> ✓ Connected
+                {toolCount ? ` · ${toolCount} tools` : ''}
               </span>
             )}
 
@@ -419,32 +416,37 @@ export function SourcesTab() {
               </button>
             )}
           </div>
-          {err && <div className="err-msg">{err}</div>}
-        </div>
-
-        {/* RIGHT: JSON config */}
-        <div className="editor-right">
-          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-            <span className="field-label" style={{ margin: 0 }}>
-              Config · JSON
-            </span>
-            <span className="tbadge">edits ↔ form</span>
-          </div>
-          <textarea
-            className="json-area"
-            spellCheck={false}
-            value={jsonText}
-            onChange={(ev) => onJson(ev.target.value)}
-          />
-          {e.jsonError ? (
-            <div className="err-msg" style={{ marginTop: 8 }}>
-              ⚠ {e.jsonError}
-            </div>
-          ) : (
-            <div className="hint" style={{ marginTop: 8 }}>
-              Edits here update the form. Secrets stay as references <code>{'${secret.NAME}'}</code>.
+          {e.testState === 'error' && (
+            <div className="err-msg">
+              Couldn't connect: {testFirstLine || 'unknown error'}
+              {testIsLong && <Advanced summary="Details">{e.testMsg}</Advanced>}
             </div>
           )}
+          {err && <div className="err-msg">{err}</div>}
+
+          <Advanced summary="Raw JSON config">
+            <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+              <span className="field-label" style={{ margin: 0 }}>
+                Config · JSON
+              </span>
+              <span className="tbadge">edits ↔ form</span>
+            </div>
+            <textarea
+              className="json-area"
+              spellCheck={false}
+              value={jsonText}
+              onChange={(ev) => onJson(ev.target.value)}
+            />
+            {e.jsonError ? (
+              <div className="err-msg" style={{ marginTop: 8 }}>
+                ⚠ {e.jsonError}
+              </div>
+            ) : (
+              <div className="hint" style={{ marginTop: 8 }}>
+                Edits here update the form. Secrets stay as references <code>{'${secret.NAME}'}</code>.
+              </div>
+            )}
+          </Advanced>
         </div>
       </div>
     );
@@ -453,8 +455,7 @@ export function SourcesTab() {
   return (
     <>
       <div className="intro">
-        <b>Sources</b> — where tools come from. Fill the form (or edit <b>JSON</b>) → Create → Test → Import. Tokens go
-        through <b>Secrets</b> (<code>{'${secret.NAME}'}</code>), not in JSON. Click a row to edit.
+        Connections are the upstream systems your tools come from. Add one, test it, then import its tools.
       </div>
 
       <div className="page-head">
@@ -462,7 +463,7 @@ export function SourcesTab() {
           <span className="sub">{sources.length} connected</span>
         </div>
         <button className="btn-primary" onClick={openNew}>
-          + New source
+          + New connection
         </button>
       </div>
 
@@ -501,9 +502,12 @@ export function SourcesTab() {
       })}
 
       {!sources.length && !ed && (
-        <div className="muted" style={{ padding: '20px 2px' }}>
-          No sources yet.
-        </div>
+        <EmptyState
+          title="No connections yet"
+          body="Connect an MCP server, REST API, database, or email account — comind will list every tool it offers."
+          actionLabel="+ New connection"
+          onAction={openNew}
+        />
       )}
     </>
   );

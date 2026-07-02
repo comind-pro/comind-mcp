@@ -869,49 +869,35 @@ tr.sec-head:hover td {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/* source type picker */
-.type-grid {
+/* source kind picker */
+.kind-cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 9px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
 }
-.type-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 12px;
+.kind-card {
+  padding: 12px;
+  border: 1px solid var(--border);
   border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  text-align: left;
   cursor: pointer;
-  border: 1.5px solid var(--border);
-  background: var(--panel2);
 }
-.type-card.on {
+.kind-card.active {
   border-color: var(--accent);
-  background: rgba(79, 156, 249, 0.08);
+  background: var(--accent-soft);
 }
-.type-card .tc-title {
-  font-size: 13px;
+.kind-card-title {
+  display: block;
   font-weight: 600;
+  font-size: 13.5px;
 }
-.type-card .tc-desc {
-  font-size: 11px;
-  color: var(--muted);
-}
-.type-card .tc-dot {
-  margin-left: auto;
-  width: 17px;
-  height: 17px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  color: #06121f;
-  border: 1.5px solid var(--border);
-}
-.type-card.on .tc-dot {
-  background: var(--accent);
-  border: none;
+.kind-card-desc {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 /* discovered-tools checklist */
