@@ -1446,3 +1446,96 @@ tr.sec-head:hover td {
     padding: 56px 16px 32px;
   }
 }
+
+.home-hero {
+  text-align: center;
+  padding: 80px 24px;
+}
+.home-hero h2 {
+  font-size: 28px;
+  margin: 0 0 8px;
+}
+.home-hero p {
+  max-width: 480px;
+  margin: 0 auto 20px;
+}
+.home-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.home-step {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.home-step.done {
+  opacity: 0.6;
+}
+.home-step.next {
+  border-color: var(--accent);
+}
+.home-step-mark {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-inset);
+  font-weight: 600;
+}
+.home-step.done .home-step-mark {
+  background: var(--ok);
+  color: #fff;
+}
+.home-step-label {
+  display: block;
+  font-weight: 600;
+}
+.home-step-body {
+  display: block;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.home-step-cta {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.home-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  box-shadow: var(--shadow);
+}
+.stat-card-v {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+}
+.stat-card-l {
+  color: var(--text-muted);
+  font-size: 13px;
+}

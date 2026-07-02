@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AuthPage } from './AuthPage.js';
 import { type AuthUser, api, tokenStore } from './api.js';
+import { Home } from './Home.js';
 import { AgentsTab } from './tabs/AgentsTab.js';
 import { GroupsTab } from './tabs/GroupsTab.js';
 import { LogsTab } from './tabs/LogsTab.js';
@@ -93,7 +94,7 @@ export function App() {
           <h1 className="page-title">{current.label}</h1>
           {current.hint && <span className="page-hint">{current.hint}</span>}
         </header>
-        {page === 'home' && <div className="text-muted">Home — coming in the next task.</div>}
+        {page === 'home' && <Home onNavigate={setPage} />}
         {page === 'connections' && <SourcesTab />}
         {page === 'tools' && <ToolsTab />}
         {page === 'workspaces' && <GroupsTab />}
