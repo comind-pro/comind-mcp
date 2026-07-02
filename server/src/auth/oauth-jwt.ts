@@ -30,7 +30,10 @@ function loadOrGenerateKey(): { privateKey: KeyObject; publicJwk: JsonWebKey & {
   }
   const jwk = privateKey.export({ format: 'jwk' }) as JsonWebKey & { d?: string };
   // kid = short hash of the public modulus, so it's stable for a given key.
-  const kid = createHash('sha256').update(jwk.n ?? '').digest('base64url').slice(0, 16);
+  const kid = createHash('sha256')
+    .update(jwk.n ?? '')
+    .digest('base64url')
+    .slice(0, 16);
   const publicJwk = { kty: jwk.kty, n: jwk.n, e: jwk.e, use: 'sig', alg: 'RS256', kid } as JsonWebKey & { kid: string };
   return { privateKey, publicJwk };
 }

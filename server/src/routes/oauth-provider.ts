@@ -1,12 +1,12 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { jwks, signAccessToken } from '../auth/oauth-jwt.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, oauthAccessTokens, oauthAuthCodes, oauthClients } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
 import { newId } from '../lib/id.js';
-import { jwks, signAccessToken } from '../auth/oauth-jwt.js';
 
 /**
  * Inbound OAuth 2.0 Authorization Server — lets MCP clients that require OAuth
