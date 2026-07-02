@@ -19,7 +19,9 @@ import { jwks, signAccessToken } from '../auth/oauth-jwt.js';
  */
 const BASE = config.publicBaseUrl;
 const CODE_TTL_MS = 5 * 60 * 1000;
-const TOKEN_TTL_S = 30 * 24 * 60 * 60; // 30 days
+// Short-lived access token (clients refresh via refresh_token). A multi-day
+// access token is atypical and some clients (Claude.ai) reject it.
+const TOKEN_TTL_S = 60 * 60; // 1 hour (refresh_token renews it)
 const SCOPES = ['mcp', 'offline_access'];
 
 /** The V-MCP resource URL a token is bound to (its JWT `aud`). */
@@ -223,10 +225,9 @@ async function issueTokens(clientId: string, agentId: string, groupId: string | 
   // Access token is an RS256 JWT bound (aud) to the V-MCP resource, so clients
   // that inspect the token accept it. The gateway still validates by tokenHash
   // (see gateway/server.ts) — the JWT signature is for the client, not us.
-  // Grant the full advertised scope set — clients (Claude.ai) request
-  // `mcp offline_access` and abort if the granted `scope` drops what they asked
-  // for (e.g. offline_access, the refresh grant).
-  const grantedScope = SCOPES.join(' ');
+  // Grant just `mcp` (offline_access is implied by returning a refresh_token) —
+  // matches working connectors; clients accept a granted subset of the request.
+  const grantedScope = 'mcp';
   const access = signAccessToken({
     iss: BASE,
     sub: agentId,

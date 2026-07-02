@@ -10,7 +10,10 @@ import { authenticateAgent, authenticateAgentAll, buildAgentServer, buildGroupSe
  * an unauthenticated GET and treats a 405 (no challenge) as "not a valid MCP
  * server", so GET/DELETE must 401-challenge too, not 405.
  */
-function challenge(reply: FastifyReply, resourcePath: string): FastifyReply {
+// `metaSuffix` is appended to the protected-resource metadata path: '' points at
+// the root document (what Claude.ai's connection probe fetches — mirrors
+// known-good servers), '/g/<id>/mcp' at the per-group document.
+function challenge(reply: FastifyReply, metaSuffix: string): FastifyReply {
   // Plain-text body (not a JSON-RPC error): a connection probe that parses the
   // 401 body as an MCP message must fall back to the WWW-Authenticate challenge,
   // not mistake it for an application-level error. Mirrors known-good servers.
@@ -18,7 +21,7 @@ function challenge(reply: FastifyReply, resourcePath: string): FastifyReply {
     .code(401)
     .header(
       'WWW-Authenticate',
-      `Bearer resource_metadata="${config.publicBaseUrl}/.well-known/oauth-protected-resource/${resourcePath}"`,
+      `Bearer resource_metadata="${config.publicBaseUrl}/.well-known/oauth-protected-resource${metaSuffix}"`,
     )
     .header('content-type', 'text/plain; charset=utf-8')
     .header('x-content-type-options', 'nosniff')
@@ -40,7 +43,7 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
   app.post('/g/:groupId/mcp', async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
     const auth = await authenticateAgent(groupId, req.headers.authorization);
-    if (!auth) return challenge(reply, `g/${groupId}/mcp`);
+    if (!auth) return challenge(reply, `/g/${groupId}/mcp`);
 
     const server = await buildGroupServer(auth);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
@@ -57,7 +60,7 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
   // the authenticated agent may reach. Bearer = agent key or agent-wide OAuth token.
   app.post('/a/mcp', async (req, reply) => {
     const auth = await authenticateAgentAll(req.headers.authorization);
-    if (!auth) return challenge(reply, 'a/mcp');
+    if (!auth) return challenge(reply, '');
     const server = await buildAgentServer(auth);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     reply.raw.on('close', () => {
@@ -74,11 +77,11 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
   const groupNoStream = async (req: { params: unknown; headers: { authorization?: string } }, reply: FastifyReply) => {
     const { groupId } = req.params as { groupId: string };
     const auth = await authenticateAgent(groupId, req.headers.authorization);
-    return auth ? methodNotAllowed(reply) : challenge(reply, `g/${groupId}/mcp`);
+    return auth ? methodNotAllowed(reply) : challenge(reply, `/g/${groupId}/mcp`);
   };
   const agentNoStream = async (req: { headers: { authorization?: string } }, reply: FastifyReply) => {
     const auth = await authenticateAgentAll(req.headers.authorization);
-    return auth ? methodNotAllowed(reply) : challenge(reply, 'a/mcp');
+    return auth ? methodNotAllowed(reply) : challenge(reply, '');
   };
   app.get('/g/:groupId/mcp', groupNoStream);
   app.delete('/g/:groupId/mcp', groupNoStream);
