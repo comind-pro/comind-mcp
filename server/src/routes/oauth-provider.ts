@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { jwks, signAccessToken } from '../auth/oauth-jwt.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, oauthAccessTokens, oauthAuthCodes, oauthClients } from '../db/schema.js';
@@ -18,7 +19,15 @@ import { newId } from '../lib/id.js';
  */
 const BASE = config.publicBaseUrl;
 const CODE_TTL_MS = 5 * 60 * 1000;
-const TOKEN_TTL_S = 30 * 24 * 60 * 60; // 30 days
+// Short-lived access token (clients refresh via refresh_token). A multi-day
+// access token is atypical and some clients (Claude.ai) reject it.
+const TOKEN_TTL_S = 60 * 60; // 1 hour (refresh_token renews it)
+const SCOPES = ['mcp', 'offline_access'];
+
+/** The V-MCP resource URL a token is bound to (its JWT `aud`). */
+function resourceFor(groupId: string | null): string {
+  return groupId ? `${BASE}/g/${groupId}/mcp` : `${BASE}/a/mcp`;
+}
 
 const sha256b64url = (s: string) => createHash('sha256').update(s).digest('base64url');
 const randomToken = () => randomBytes(32).toString('base64url');
@@ -39,27 +48,42 @@ function isAgentResource(resource: string | undefined): boolean {
 
 export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
   // ── Discovery metadata ──────────────────────────────────────────────
-  app.get('/.well-known/oauth-authorization-server', async () => ({
+  const asMetadata = () => ({
     issuer: BASE,
     authorization_endpoint: `${BASE}/oauth/authorize`,
     token_endpoint: `${BASE}/oauth/token`,
     registration_endpoint: `${BASE}/oauth/register`,
+    jwks_uri: `${BASE}/.well-known/jwks.json`,
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
-    scopes_supported: ['mcp'],
-  }));
+    scopes_supported: SCOPES,
+  });
+  app.get('/.well-known/oauth-authorization-server', async () => asMetadata());
+  // Some clients probe OpenID Connect Discovery first; serve the same document.
+  app.get('/.well-known/openid-configuration', async () => asMetadata());
+  // Public signing key set — lets clients verify the RS256 access-token JWTs.
+  app.get('/.well-known/jwks.json', async () => jwks());
 
   // Root metadata advertises the base; per-path metadata (RFC 9728) echoes the
   // actual endpoint as the resource so the client carries it into /authorize.
-  app.get('/.well-known/oauth-protected-resource', async () => ({
-    resource: BASE,
+  const prMetadata = (resource: string) => ({
+    resource,
     authorization_servers: [BASE],
-  }));
+    bearer_methods_supported: ['header'],
+    scopes_supported: SCOPES,
+  });
+  // Root metadata: `resource` MUST equal the endpoint the client connects to.
+  // Claude.ai's connection probe fetches THIS (not the path-scoped variant the
+  // WWW-Authenticate header points at) and rejects the server as "not a valid
+  // MCP server" unless `resource` exactly matches the connector URL. `/a/mcp`
+  // (agent-wide) is the canonical endpoint; path-scoped metadata below still
+  // serves the per-group resource for the OAuth flow.
+  app.get('/.well-known/oauth-protected-resource', async () => prMetadata(`${BASE}/a/mcp`));
   app.get('/.well-known/oauth-protected-resource/*', async (req) => {
     const star = (req.params as Record<string, string>)['*'] || '';
-    return { resource: `${BASE}/${star}`.replace(/\/$/, ''), authorization_servers: [BASE] };
+    return prMetadata(`${BASE}/${star}`.replace(/\/$/, ''));
   });
 
   // ── Dynamic Client Registration (RFC 7591) ──────────────────────────
@@ -142,6 +166,7 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
 
   // ── Token ────────────────────────────────────────────────────────────
   app.post('/oauth/token', async (req, reply) => {
+    reply.header('cache-control', 'no-store').header('pragma', 'no-cache'); // RFC 6749 §5.1
     const b = (req.body ?? {}) as Record<string, string | undefined>;
     const grant = b.grant_type;
 
@@ -161,7 +186,7 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
         return tokenError(reply, 'invalid_grant', 'redirect_uri mismatch');
       if (sha256b64url(code_verifier) !== row.codeChallenge) return tokenError(reply, 'invalid_grant', 'PKCE failed');
 
-      return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId));
+      return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId, b.resource));
     }
 
     if (grant === 'refresh_token') {
@@ -173,7 +198,7 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(oauthAccessTokens.refreshHash, hashKey(refresh)));
       if (!row) return tokenError(reply, 'invalid_grant', 'unknown refresh_token');
       await db.delete(oauthAccessTokens).where(eq(oauthAccessTokens.id, row.id)); // rotate
-      return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId));
+      return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId, b.resource));
     }
 
     return tokenError(reply, 'unsupported_grant_type', `grant_type ${grant} not supported`);
@@ -196,8 +221,26 @@ async function validateAuthorizeParams(p: Record<string, string | undefined>): P
   return null;
 }
 
-async function issueTokens(clientId: string, agentId: string, groupId: string | null) {
-  const access = randomToken();
+async function issueTokens(clientId: string, agentId: string, groupId: string | null, requestedResource?: string) {
+  // Access token is an RS256 JWT bound (aud) to the V-MCP resource, so clients
+  // that inspect the token accept it. The gateway still validates by tokenHash
+  // (see gateway/server.ts) — the JWT signature is for the client, not us.
+  // Grant just `mcp` (offline_access is implied by returning a refresh_token) —
+  // matches working connectors; clients accept a granted subset of the request.
+  const grantedScope = 'mcp';
+  // RFC 8707: aud must echo the resource the client asked for (Claude.ai
+  // inspects the JWT and rejects an aud that differs from the connector URL).
+  const validResource =
+    requestedResource &&
+    (groupIdFromResource(requestedResource) === groupId || (groupId === null && isAgentResource(requestedResource)));
+  const access = signAccessToken({
+    iss: BASE,
+    sub: agentId,
+    aud: validResource ? requestedResource.replace(/\/$/, '') : resourceFor(groupId),
+    scope: grantedScope,
+    clientId,
+    expiresInS: TOKEN_TTL_S,
+  });
   const refresh = randomToken();
   await db.insert(oauthAccessTokens).values({
     id: newId(),
@@ -214,7 +257,7 @@ async function issueTokens(clientId: string, agentId: string, groupId: string | 
     token_type: 'Bearer',
     expires_in: TOKEN_TTL_S,
     refresh_token: refresh,
-    scope: 'mcp',
+    scope: grantedScope,
   };
 }
 
