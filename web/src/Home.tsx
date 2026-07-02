@@ -181,7 +181,12 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
 
       {recent.length > 0 && (
         <div className="card">
-          <h2>Recent calls</h2>
+          <div className="card-head-row">
+            <h2>Recent calls</h2>
+            <button className="ghost" onClick={() => onNavigate('activity')}>
+              View all →
+            </button>
+          </div>
           <table>
             <tbody>
               {recent.map((l) => (
@@ -196,9 +201,6 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
               ))}
             </tbody>
           </table>
-          <button className="ghost" onClick={() => onNavigate('activity')}>
-            View all activity →
-          </button>
         </div>
       )}
     </>

@@ -48,6 +48,14 @@ export function EmptyState({
   );
 }
 
+export function Loading() {
+  return (
+    <div className="loading text-muted">
+      <span className="spin" /> Loading…
+    </div>
+  );
+}
+
 export function Sparkline({ points }: { points: number[] }) {
   const w = 100;
   const h = 28;

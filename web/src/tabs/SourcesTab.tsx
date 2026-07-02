@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Source, type Tool } from '../api.js';
 import { Icon, type IconName } from '../icons.js';
-import { Advanced, EmptyState } from '../ui.js';
+import { Advanced, EmptyState, Loading } from '../ui.js';
 import { type Cfg, DEFAULTS, KIND_META, type Kind, SourceFields } from './SourceFields.js';
 
 const KINDS: Kind[] = ['mcp', 'openapi', 'http', 'imap', 'sql', 'ga'];
@@ -34,7 +34,7 @@ interface Editing {
 }
 
 export function SourcesTab() {
-  const [sources, setSources] = useState<Source[]>([]);
+  const [sources, setSources] = useState<Source[] | null>(null);
   const [err, setErr] = useState('');
   const [ed, setEd] = useState<Editing | null>(null);
   const [busy, setBusy] = useState('');
@@ -43,8 +43,13 @@ export function SourcesTab() {
     api
       .get<Source[]>('/sources')
       .then(setSources)
-      .catch((e) => setErr(String(e.message)));
+      .catch((e) => {
+        setErr(String(e.message));
+        setSources([]);
+      });
   useEffect(() => void load(), []);
+
+  if (sources === null) return <Loading />;
 
   const patch = (p: Partial<Editing>) => setEd((e) => (e ? { ...e, ...p } : e));
   const close = () => setEd(null);

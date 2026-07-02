@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { type Agent, api, type CallLog, type Group } from '../api.js';
-import { EmptyState } from '../ui.js';
+import { EmptyState, Loading } from '../ui.js';
 
 interface ToolRow {
   tool_name: string;
@@ -30,7 +30,7 @@ const SOURCES = [
 ] as const;
 
 export function LogsTab() {
-  const [logs, setLogs] = useState<CallLog[]>([]);
+  const [logs, setLogs] = useState<CallLog[] | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [win, setWin] = useState<keyof typeof WINDOWS>('7d');
   const [source, setSource] = useState<(typeof SOURCES)[number]['value']>('');
@@ -57,15 +57,21 @@ export function LogsTab() {
     if (days) metricsParams.set('from', new Date(Date.now() - days * 86_400_000).toISOString());
     if (source) metricsParams.set('source', source);
     const qs = metricsParams.toString();
-    setMetrics(await api.get<Metrics>(`/metrics${qs ? `?${qs}` : ''}`));
+    try {
+      setMetrics(await api.get<Metrics>(`/metrics${qs ? `?${qs}` : ''}`));
 
-    const logParams = new URLSearchParams(metricsParams);
-    if (groupId) logParams.set('groupId', groupId);
-    if (agentId) logParams.set('agentId', agentId);
-    logParams.set('limit', '100');
-    setLogs(await api.get<CallLog[]>(`/logs?${logParams.toString()}`));
+      const logParams = new URLSearchParams(metricsParams);
+      if (groupId) logParams.set('groupId', groupId);
+      if (agentId) logParams.set('agentId', agentId);
+      logParams.set('limit', '100');
+      setLogs(await api.get<CallLog[]>(`/logs?${logParams.toString()}`));
+    } catch {
+      setLogs([]);
+    }
   };
   useEffect(() => void load(), [win, source, groupId, agentId]);
+
+  if (logs === null) return <Loading />;
 
   const stat = (label: string, value: string | number) => (
     <div className="log-stat">

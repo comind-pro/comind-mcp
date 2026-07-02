@@ -1510,6 +1510,22 @@ tr.detail-row td {
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 0;
+  font-size: 13.5px;
+}
+.card-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.card-head-row h2 {
+  margin: 0;
+}
 .btn-primary .spin {
   border-color: rgba(255, 255, 255, 0.4);
   border-top-color: #fff;

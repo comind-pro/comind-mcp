@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api, type Group, type Schedule, type Source, type Tool } from '../api.js';
-import { CopyRow, EmptyState } from '../ui.js';
+import { CopyRow, EmptyState, Loading } from '../ui.js';
 import { ToolPicker } from './ToolPicker.js';
 
 export function GroupsTab() {
-  const [groups, setGroups] = useState<Group[]>([]);
+  const [groups, setGroups] = useState<Group[] | null>(null);
   const [tools, setTools] = useState<Tool[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -23,15 +23,22 @@ export function GroupsTab() {
     setCounts(Object.fromEntries(entries));
   };
   const loadGroups = async () => {
-    const gs = await api.get<Group[]>('/groups');
-    setGroups(gs);
-    void loadCounts(gs);
+    try {
+      const gs = await api.get<Group[]>('/groups');
+      setGroups(gs);
+      void loadCounts(gs);
+    } catch (e) {
+      setErr(String((e as Error).message));
+      setGroups([]);
+    }
   };
   useEffect(() => {
     void loadGroups();
     void api.get<Tool[]>('/tools').then(setTools);
     void api.get<Source[]>('/sources').then(setSources);
   }, []);
+
+  if (groups === null) return <Loading />;
 
   const select = async (g: Group) => {
     if (openId === g.id) return setOpenId(null);

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, type Secret } from '../api.js';
-import { EmptyState } from '../ui.js';
+import { EmptyState, Loading } from '../ui.js';
 
 export function SecretsTab() {
-  const [secrets, setSecrets] = useState<Secret[]>([]);
+  const [secrets, setSecrets] = useState<Secret[] | null>(null);
   const [draft, setDraft] = useState(false);
   const [name, setName] = useState('');
   const [mode, setMode] = useState<'value' | 'envRef'>('value');
@@ -16,8 +16,13 @@ export function SecretsTab() {
     api
       .get<Secret[]>('/secrets')
       .then(setSecrets)
-      .catch((e) => setErr(String(e.message)));
+      .catch((e) => {
+        setErr(String(e.message));
+        setSecrets([]);
+      });
   useEffect(() => void load(), []);
+
+  if (secrets === null) return <Loading />;
 
   const startEdit = (s: Secret) => {
     setEditId(s.id);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { PageId } from '../App.js';
 import { api, type Source, type Tool } from '../api.js';
-import { EmptyState } from '../ui.js';
+import { EmptyState, Loading } from '../ui.js';
 import { buildInput, parseInput } from './SchemaBuilder.js';
 import { type Cfg, type Editing, type MetaForm, type Step, ToolEditor } from './ToolEditor.js';
 
@@ -9,7 +9,7 @@ import { type Cfg, type Editing, type MetaForm, type Step, ToolEditor } from './
 const kindLabel = (k: Tool['kind']) => (k === 'composite' ? 'Recipe' : k);
 
 export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
-  const [tools, setTools] = useState<Tool[]>([]);
+  const [tools, setTools] = useState<Tool[] | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
   const [err, setErr] = useState('');
 
@@ -22,11 +22,16 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
     api
       .get<Tool[]>('/tools')
       .then(setTools)
-      .catch((e) => setErr(String(e.message)));
+      .catch((e) => {
+        setErr(String(e.message));
+        setTools([]);
+      });
   useEffect(() => {
     void load();
     void api.get<Source[]>('/sources').then(setSources);
   }, []);
+
+  if (tools === null) return <Loading />;
 
   const srcName = (id: string | null) => sources.find((s) => s.id === id)?.name ?? 'Unknown source';
   const patch = (p: Partial<Editing>) => setEd((e) => (e ? { ...e, ...p } : e));
@@ -389,7 +394,7 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   };
 
   const toggleVisible = async (t: Tool) => {
-    setTools((ts) => ts.map((x) => (x.id === t.id ? { ...x, visible: !x.visible } : x)));
+    setTools((ts) => (ts ?? []).map((x) => (x.id === t.id ? { ...x, visible: !x.visible } : x)));
     await api.patch(`/tools/${t.id}`, { visible: !t.visible }).catch((e) => setErr(String(e.message)));
   };
 

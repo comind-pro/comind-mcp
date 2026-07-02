@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { type Agent, type AgentKey, api, type Group, SYSTEM_TOOLS } from '../api.js';
-import { Advanced, CopyRow, EmptyState } from '../ui.js';
+import { Advanced, CopyRow, EmptyState, Loading } from '../ui.js';
 
 interface InspectGroup {
   group: { id: string; name: string; slug: string; schedulingEnabled: boolean };
@@ -33,7 +33,7 @@ function KeyModal({ agent, apiKey, onClose }: { agent: Agent; apiKey: string; on
 }
 
 export function AgentsTab() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<Agent[] | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [draft, setDraft] = useState<string | null>(null); // new-agent name (null = closed)
   const [openId, setOpenId] = useState<string | null>(null);
@@ -74,7 +74,7 @@ export function AgentsTab() {
     setErr('');
     try {
       await api.put(`/agents/${a.id}/system-tools`, { names: [...sysTools] });
-      setAgents((as) => as.map((x) => (x.id === a.id ? { ...x, systemTools: [...sysTools] } : x)));
+      setAgents((as) => (as ?? []).map((x) => (x.id === a.id ? { ...x, systemTools: [...sysTools] } : x)));
     } catch (e) {
       setErr(String((e as Error).message));
     }
@@ -85,7 +85,7 @@ export function AgentsTab() {
     try {
       const k = await api.post<AgentKey & { apiKey: string }>(`/agents/${id}/keys`, { label: '' });
       setFreshKeys((m) => ({ ...m, [k.id]: k.apiKey }));
-      const agent = agents.find((x) => x.id === id);
+      const agent = agents?.find((x) => x.id === id);
       if (agent) setModalKey({ agent, apiKey: k.apiKey });
       await loadKeys(id);
       await load();
@@ -112,11 +112,20 @@ export function AgentsTab() {
     await load();
   };
 
-  const load = () => api.get<Agent[]>('/agents').then(setAgents);
+  const load = () =>
+    api
+      .get<Agent[]>('/agents')
+      .then(setAgents)
+      .catch((e) => {
+        setErr(String(e.message));
+        setAgents([]);
+      });
   useEffect(() => {
     void load();
     void api.get<Group[]>('/groups').then(setGroups);
   }, []);
+
+  if (agents === null) return <Loading />;
 
   const create = async () => {
     setErr('');
