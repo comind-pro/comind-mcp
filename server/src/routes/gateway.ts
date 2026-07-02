@@ -1,7 +1,31 @@
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { config } from '../config.js';
 import { authenticateAgent, authenticateAgentAll, buildAgentServer, buildGroupServer } from '../gateway/server.js';
+
+/**
+ * Point OAuth-capable clients (ChatGPT, Claude.ai) at our protected-resource
+ * metadata so they can run the OAuth flow (RFC 9728). Must be returned for EVERY
+ * method on an unauthenticated MCP endpoint — Claude.ai's connection probe does
+ * an unauthenticated GET and treats a 405 (no challenge) as "not a valid MCP
+ * server", so GET/DELETE must 401-challenge too, not 405.
+ */
+function challenge(reply: FastifyReply, resourcePath: string): FastifyReply {
+  return reply
+    .code(401)
+    .header(
+      'WWW-Authenticate',
+      `Bearer resource_metadata="${config.publicBaseUrl}/.well-known/oauth-protected-resource/${resourcePath}"`,
+    )
+    .send({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized' }, id: null });
+}
+
+/** Stateless transport: no server-initiated streams / session teardown. */
+function methodNotAllowed(reply: FastifyReply): FastifyReply {
+  return reply
+    .code(405)
+    .send({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed (stateless endpoint)' }, id: null });
+}
 
 /**
  * Agent-facing MCP endpoint. Each group is a virtual MCP server at
@@ -11,21 +35,7 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
   app.post('/g/:groupId/mcp', async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
     const auth = await authenticateAgent(groupId, req.headers.authorization);
-    if (!auth) {
-      // Point OAuth-capable clients (ChatGPT, Claude.ai) at our protected-resource
-      // metadata so they can run the OAuth flow (RFC 9728).
-      return reply
-        .code(401)
-        .header(
-          'WWW-Authenticate',
-          `Bearer resource_metadata="${config.publicBaseUrl}/.well-known/oauth-protected-resource/g/${groupId}/mcp"`,
-        )
-        .send({
-          jsonrpc: '2.0',
-          error: { code: -32001, message: 'Unauthorized' },
-          id: null,
-        });
-    }
+    if (!auth) return challenge(reply, `g/${groupId}/mcp`);
 
     const server = await buildGroupServer(auth);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
@@ -42,15 +52,7 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
   // the authenticated agent may reach. Bearer = agent key or agent-wide OAuth token.
   app.post('/a/mcp', async (req, reply) => {
     const auth = await authenticateAgentAll(req.headers.authorization);
-    if (!auth) {
-      return reply
-        .code(401)
-        .header(
-          'WWW-Authenticate',
-          `Bearer resource_metadata="${config.publicBaseUrl}/.well-known/oauth-protected-resource/a/mcp"`,
-        )
-        .send({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized' }, id: null });
-    }
+    if (!auth) return challenge(reply, 'a/mcp');
     const server = await buildAgentServer(auth);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     reply.raw.on('close', () => {
@@ -62,15 +64,19 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
     await transport.handleRequest(req.raw, reply.raw, req.body);
   });
 
-  // Stateless transport: no server-initiated streams / session teardown.
-  const methodNotAllowed = async (_req: unknown, reply: any) =>
-    reply.code(405).send({
-      jsonrpc: '2.0',
-      error: { code: -32000, message: 'Method not allowed (stateless endpoint)' },
-      id: null,
-    });
-  app.get('/g/:groupId/mcp', methodNotAllowed);
-  app.delete('/g/:groupId/mcp', methodNotAllowed);
-  app.get('/a/mcp', methodNotAllowed);
-  app.delete('/a/mcp', methodNotAllowed);
+  // GET/DELETE: unauthenticated → 401-challenge (so the connection probe sees a
+  // valid OAuth-protected MCP server); authenticated → 405 (stateless, no SSE).
+  const groupNoStream = async (req: { params: unknown; headers: { authorization?: string } }, reply: FastifyReply) => {
+    const { groupId } = req.params as { groupId: string };
+    const auth = await authenticateAgent(groupId, req.headers.authorization);
+    return auth ? methodNotAllowed(reply) : challenge(reply, `g/${groupId}/mcp`);
+  };
+  const agentNoStream = async (req: { headers: { authorization?: string } }, reply: FastifyReply) => {
+    const auth = await authenticateAgentAll(req.headers.authorization);
+    return auth ? methodNotAllowed(reply) : challenge(reply, 'a/mcp');
+  };
+  app.get('/g/:groupId/mcp', groupNoStream);
+  app.delete('/g/:groupId/mcp', groupNoStream);
+  app.get('/a/mcp', agentNoStream);
+  app.delete('/a/mcp', agentNoStream);
 }
