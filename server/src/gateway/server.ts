@@ -5,7 +5,7 @@ import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, tools } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
-import { mcpToolName } from '../lib/tool-name.js';
+import { mcpToolName, mcpToolTitle } from '../lib/tool-name.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { createSchedule, deleteSchedule, isValidCron, listByGroup, toolInGroup } from '../scheduler/service.js';
 import { canonicalSystemToolName, handleSystemTool, pickSystemTools, systemInstructions } from './system-tools.js';
@@ -119,6 +119,7 @@ export async function authenticateAgentAll(authHeader: string | undefined): Prom
 const SELF_CRON_TOOLS = [
   {
     name: 'schedule_task',
+    title: 'Schedule task',
     description: 'Schedule a tool in this group to run on a cron expression. Returns the schedule id.',
     inputSchema: {
       type: 'object',
@@ -132,11 +133,13 @@ const SELF_CRON_TOOLS = [
   },
   {
     name: 'list_schedules',
+    title: 'List schedules',
     description: 'List schedules configured for this group.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'cancel_schedule',
+    title: 'Cancel schedule',
     description: 'Cancel a schedule by id (must belong to this group).',
     inputSchema: {
       type: 'object',
@@ -217,6 +220,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
     const list = await groupVisibleTools(auth.groupId);
     const toolDefs = list.map((t) => ({
       name: mcpToolName(t.name),
+      title: mcpToolTitle(t.displayName ?? t.name),
       description: t.displayName
         ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
         : (t.description ?? undefined),
@@ -311,6 +315,7 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
       tools: [
         ...[...map.values()].map(({ tool: t }) => ({
           name: mcpToolName(t.name),
+          title: mcpToolTitle(t.displayName ?? t.name),
           description: t.displayName
             ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
             : (t.description ?? undefined),

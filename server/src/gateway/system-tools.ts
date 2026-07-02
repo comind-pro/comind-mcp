@@ -94,6 +94,7 @@ const GROUP_ITEM = {
 export const SYSTEM_TOOLS: ToolDef[] = [
   {
     name: 'system.context',
+    title: 'System context',
     description:
       'Orientation for this connection — call this FIRST. Returns who you are (agent, scope: ' +
       'group|agent, owner), the server (name, version, environment, timezone/locale — use this ' +
@@ -147,6 +148,7 @@ export const SYSTEM_TOOLS: ToolDef[] = [
   },
   {
     name: 'system.debug',
+    title: 'System debug',
     description:
       'Recent activity for this agent — call when a tool returns empty or fails, to tell apart ' +
       '"no data" from "a source broke". Returns recent tool calls and recent errors (with messages).',

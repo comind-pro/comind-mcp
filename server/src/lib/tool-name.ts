@@ -9,3 +9,10 @@ export function mcpToolName(name: string): string {
   const safe = name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
   return safe || 'tool';
 }
+
+/** Human-readable MCP `title` from a displayName/name: "get_account_summaries"
+ *  → "Get account summaries". Leaves already-human strings (with spaces) alone. */
+export function mcpToolTitle(s: string): string {
+  const t = s.includes(' ') ? s : s.replace(/[._-]+/g, ' ').trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}

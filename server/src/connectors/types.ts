@@ -2,6 +2,8 @@
 export interface ToolDef {
   /** Raw upstream name (operationId / MCP tool name / declared endpoint name). */
   name: string;
+  /** Human-readable name MCP clients show instead of `name`. */
+  title?: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
   /** JSON Schema for the result, when the connector can derive it (e.g. OpenAPI). */

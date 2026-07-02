@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mcpToolName, TOOL_NAME_RE } from './tool-name.js';
+import { mcpToolName, mcpToolTitle, TOOL_NAME_RE } from './tool-name.js';
 
 describe('mcpToolName', () => {
   it('maps stored names onto the MCP-safe charset', () => {
@@ -10,5 +10,13 @@ describe('mcpToolName', () => {
     for (const n of ['a.b', 'a b', 'x'.repeat(80), 'ok']) {
       expect(mcpToolName(n)).toMatch(TOOL_NAME_RE);
     }
+  });
+});
+
+describe('mcpToolTitle', () => {
+  it('humanizes slugs and keeps human strings', () => {
+    expect(mcpToolTitle('get_account_summaries')).toBe('Get account summaries');
+    expect(mcpToolTitle('gatsbysparty-db-status')).toBe('Gatsbysparty db status');
+    expect(mcpToolTitle('GatsbysParty db status')).toBe('GatsbysParty db status');
   });
 });
