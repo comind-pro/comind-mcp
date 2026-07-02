@@ -6,6 +6,7 @@ import type { CallResult, ToolDef } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
 import { db, pool } from '../db/client.js';
 import { callLogs, groupTools, sources, tools } from '../db/schema.js';
+import { mcpToolName } from '../lib/tool-name.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
 
 /** Server identity surfaced via system.version. Mirrors server/package.json. */
@@ -188,10 +189,11 @@ export const SYSTEM_TOOLS: ToolDef[] = [
 
 /** One-line summary per system tool, for the server `instructions` block. */
 const TOOL_HINTS: Record<string, string> = {
+  // Hints reference the MCP-safe (underscore) names the client actually sees.
   'system.context':
-    'call system.context first to learn your identity, scope, timezone, reachable V-MCPs, ' +
+    'call system_context first to learn your identity, scope, timezone, reachable V-MCPs, ' +
     'connected sources and the full tool catalog — do not guess timezone or what you can do',
-  'system.debug': 'call system.debug when a tool returns empty or errors, to tell apart "no data" from a broken source',
+  'system.debug': 'call system_debug when a tool returns empty or errors, to tell apart "no data" from a broken source',
 };
 
 /** Build the MCP `instructions` string for the enabled system tools (empty when none). */
@@ -205,10 +207,19 @@ export function systemInstructions(names: Iterable<string>): string {
 
 export const SYSTEM_TOOL_NAMES = new Set<string>(SYSTEM_TOOLS.map((t) => t.name));
 
-/** The system tools enabled by `names`, in canonical order, ignoring unknowns. */
+/** Resolve an incoming (possibly MCP-sanitized) name to the canonical dotted one. */
+export function canonicalSystemToolName(name: string): string | null {
+  if (SYSTEM_TOOL_NAMES.has(name)) return name;
+  for (const canonical of SYSTEM_TOOL_NAMES) if (mcpToolName(canonical) === name) return canonical;
+  return null;
+}
+
+/** The system tools enabled by `names`, in canonical order, ignoring unknowns.
+ *  Exposed names are MCP-safe (Claude.ai rejects dots); calls resolve back via
+ *  canonicalSystemToolName. */
 export function pickSystemTools(names: Iterable<string>): ToolDef[] {
   const want = new Set(names);
-  return SYSTEM_TOOLS.filter((t) => want.has(t.name));
+  return SYSTEM_TOOLS.filter((t) => want.has(t.name)).map((t) => ({ ...t, name: mcpToolName(t.name) }));
 }
 
 type ToolRow = typeof tools.$inferSelect;
@@ -403,8 +414,8 @@ async function dispatch(ctx: SystemCtx, name: string, args: Record<string, unkno
         const src = t.sourceId ? srcById.get(t.sourceId) : undefined;
         return {
           // `name` IS the exact string to pass to tools/call — call it verbatim.
-          name: t.name,
-          callable: t.name,
+          name: mcpToolName(t.name),
+          callable: mcpToolName(t.name),
           description: t.displayName
             ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
             : (t.description ?? null),

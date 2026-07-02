@@ -8,7 +8,7 @@ import { hashKey } from '../lib/crypto.js';
 import { mcpToolName } from '../lib/tool-name.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { createSchedule, deleteSchedule, isValidCron, listByGroup, toolInGroup } from '../scheduler/service.js';
-import { handleSystemTool, pickSystemTools, SYSTEM_TOOL_NAMES, systemInstructions } from './system-tools.js';
+import { canonicalSystemToolName, handleSystemTool, pickSystemTools, systemInstructions } from './system-tools.js';
 
 export interface AgentAuth {
   agentId: string;
@@ -232,7 +232,8 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
     const a = (args ?? {}) as Record<string, unknown>;
 
     // Built-in system introspection tools: only those this group opted into.
-    if (SYSTEM_TOOL_NAMES.has(name) && auth.systemTools.includes(name)) {
+    const sysName = canonicalSystemToolName(name);
+    if (sysName && auth.systemTools.includes(sysName)) {
       const r = await handleSystemTool(
         {
           agentId: auth.agentId,
@@ -240,7 +241,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
           scope: 'group',
           groups: [{ id: auth.groupId, slug: auth.groupSlug, schedulingEnabled: auth.schedulingEnabled }],
         },
-        name,
+        sysName,
         a,
       );
       return {
@@ -325,7 +326,8 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
     const { name, arguments: args } = req.params;
 
     // Built-in system introspection tools: the agent's configured set.
-    if (SYSTEM_TOOL_NAMES.has(name) && auth.systemTools.includes(name)) {
+    const sysName = canonicalSystemToolName(name);
+    if (sysName && auth.systemTools.includes(sysName)) {
       const r = await handleSystemTool(
         {
           agentId: auth.agentId,
@@ -337,7 +339,7 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
             schedulingEnabled: g.schedulingEnabled,
           })),
         },
-        name,
+        sysName,
         (args ?? {}) as Record<string, unknown>,
       );
       return {
