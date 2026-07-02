@@ -432,20 +432,20 @@ button.mini {
 }
 .builder-field {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  margin-bottom: 12px;
+  max-width: 560px;
 }
 .builder-field > span {
-  width: 200px;
-  min-width: 200px;
   color: var(--text-muted);
-  font-size: 12px;
-  text-align: right;
+  font-size: 12.5px;
+  font-weight: 500;
 }
 .builder-field > input,
 .builder-field > select {
-  flex: 1;
+  width: 100%;
 }
 .builder h3 {
   margin-top: 14px;
@@ -716,6 +716,11 @@ button.mini {
 .kind-card.active {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+.kind-card-icon {
+  display: block;
+  color: var(--accent);
+  margin-bottom: 8px;
 }
 .kind-card-title {
   display: block;
@@ -1455,14 +1460,6 @@ tr.detail-row td {
   .editor-left,
   .editor-right {
     padding: 14px;
-  }
-  .builder-field {
-    flex-wrap: wrap;
-  }
-  .builder-field > span {
-    width: 100%;
-    min-width: 0;
-    text-align: left;
   }
 
   /* wide tables scroll horizontally instead of overflowing the page */

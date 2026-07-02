@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react';
 import { api, type Source, type Tool } from '../api.js';
+import { Icon, type IconName } from '../icons.js';
 import { Advanced, EmptyState } from '../ui.js';
 import { type Cfg, DEFAULTS, KIND_META, type Kind, SourceFields } from './SourceFields.js';
 
 const KINDS: Kind[] = ['mcp', 'openapi', 'http', 'imap', 'sql', 'ga'];
+const KIND_ICON: Record<Kind, IconName> = {
+  mcp: 'network',
+  openapi: 'braces',
+  http: 'globe',
+  imap: 'mail',
+  sql: 'database',
+  ga: 'chart',
+};
 
 const hasInteractiveOAuth = (cfg: Cfg) =>
   ['oauth2_authorization_code', 'mcp_oauth'].includes((cfg?.auth as { type?: string })?.type ?? '');
@@ -253,6 +262,9 @@ export function SourcesTab() {
               <div className="kind-cards">
                 {KINDS.map((k) => (
                   <button key={k} className={`kind-card ${e.kind === k ? 'active' : ''}`} onClick={() => setKind(k)}>
+                    <span className="kind-card-icon">
+                      <Icon name={KIND_ICON[k]} size={20} />
+                    </span>
                     <span className="kind-card-title">{KIND_META[k].title}</span>
                     <span className="kind-card-desc">{KIND_META[k].desc}</span>
                   </button>
