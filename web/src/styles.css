@@ -219,7 +219,7 @@ h3 {
 input,
 select,
 textarea {
-  background: #11161c;
+  background: var(--surface-raised);
   border: 1px solid var(--border-strong);
   color: var(--text);
   border-radius: 6px;
@@ -237,7 +237,7 @@ textarea {
 }
 button {
   background: var(--accent);
-  color: #06121f;
+  color: #fff;
   border: none;
   border-radius: 6px;
   padding: 7px 12px;
@@ -253,7 +253,7 @@ button.ghost {
 }
 button.ghost:hover {
   border-color: var(--accent);
-  color: #fff;
+  color: var(--text);
 }
 button.danger {
   background: transparent;
@@ -261,7 +261,7 @@ button.danger {
   border: 1px solid var(--border-strong);
 }
 button.danger:hover {
-  background: rgba(248, 81, 73, 0.12);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
   border-color: var(--err);
 }
 button:disabled {
@@ -278,7 +278,7 @@ button:disabled:hover {
   align-items: center;
   gap: 7px;
   background: var(--accent);
-  color: #06121f;
+  color: #fff;
   border: none;
   border-radius: 8px;
   padding: 9px 15px;
@@ -350,7 +350,8 @@ code,
   height: 12px;
 }
 .endpoint {
-  background: #06121f;
+  background: var(--surface-inset);
+  color: var(--text);
   border: 1px solid var(--border);
   padding: 8px 10px;
   border-radius: 6px;
@@ -501,7 +502,7 @@ button.mini {
 }
 .scard.open {
   border-color: var(--accent);
-  box-shadow: 0 4px 22px rgba(79, 156, 249, 0.1);
+  box-shadow: 0 4px 22px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .scard-head {
   display: flex;
@@ -555,9 +556,9 @@ button.mini {
   padding: 3px 8px;
 }
 .tbadge.composite {
-  color: #b48cf0;
-  border-color: #3a2f55;
-  background: #221b33;
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 .status-dot {
   width: 7px;
@@ -584,7 +585,7 @@ button.mini {
   flex: none;
 }
 .edit-link:hover {
-  color: #fff;
+  color: var(--text);
   border-color: var(--accent);
 }
 
@@ -664,7 +665,7 @@ button.mini {
 /* segmented control */
 .seg {
   display: inline-flex;
-  background: #11161c;
+  background: var(--surface-inset);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 3px;
@@ -683,7 +684,7 @@ button.mini {
 }
 .seg > span.on {
   background: var(--accent);
-  color: #06121f;
+  color: #fff;
 }
 
 /* source kind picker */
@@ -736,7 +737,7 @@ button.mini {
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  color: #06121f;
+  color: #fff;
   border: 1.5px solid var(--border);
   flex: none;
 }
@@ -759,7 +760,7 @@ button.mini {
   height: 22px;
   border-radius: 7px;
   background: var(--accent);
-  color: #06121f;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -793,7 +794,7 @@ button.mini {
   cursor: pointer;
 }
 .step-test:hover {
-  background: rgba(63, 185, 80, 0.1);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
 }
 .step-schema {
   margin: 10px 0 0 30px;
@@ -867,13 +868,13 @@ button.mini {
 }
 .code-block {
   margin: 0;
-  background: #06121f;
+  background: var(--surface-inset);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 9px 11px;
   font-size: 11px;
   line-height: 1.6;
-  color: #a9d99a;
+  color: var(--ok);
   overflow: auto;
   white-space: pre-wrap;
   font-family: ui-monospace, Menlo, monospace;
@@ -1478,10 +1479,14 @@ tr.detail-row td {
   display: inline-block;
   width: 13px;
   height: 13px;
-  border: 2px solid rgba(6, 18, 31, 0.4);
-  border-top-color: #06121f;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+}
+.btn-primary .spin {
+  border-color: rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
 }
 @keyframes spin {
   to {
