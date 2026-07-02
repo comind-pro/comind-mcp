@@ -415,7 +415,6 @@ export function AgentsTab() {
 
       <div className="page-head">
         <div>
-          <span className="title">Agents</span>
           <span className="sub">{agents.length} agents</span>
         </div>
         <button className="btn-primary" onClick={() => setDraft(draft === null ? '' : null)}>

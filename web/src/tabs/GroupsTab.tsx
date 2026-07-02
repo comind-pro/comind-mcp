@@ -188,7 +188,6 @@ export function GroupsTab() {
 
       <div className="page-head">
         <div>
-          <span className="title">V-MCP</span>
           <span className="sub">{groups.length} servers</span>
         </div>
         <button className="btn-primary" onClick={() => setDraft(draft === null ? '' : null)}>

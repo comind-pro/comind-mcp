@@ -58,7 +58,6 @@ export function LogsTab() {
 
       <div className="page-head">
         <div>
-          <span className="title">Logs</span>
           {metrics && (
             <span className="sub">
               {metrics.totals.calls} calls · {metrics.totals.errors} errors

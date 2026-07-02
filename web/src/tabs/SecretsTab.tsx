@@ -67,7 +67,6 @@ export function SecretsTab() {
 
       <div className="page-head">
         <div>
-          <span className="title">Secrets</span>
           <span className="sub">{secrets.length} stored</span>
         </div>
         <button className="btn-primary" onClick={() => setDraft(!draft)}>

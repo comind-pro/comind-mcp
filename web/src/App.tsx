@@ -7,15 +7,26 @@ import { LogsTab } from './tabs/LogsTab.js';
 import { SecretsTab } from './tabs/SecretsTab.js';
 import { SourcesTab } from './tabs/SourcesTab.js';
 import { ToolsTab } from './tabs/ToolsTab.js';
+import { getTheme, toggleTheme } from './theme.js';
 
-const TABS = ['Sources', 'Tools', 'V-MCP', 'Agents', 'Secrets', 'Logs'] as const;
-type Tab = (typeof TABS)[number];
+export type PageId = 'home' | 'connections' | 'tools' | 'workspaces' | 'agents' | 'secrets' | 'activity';
+
+const PAGES: { id: PageId; label: string; hint: string | null; icon: string }[] = [
+  { id: 'home', label: 'Home', hint: null, icon: '⌂' },
+  { id: 'connections', label: 'Connections', hint: 'sources', icon: '⇄' },
+  { id: 'tools', label: 'Tools', hint: null, icon: '⚒' },
+  { id: 'workspaces', label: 'Workspaces', hint: 'virtual MCP servers', icon: '▦' },
+  { id: 'agents', label: 'Agents', hint: null, icon: '◉' },
+  { id: 'secrets', label: 'Secrets', hint: null, icon: '🔒' },
+  { id: 'activity', label: 'Activity', hint: 'call logs', icon: '≡' },
+];
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('Sources');
+  const [page, setPage] = useState<PageId>('home');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [menu, setMenu] = useState(false);
+  const [theme, setTheme] = useState(getTheme());
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     const drop = () => setUser(null);
@@ -32,83 +43,64 @@ export function App() {
     return () => window.removeEventListener('comind-unauthorized', drop);
   }, []);
 
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(false);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, [menu]);
-
   const logout = () => {
     api.logout();
     setUser(null);
   };
 
-  if (loading)
-    return (
-      <div style={{ padding: 40 }} className="muted">
-        Loading…
-      </div>
-    );
+  if (loading) return <div className="page-loading text-muted">Loading…</div>;
   if (!user) return <AuthPage onAuth={setUser} />;
 
+  const current = PAGES.find((p) => p.id === page) ?? PAGES[0];
+
   return (
-    <>
-      <div className="topbar">
-        <div className="brand">
-          comind-mcp<small>MCP gateway · {api.base}</small>
-        </div>
-        <div className="tabs">
-          {TABS.map((t) => (
-            <div key={t} className={`tab ${t === tab ? 'active' : ''}`} onClick={() => setTab(t)}>
-              {t}
-            </div>
+    <div className="shell">
+      <button className="nav-burger" onClick={() => setNavOpen(!navOpen)} aria-label="Menu">
+        ☰
+      </button>
+      <aside className={`sidebar ${navOpen ? 'open' : ''}`}>
+        <div className="side-brand">comind</div>
+        <nav>
+          {PAGES.map((p) => (
+            <button
+              key={p.id}
+              className={`side-item ${p.id === page ? 'active' : ''}`}
+              onClick={() => {
+                setPage(p.id);
+                setNavOpen(false);
+              }}
+            >
+              <span className="side-icon">{p.icon}</span>
+              {p.label}
+            </button>
           ))}
-          <span className="topbar-sep" />
-          <div className="user-menu" onClick={(e) => e.stopPropagation()}>
-            <div className="tab" title={user.email} onClick={() => setMenu((m) => !m)}>
-              {user.email.split('@')[0]} <span className="muted">▾</span>
-            </div>
-            {menu && (
-              <div className="menu-pop">
-                <div className="menu-email">{user.email}</div>
-                <div className="menu-item" onClick={logout}>
-                  Log out
-                </div>
-              </div>
-            )}
+        </nav>
+        <div className="side-foot">
+          <button className="side-item" onClick={() => setTheme(toggleTheme())}>
+            <span className="side-icon">{theme === 'light' ? '☾' : '☀'}</span>
+            {theme === 'light' ? 'Dark mode' : 'Light mode'}
+          </button>
+          <div className="side-user" title={user.email}>
+            <span className="side-user-email">{user.email}</span>
+            <button className="side-logout" onClick={logout}>
+              Log out
+            </button>
           </div>
         </div>
-      </div>
-      <div className="flow">
-        <span className="step">
-          1. <b>Sources</b> — connect API/MCP
-        </span>
-        <span className="arrow">→</span>
-        <span className="step">
-          2. <b>Tools</b> — curate / combine
-        </span>
-        <span className="arrow">→</span>
-        <span className="step">
-          3. <b>V-MCP</b> — build a virtual MCP
-        </span>
-        <span className="arrow">→</span>
-        <span className="step">
-          4. <b>Agents</b> — key + access to V-MCP
-        </span>
-        <span className="arrow">→</span>
-        <span className="step">
-          5. <b>Logs</b> — observe
-        </span>
-      </div>
-      <div className="wrap">
-        {tab === 'Sources' && <SourcesTab />}
-        {tab === 'Tools' && <ToolsTab />}
-        {tab === 'V-MCP' && <GroupsTab />}
-        {tab === 'Agents' && <AgentsTab />}
-        {tab === 'Secrets' && <SecretsTab />}
-        {tab === 'Logs' && <LogsTab />}
-      </div>
-    </>
+      </aside>
+      <main className="main">
+        <header className="page-head-shell">
+          <h1 className="page-title">{current.label}</h1>
+          {current.hint && <span className="page-hint">{current.hint}</span>}
+        </header>
+        {page === 'home' && <div className="text-muted">Home — coming in the next task.</div>}
+        {page === 'connections' && <SourcesTab />}
+        {page === 'tools' && <ToolsTab />}
+        {page === 'workspaces' && <GroupsTab />}
+        {page === 'agents' && <AgentsTab />}
+        {page === 'secrets' && <SecretsTab />}
+        {page === 'activity' && <LogsTab />}
+      </main>
+    </div>
   );
 }
