@@ -503,7 +503,7 @@ export function SourcesTab() {
                 <span className="status-dot" style={{ background: dotColor(s.status) }} /> {s.status}
               </span>
               <span className="ml-auto" />
-              <span className="edit-link">{open ? 'Close' : 'Edit'}</span>
+              <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Edit'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
             </div>
             {s.status === 'error' && s.statusMessage && !open && <div className="src-err">{s.statusMessage}</div>}

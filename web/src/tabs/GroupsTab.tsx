@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, type Group, type Schedule, type Source, type Tool } from '../api.js';
+import { Icon } from '../icons.js';
 import { CopyRow, EmptyState, Loading } from '../ui.js';
 import { ToolPicker } from './ToolPicker.js';
 
@@ -15,6 +16,16 @@ export function GroupsTab() {
   const [schTool, setSchTool] = useState('');
   const [err, setErr] = useState('');
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [saveState, setSaveState] = useState<'' | 'saving' | 'saved'>('');
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ponytail: cleanup fires on openId change (before the next open) and on unmount,
+  // which is enough to stop a stale debounce from firing after switching workspaces.
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [openId]);
 
   const loadCounts = async (gs: Group[]) => {
     const entries = await Promise.all(
@@ -60,14 +71,22 @@ export function GroupsTab() {
     }
   };
 
-  const saveToolset = async (g: Group) => {
-    setErr('');
-    try {
-      await api.put(`/groups/${g.id}/tools`, { toolIds: [...assigned] });
-      setCounts((c) => ({ ...c, [g.id]: assigned.size }));
-    } catch (e) {
-      setErr(String((e as Error).message));
-    }
+  const onToolsChange = (next: Set<string>, groupId: string) => {
+    setAssigned(next);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      setErr('');
+      setSaveState('saving');
+      try {
+        await api.put(`/groups/${groupId}/tools`, { toolIds: [...next] });
+        setCounts((c) => ({ ...c, [groupId]: next.size }));
+        setSaveState('saved');
+        setTimeout(() => setSaveState((s) => (s === 'saved' ? '' : s)), 1500);
+      } catch (e) {
+        setErr(String((e as Error).message));
+        setSaveState('');
+      }
+    }, 600);
   };
 
   const addSchedule = async (g: Group) => {
@@ -111,13 +130,10 @@ export function GroupsTab() {
 
       <div className="editor-section" style={{ marginTop: 14 }}>
         Tools in this workspace
+        {saveState && <span className="save-state">{saveState === 'saving' ? 'Saving…' : 'Saved'}</span>}
       </div>
-      <div className="hint">Tools assigned to this workspace. Don't forget to save.</div>
-      <ToolPicker tools={tools} sources={sources} selected={assigned} onChange={setAssigned} />
-      <div className="spacer" />
-      <button className="btn-primary" onClick={() => saveToolset(g)}>
-        Save tools ({assigned.size})
-      </button>
+      <div className="hint">Changes save automatically.</div>
+      <ToolPicker tools={tools} sources={sources} selected={assigned} onChange={(next) => onToolsChange(next, g.id)} />
 
       <div className="editor-section" style={{ marginTop: 22 }}>
         Schedules
@@ -227,7 +243,7 @@ export function GroupsTab() {
                 {counts[g.id] ?? '…'} tools
               </span>
               <span className="ml-auto" />
-              <span className="edit-link">{open ? 'Close' : 'Configure'}</span>
+              <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Configure'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
             </div>
             {open && <div className="scard-body">{body(g)}</div>}

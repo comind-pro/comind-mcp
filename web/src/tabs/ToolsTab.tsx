@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { PageId } from '../App.js';
 import { api, type Source, type Tool } from '../api.js';
+import { Icon } from '../icons.js';
 import { EmptyState, Loading } from '../ui.js';
 import { buildInput, parseInput } from './SchemaBuilder.js';
 import { type Cfg, type Editing, type MetaForm, type Step, ToolEditor } from './ToolEditor.js';
@@ -478,7 +479,7 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
               {ed.id === 'new' ? ' · draft' : ''}
             </span>
             <span className="edit-link ml-auto" onClick={close}>
-              Close
+              <Icon name="x" size={15} />
             </span>
             <span className="chev up">⌄</span>
           </div>

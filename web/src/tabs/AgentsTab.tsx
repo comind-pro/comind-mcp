@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type Agent, type AgentKey, api, type Group, SYSTEM_TOOLS } from '../api.js';
+import { Icon } from '../icons.js';
 import { Advanced, CopyRow, EmptyState, Loading } from '../ui.js';
 
 interface InspectGroup {
@@ -47,6 +48,15 @@ export function AgentsTab() {
   const [sysTools, setSysTools] = useState<Set<string>>(new Set());
   const [exTool, setExTool] = useState<string | null>(null); // system tool whose example is open
   const [err, setErr] = useState('');
+  const [sysSaveState, setSysSaveState] = useState<'' | 'saving' | 'saved'>('');
+  const sysSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ponytail: cleanup fires on openId change (before the next open) and on unmount.
+  useEffect(() => {
+    return () => {
+      if (sysSaveTimer.current) clearTimeout(sysSaveTimer.current);
+    };
+  }, [openId]);
 
   const loadKeys = async (id: string) => {
     const ks = await api.get<AgentKey[]>(`/agents/${id}/keys`);
@@ -62,22 +72,24 @@ export function AgentsTab() {
     void loadKeys(a.id);
   };
 
-  const toggleSys = (name: string) => {
-    setSysTools((prev) => {
-      const next = new Set(prev);
-      next.has(name) ? next.delete(name) : next.add(name);
-      return next;
-    });
-  };
-
-  const saveSysTools = async (a: Agent) => {
-    setErr('');
-    try {
-      await api.put(`/agents/${a.id}/system-tools`, { names: [...sysTools] });
-      setAgents((as) => (as ?? []).map((x) => (x.id === a.id ? { ...x, systemTools: [...sysTools] } : x)));
-    } catch (e) {
-      setErr(String((e as Error).message));
-    }
+  const toggleSys = (name: string, agentId: string) => {
+    const next = new Set(sysTools);
+    next.has(name) ? next.delete(name) : next.add(name);
+    setSysTools(next);
+    if (sysSaveTimer.current) clearTimeout(sysSaveTimer.current);
+    sysSaveTimer.current = setTimeout(async () => {
+      setErr('');
+      setSysSaveState('saving');
+      try {
+        await api.put(`/agents/${agentId}/system-tools`, { names: [...next] });
+        setAgents((as) => (as ?? []).map((x) => (x.id === agentId ? { ...x, systemTools: [...next] } : x)));
+        setSysSaveState('saved');
+        setTimeout(() => setSysSaveState((s) => (s === 'saved' ? '' : s)), 1500);
+      } catch (e) {
+        setErr(String((e as Error).message));
+        setSysSaveState('');
+      }
+    }, 600);
   };
 
   const addKey = async (id: string) => {
@@ -303,14 +315,15 @@ export function AgentsTab() {
           <div className="hint">
             Built-in <code className="mono">system.*</code> introspection tools this agent exposes — applied to every
             workspace it connects to and the agent-wide <code className="mono">/a/mcp</code>. The agent calls these to
-            learn its context instead of guessing. Click <b>example</b> to see what each returns. Don't forget to save.
+            learn its context instead of guessing. Click <b>example</b> to see what each returns.
+            {sysSaveState && <span className="save-state">{sysSaveState === 'saving' ? 'Saving…' : 'Saved'}</span>}
           </div>
           {SYSTEM_TOOLS.map((s) => {
             const open = exTool === s.name;
             return (
               <div key={s.name}>
                 <div className="picker-item">
-                  <input type="checkbox" checked={sysTools.has(s.name)} onChange={() => toggleSys(s.name)} />
+                  <input type="checkbox" checked={sysTools.has(s.name)} onChange={() => toggleSys(s.name, a.id)} />
                   <span className="mono">{s.name}</span>
                   <span className="muted fs-12">{s.label}</span>
                   <span className="ml-auto" />
@@ -340,10 +353,6 @@ export function AgentsTab() {
               </div>
             );
           })}
-          <div className="spacer" />
-          <button className="btn-primary" onClick={() => saveSysTools(a)}>
-            Save system tools ({sysTools.size})
-          </button>
         </Advanced>
 
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', margin: '22px 0 8px' }}>
@@ -365,11 +374,21 @@ export function AgentsTab() {
                 {k.archived && <span className="badge muted">archived</span>}
                 <span className="muted fs-12">added {new Date(k.createdAt).toLocaleDateString()}</span>
                 <span className="ml-auto" />
-                <button className="ghost" onClick={() => setArchived(a.id, k.id, !k.archived)}>
-                  {k.archived ? 'Unarchive' : 'Archive'}
+                <button
+                  className="icon-btn"
+                  onClick={() => setArchived(a.id, k.id, !k.archived)}
+                  title={k.archived ? 'Unarchive' : 'Archive'}
+                  aria-label={k.archived ? 'Unarchive' : 'Archive'}
+                >
+                  <Icon name="archive" size={15} />
                 </button>
-                <button className="danger" onClick={() => delKey(a.id, k.id)}>
-                  Delete
+                <button
+                  className="icon-btn danger-i"
+                  onClick={() => delKey(a.id, k.id)}
+                  title="Delete key"
+                  aria-label="Delete key"
+                >
+                  <Icon name="trash" size={15} />
                 </button>
               </div>
               {fresh && (
@@ -458,7 +477,7 @@ export function AgentsTab() {
                 {granted.length ? `${granted.length} workspace${granted.length === 1 ? '' : 's'}` : 'no access'}
               </span>
               <span className="ml-auto" />
-              <span className="edit-link">{open ? 'Close' : 'Manage'}</span>
+              <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Manage'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
             </div>
             {open && <div className="scard-body">{body(a)}</div>}

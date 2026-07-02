@@ -1,4 +1,5 @@
 import { type ReactNode, useState } from 'react';
+import { Icon } from './icons.js';
 
 export function CopyRow({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -16,8 +17,8 @@ export function CopyRow({ text, label }: { text: string; label?: string }) {
       {label && <div className="field-label">{label}</div>}
       <div className="copy-row">
         <div className="copy-row-text mono">{text}</div>
-        <button className="ghost" onClick={copy}>
-          {copied ? 'Copied' : 'Copy'}
+        <button className={`icon-btn${copied ? ' ok' : ''}`} onClick={copy} title="Copy" aria-label="Copy">
+          <Icon name={copied ? 'check' : 'copy'} size={15} />
         </button>
       </div>
     </div>
