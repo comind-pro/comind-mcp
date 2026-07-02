@@ -109,9 +109,12 @@ GET /agents/:id/inspect    POST /agents/:id/invoke
 ## Gateway (for agents, MCP)
 
 ```
+POST /a/mcp            — agent-wide endpoint: union of tools across the agent's groups
 POST /g/:groupId/mcp   — Streamable HTTP endpoint (Authorization: Bearer <agent-key>)
 ```
 SSE transport — planned.
+
+**Connect from Claude / ChatGPT (web):** step-by-step guide with screenshots — [docs/connect.md](docs/connect.md).
 
 ---
 
