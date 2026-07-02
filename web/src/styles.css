@@ -88,10 +88,33 @@ h3 {
   top: 0;
   height: 100vh;
 }
+.side-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 16px 10px;
+}
 .side-brand {
   font-weight: 700;
-  font-size: 16px;
-  padding: 4px 10px 16px;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.side-rail-toggle {
+  display: flex;
+  align-items: center;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.side-rail-toggle:hover {
+  background: var(--surface-inset);
+  color: var(--text);
 }
 .side-item {
   display: flex;
@@ -127,6 +150,39 @@ h3 {
   margin-top: auto;
   border-top: 1px solid var(--border);
   padding-top: 12px;
+}
+/* collapsed rail (desktop only) */
+@media (min-width: 721px) {
+  .sidebar.rail {
+    width: 76px;
+    padding: 16px 8px;
+  }
+  .sidebar.rail .side-top {
+    justify-content: center;
+    padding: 4px 0 12px;
+  }
+  .sidebar.rail .side-brand {
+    display: none;
+  }
+  .sidebar.rail .side-item {
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px 2px;
+  }
+  .sidebar.rail .side-label {
+    font-size: 9.5px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sidebar.rail .side-user {
+    justify-content: center;
+    padding: 8px 0 0;
+  }
+  .sidebar.rail .side-user-email {
+    display: none;
+  }
 }
 .side-user {
   display: flex;

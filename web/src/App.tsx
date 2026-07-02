@@ -29,6 +29,13 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState(getTheme());
   const [navOpen, setNavOpen] = useState(false);
+  const [rail, setRail] = useState(() => localStorage.getItem('comind_nav') === 'rail');
+
+  const toggleRail = () =>
+    setRail((r) => {
+      localStorage.setItem('comind_nav', r ? 'full' : 'rail');
+      return !r;
+    });
 
   useEffect(() => {
     const drop = () => {
@@ -64,8 +71,18 @@ export function App() {
       <button className="nav-burger" onClick={() => setNavOpen(!navOpen)} aria-label="Menu">
         ☰
       </button>
-      <aside className={`sidebar ${navOpen ? 'open' : ''}`}>
-        <div className="side-brand">comind</div>
+      <aside className={`sidebar ${navOpen ? 'open' : ''} ${rail ? 'rail' : ''}`}>
+        <div className="side-top">
+          <div className="side-brand">comind-mcp</div>
+          <button
+            className="side-rail-toggle"
+            onClick={toggleRail}
+            title={rail ? 'Expand navigation' : 'Collapse navigation'}
+            aria-label={rail ? 'Expand navigation' : 'Collapse navigation'}
+          >
+            <Icon name="panel" size={16} />
+          </button>
+        </div>
         <nav>
           {PAGES.map((p) => (
             <button
@@ -80,7 +97,7 @@ export function App() {
               <span className="side-icon">
                 <Icon name={p.icon} />
               </span>
-              {p.label}
+              <span className="side-label">{p.label}</span>
             </button>
           ))}
         </nav>
@@ -89,7 +106,7 @@ export function App() {
             <span className="side-icon">
               <Icon name={theme === 'light' ? 'moon' : 'sun'} />
             </span>
-            {theme === 'light' ? 'Dark mode' : 'Light mode'}
+            <span className="side-label">{theme === 'light' ? 'Dark mode' : 'Light mode'}</span>
           </button>
           <div className="side-user" title={user.email}>
             <span className="side-user-email">{user.email}</span>
