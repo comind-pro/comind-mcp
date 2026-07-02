@@ -14,7 +14,8 @@
 - **No server/API changes** — `server/` is out of scope; UI renames are copy-only.
 - **Renaming (UI copy only):** Sources → "Connections", V-MCP/Groups → "Workspaces", Logs → "Activity", composite tool → "Recipe". Technical term appears as a subtitle hint in page headers, not in the sidebar.
 - **Themes:** `:root` = light (default), `[data-theme="dark"]` = dark. Components reference only semantic tokens (`--surface`, `--text`, …), never theme-specific values.
-- **Verification:** the web package has no unit-test infra — every task verifies with `pnpm typecheck && pnpm lint` plus a browser check (`make dev`, http://localhost:5173). Existing server tests must keep passing (`pnpm test`) but should be unaffected.
+- **Verification:** every task verifies with `pnpm typecheck && pnpm lint` plus a browser check (`make dev`, http://localhost:5173). Existing server tests must keep passing (`pnpm test`) but should be unaffected.
+- **Unit tests (web):** Task 1 adds `vitest` + `jsdom` as devDependencies of `web/` with a `test` script (`vitest run`, environment jsdom). Every task that adds or extracts pure logic (theme toggle, Home step derivation, helpers) ships a small vitest test next to the source (`*.test.ts`). UI-only styling/copy tasks need no component tests. `pnpm test` (workspace-wide) must pass at every task boundary.
 - **Branch:** all work on `redesign/web-ui`. Commit after every task.
 - **Monospace font** only for keys, endpoints, cron expressions, JSON — not ordinary values.
 - Typography scale: 13/14/16/20/28. Spacing scale: 4/8/12/16/24/32.
