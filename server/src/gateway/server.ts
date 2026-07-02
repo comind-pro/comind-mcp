@@ -1,12 +1,14 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { and, eq, inArray } from 'drizzle-orm';
+import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, tools } from '../db/schema.js';
+import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, sources, tools } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
+import { mcpToolName, mcpToolTitle } from '../lib/tool-name.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { createSchedule, deleteSchedule, isValidCron, listByGroup, toolInGroup } from '../scheduler/service.js';
-import { handleSystemTool, pickSystemTools, SYSTEM_TOOL_NAMES, systemInstructions } from './system-tools.js';
+import { canonicalSystemToolName, handleSystemTool, pickSystemTools, systemInstructions } from './system-tools.js';
 
 export interface AgentAuth {
   agentId: string;
@@ -117,6 +119,7 @@ export async function authenticateAgentAll(authHeader: string | undefined): Prom
 const SELF_CRON_TOOLS = [
   {
     name: 'schedule_task',
+    title: 'Schedule task',
     description: 'Schedule a tool in this group to run on a cron expression. Returns the schedule id.',
     inputSchema: {
       type: 'object',
@@ -130,11 +133,13 @@ const SELF_CRON_TOOLS = [
   },
   {
     name: 'list_schedules',
+    title: 'List schedules',
     description: 'List schedules configured for this group.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'cancel_schedule',
+    title: 'Cancel schedule',
     description: 'Cancel a schedule by id (must belong to this group).',
     inputSchema: {
       type: 'object',
@@ -194,20 +199,53 @@ async function groupVisibleTools(groupId: string) {
   return rows.filter((t) => t.visible);
 }
 
+type ToolRow = Awaited<ReturnType<typeof groupVisibleTools>>[number];
+
+/** Human titles for a tool list; when two tools resolve to the same title the
+ *  source name is appended to disambiguate ("Run report (GA prod)"). */
+async function toolTitles(list: ToolRow[]): Promise<Map<string, string>> {
+  const base = new Map(list.map((t) => [t.id, mcpToolTitle(t.displayName ?? t.name)]));
+  const counts = new Map<string, number>();
+  for (const title of base.values()) counts.set(title, (counts.get(title) ?? 0) + 1);
+  const dupSrcIds = [
+    ...new Set(
+      list.filter((t) => (counts.get(base.get(t.id)!) ?? 0) > 1 && t.sourceId).map((t) => t.sourceId as string),
+    ),
+  ];
+  if (!dupSrcIds.length) return base;
+  const srcRows = await db.select().from(sources).where(inArray(sources.id, dupSrcIds));
+  const srcName = new Map(srcRows.map((s) => [s.id, s.name]));
+  for (const t of list) {
+    const title = base.get(t.id)!;
+    const src = t.sourceId ? srcName.get(t.sourceId) : undefined;
+    if ((counts.get(title) ?? 0) > 1 && src) base.set(t.id, `${title} (${src})`);
+  }
+  return base;
+}
+
 /**
  * Build the virtual MCP server for one group: it exposes the group's curated,
  * visible tools and dispatches calls through the shared runtime.
  */
+// Branding surfaced in the MCP `initialize` serverInfo — MCP clients (Claude.ai,
+// ChatGPT) render the connector's title/icon from here instead of a letter fallback.
+const branding = {
+  websiteUrl: 'https://comind.pro',
+  icons: [{ src: `${config.publicBaseUrl}/favicon.svg`, mimeType: 'image/svg+xml', sizes: ['any'] }],
+};
+
 export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
   const server = new Server(
-    { name: `comind:${auth.groupSlug}`, version: '0.1.0' },
+    { name: `comind:${auth.groupSlug}`, version: '0.1.0', title: `Comind · ${auth.groupSlug}`, ...branding },
     { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) || undefined },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const list = await groupVisibleTools(auth.groupId);
+    const titles = await toolTitles(list);
     const toolDefs = list.map((t) => ({
-      name: t.name,
+      name: mcpToolName(t.name),
+      title: titles.get(t.id),
       description: t.displayName
         ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
         : (t.description ?? undefined),
@@ -223,7 +261,8 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
     const a = (args ?? {}) as Record<string, unknown>;
 
     // Built-in system introspection tools: only those this group opted into.
-    if (SYSTEM_TOOL_NAMES.has(name) && auth.systemTools.includes(name)) {
+    const sysName = canonicalSystemToolName(name);
+    if (sysName && auth.systemTools.includes(sysName)) {
       const r = await handleSystemTool(
         {
           agentId: auth.agentId,
@@ -231,7 +270,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
           scope: 'group',
           groups: [{ id: auth.groupId, slug: auth.groupSlug, schedulingEnabled: auth.schedulingEnabled }],
         },
-        name,
+        sysName,
         a,
       );
       return {
@@ -247,11 +286,14 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
     }
 
     // Gate: the agent may only call tools assigned & visible in its group.
+    // Clients call with the MCP-safe name from tools/list; resolve it back to
+    // the stored name (older clients may still send the raw one).
     const allowed = await groupVisibleTools(auth.groupId);
-    if (!allowed.some((t) => t.name === name)) {
+    const tool = allowed.find((t) => t.name === name || mcpToolName(t.name) === name);
+    if (!tool) {
       return { content: [{ type: 'text', text: `Tool not in group: ${name}` }], isError: true };
     }
-    const result = await invokeTool(name, a, {
+    const result = await invokeTool(tool.name, a, {
       ownerId: auth.ownerId,
       agentId: auth.agentId,
       groupId: auth.groupId,
@@ -275,16 +317,18 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
  */
 export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
   const server = new Server(
-    { name: 'comind:agent', version: '0.1.0' },
+    { name: 'comind:agent', version: '0.1.0', title: 'ComindMCP', ...branding },
     { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) || undefined },
   );
 
-  // name -> { groupId, tool } across all reachable groups (first group wins).
+  // MCP-safe name -> { groupId, tool } across all reachable groups (first group
+  // wins; a post-sanitize collision like `a.b` vs `a_b` hides the later tool).
   const index = async () => {
     const map = new Map<string, { groupId: string; tool: Awaited<ReturnType<typeof groupVisibleTools>>[number] }>();
     for (const g of auth.groups) {
       for (const t of await groupVisibleTools(g.id)) {
-        if (!map.has(t.name)) map.set(t.name, { groupId: g.id, tool: t });
+        const key = mcpToolName(t.name);
+        if (!map.has(key)) map.set(key, { groupId: g.id, tool: t });
       }
     }
     return map;
@@ -292,10 +336,13 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const map = await index();
+    const listed = [...map.values()].map(({ tool }) => tool);
+    const titles = await toolTitles(listed);
     return {
       tools: [
-        ...[...map.values()].map(({ tool: t }) => ({
-          name: t.name,
+        ...listed.map((t) => ({
+          name: mcpToolName(t.name),
+          title: titles.get(t.id),
           description: t.displayName
             ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
             : (t.description ?? undefined),
@@ -311,7 +358,8 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
     const { name, arguments: args } = req.params;
 
     // Built-in system introspection tools: the agent's configured set.
-    if (SYSTEM_TOOL_NAMES.has(name) && auth.systemTools.includes(name)) {
+    const sysName = canonicalSystemToolName(name);
+    if (sysName && auth.systemTools.includes(sysName)) {
       const r = await handleSystemTool(
         {
           agentId: auth.agentId,
@@ -323,7 +371,7 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
             schedulingEnabled: g.schedulingEnabled,
           })),
         },
-        name,
+        sysName,
         (args ?? {}) as Record<string, unknown>,
       );
       return {
@@ -333,11 +381,13 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
       };
     }
 
-    const hit = (await index()).get(name);
+    // Index is keyed by MCP-safe name; sanitize the incoming name too so older
+    // clients that saw the raw (dotted) name still resolve.
+    const hit = (await index()).get(mcpToolName(name));
     if (!hit) {
       return { content: [{ type: 'text', text: `Tool not available to this agent: ${name}` }], isError: true };
     }
-    const result = await invokeTool(name, (args ?? {}) as Record<string, unknown>, {
+    const result = await invokeTool(hit.tool.name, (args ?? {}) as Record<string, unknown>, {
       ownerId: auth.ownerId,
       agentId: auth.agentId,
       groupId: hit.groupId,
