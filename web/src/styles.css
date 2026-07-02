@@ -1400,6 +1400,28 @@ tr.sec-head:hover td {
 .advanced-body {
   padding: 4px 12px 12px;
 }
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 18, 22, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  width: min(560px, calc(100vw - 32px));
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+.modal h3 {
+  margin: 0 0 4px;
+}
 .nav-burger {
   display: none;
 }

@@ -1,11 +1,35 @@
 import { useEffect, useState } from 'react';
 import { type Agent, type AgentKey, api, type Group, SYSTEM_TOOLS } from '../api.js';
-import { CopyRow } from '../ui.js';
+import { Advanced, CopyRow, EmptyState } from '../ui.js';
 
 interface InspectGroup {
   group: { id: string; name: string; slug: string; schedulingEnabled: boolean };
   tools: { name: string; kind: string }[];
   builtinTools: string[];
+}
+
+function KeyModal({ agent, apiKey, onClose }: { agent: Agent; apiKey: string; onClose: () => void }) {
+  const ep = `${api.base}/a/mcp`;
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>API key for “{agent.name}”</h3>
+        <div className="hint">This key is shown once. Copy it now — you can always create another one later.</div>
+        <CopyRow label="API key" text={apiKey} />
+        <CopyRow label="MCP endpoint" text={ep} />
+        <CopyRow
+          label="Claude Code / Cursor / any MCP client"
+          text={`claude mcp add ${agent.name.replace(/\s+/g, '-')} --transport http ${ep} --header "Authorization: Bearer ${apiKey}"`}
+        />
+        <div className="hint">
+          For claude.ai or ChatGPT: add the endpoint as a custom connector and paste the key when asked.
+        </div>
+        <button className="btn-primary" onClick={onClose}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function AgentsTab() {
@@ -19,6 +43,7 @@ export function AgentsTab() {
   const [connGroup, setConnGroup] = useState('');
   const [keys, setKeys] = useState<Record<string, AgentKey[]>>({});
   const [freshKeys, setFreshKeys] = useState<Record<string, string>>({}); // keyId → raw token (shown once)
+  const [modalKey, setModalKey] = useState<{ agent: Agent; apiKey: string } | null>(null);
   const [sysTools, setSysTools] = useState<Set<string>>(new Set());
   const [exTool, setExTool] = useState<string | null>(null); // system tool whose example is open
   const [err, setErr] = useState('');
@@ -60,6 +85,8 @@ export function AgentsTab() {
     try {
       const k = await api.post<AgentKey & { apiKey: string }>(`/agents/${id}/keys`, { label: '' });
       setFreshKeys((m) => ({ ...m, [k.id]: k.apiKey }));
+      const agent = agents.find((x) => x.id === id);
+      if (agent) setModalKey({ agent, apiKey: k.apiKey });
       await loadKeys(id);
       await load();
     } catch (e) {
@@ -100,6 +127,7 @@ export function AgentsTab() {
       // open the new agent and reveal its first key once
       setOpenId(a.id);
       setConnMode('all');
+      setModalKey({ agent: a, apiKey: a.apiKey });
       const ks = await api.get<AgentKey[]>(`/agents/${a.id}/keys`);
       setKeys((m) => ({ ...m, [a.id]: ks }));
       if (ks[0]) setFreshKeys((m) => ({ ...m, [ks[0].id]: a.apiKey }));
@@ -156,24 +184,24 @@ export function AgentsTab() {
           </span>
           <span className="seg">
             <span className={!single ? 'on' : ''} onClick={() => setConnMode('all')}>
-              All V-MCPs
+              All workspaces
             </span>
             <span className={single ? 'on' : ''} onClick={() => setConnMode('single')}>
-              Single V-MCP
+              One workspace
             </span>
           </span>
         </div>
         <div className="hint">
           {single
-            ? 'Endpoint of one granted V-MCP — exposes only that V-MCP’s tools.'
-            : 'One endpoint exposing every tool from all V-MCPs granted to this agent.'}{' '}
+            ? 'Endpoint of one granted workspace — exposes only that workspace’s tools.'
+            : 'One endpoint exposing every tool from all workspaces granted to this agent.'}{' '}
           Token = this agent’s key (substitute for <code>&lt;AGENT_KEY&gt;</code>). For ChatGPT / Claude.ai add the
           endpoint as a connector.
         </div>
 
         {single && (
           <>
-            <div className="field-label">V-MCP</div>
+            <div className="field-label">Workspace</div>
             {granted.length ? (
               <select
                 className="grow"
@@ -189,7 +217,7 @@ export function AgentsTab() {
               </select>
             ) : (
               <div className="hint" style={{ marginTop: 0 }}>
-                No V-MCP granted yet — grant access below.
+                No workspace granted yet — grant access below.
               </div>
             )}
           </>
@@ -219,7 +247,7 @@ export function AgentsTab() {
         )}
 
         <div className="editor-section" style={{ marginTop: 22 }}>
-          V-MCP access
+          Workspace access
         </div>
         {granted.map((gr) => (
           <div key={gr.id} className="row" style={{ marginBottom: 6, alignItems: 'center' }}>
@@ -245,7 +273,7 @@ export function AgentsTab() {
             value={addSel[a.id] ?? ''}
             onChange={(e) => setAddSel((s) => ({ ...s, [a.id]: e.target.value }))}
           >
-            <option value="">— grant V-MCP access —</option>
+            <option value="">— grant workspace access —</option>
             {available.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}
@@ -270,55 +298,54 @@ export function AgentsTab() {
           </div>
         )}
 
-        <div className="editor-section" style={{ marginTop: 22 }}>
-          System tools
-        </div>
-        <div className="hint">
-          Built-in <code className="mono">system.*</code> introspection tools this agent exposes — applied to every
-          V-MCP it connects to and the agent-wide <code className="mono">/a/mcp</code>. The agent calls these to learn
-          its context instead of guessing. Click <b>example</b> to see what each returns. Don't forget to save.
-        </div>
-        {SYSTEM_TOOLS.map((s) => {
-          const open = exTool === s.name;
-          return (
-            <div key={s.name}>
-              <div className="picker-item" style={{ alignItems: 'center' }}>
-                <input type="checkbox" checked={sysTools.has(s.name)} onChange={() => toggleSys(s.name)} />
-                <span className="mono">{s.name}</span>
-                <span className="muted" style={{ fontSize: 12 }}>
-                  {s.label}
-                </span>
-                <span style={{ marginLeft: 'auto' }} />
-                <button className="ghost mini" onClick={() => setExTool(open ? null : s.name)}>
-                  {open ? 'hide' : 'example'}
-                </button>
+        <Advanced summary="System tools (introspection)">
+          <div className="hint">
+            Built-in <code className="mono">system.*</code> introspection tools this agent exposes — applied to every
+            workspace it connects to and the agent-wide <code className="mono">/a/mcp</code>. The agent calls these to
+            learn its context instead of guessing. Click <b>example</b> to see what each returns. Don't forget to save.
+          </div>
+          {SYSTEM_TOOLS.map((s) => {
+            const open = exTool === s.name;
+            return (
+              <div key={s.name}>
+                <div className="picker-item" style={{ alignItems: 'center' }}>
+                  <input type="checkbox" checked={sysTools.has(s.name)} onChange={() => toggleSys(s.name)} />
+                  <span className="mono">{s.name}</span>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {s.label}
+                  </span>
+                  <span style={{ marginLeft: 'auto' }} />
+                  <button className="ghost mini" onClick={() => setExTool(open ? null : s.name)}>
+                    {open ? 'hide' : 'example'}
+                  </button>
+                </div>
+                {open && (
+                  <pre
+                    className="mono"
+                    style={{
+                      margin: '2px 0 8px 26px',
+                      padding: '8px 10px',
+                      fontSize: 11.5,
+                      lineHeight: 1.45,
+                      background: 'var(--panel2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      color: 'var(--muted)',
+                      overflowX: 'auto',
+                      whiteSpace: 'pre',
+                    }}
+                  >
+                    {s.example}
+                  </pre>
+                )}
               </div>
-              {open && (
-                <pre
-                  className="mono"
-                  style={{
-                    margin: '2px 0 8px 26px',
-                    padding: '8px 10px',
-                    fontSize: 11.5,
-                    lineHeight: 1.45,
-                    background: 'var(--panel2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    color: 'var(--muted)',
-                    overflowX: 'auto',
-                    whiteSpace: 'pre',
-                  }}
-                >
-                  {s.example}
-                </pre>
-              )}
-            </div>
-          );
-        })}
-        <div className="spacer" />
-        <button className="btn-primary" onClick={() => saveSysTools(a)}>
-          Save system tools ({sysTools.size})
-        </button>
+            );
+          })}
+          <div className="spacer" />
+          <button className="btn-primary" onClick={() => saveSysTools(a)}>
+            Save system tools ({sysTools.size})
+          </button>
+        </Advanced>
 
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', margin: '22px 0 8px' }}>
           <span className="editor-section" style={{ margin: 0 }}>
@@ -387,8 +414,8 @@ export function AgentsTab() {
   return (
     <>
       <div className="intro">
-        <b>Agents</b> — consumers. Each agent = one identity with a key. Grant the agent access to V-MCPs; the key works
-        only for granted V-MCPs. Access ≠ auto-connection: you add the V-MCP endpoint to your external agent yourself.
+        An agent is anything that connects from outside — Claude, ChatGPT, a script. Each agent gets its own key and
+        sees only the workspaces you grant it.
       </div>
 
       <div className="page-head">
@@ -419,7 +446,7 @@ export function AgentsTab() {
                   Cancel
                 </button>
               </div>
-              <div className="hint">Just a name. Grant V-MCP access after creating.</div>
+              <div className="hint">Just a name. Grant workspace access after creating.</div>
               {err && <div className="err-msg">{err}</div>}
             </div>
           </div>
@@ -437,7 +464,7 @@ export function AgentsTab() {
                 {a.keyCount ?? 0} key{(a.keyCount ?? 0) === 1 ? '' : 's'}
               </span>
               <span className="muted" style={{ fontSize: 12 }}>
-                {granted.length ? `${granted.length} V-MCP` : 'no access'}
+                {granted.length ? `${granted.length} workspace${granted.length === 1 ? '' : 's'}` : 'no access'}
               </span>
               <span style={{ marginLeft: 'auto' }} />
               <span className="edit-link">{open ? 'Close' : 'Manage'}</span>
@@ -449,10 +476,15 @@ export function AgentsTab() {
       })}
 
       {!agents.length && draft === null && (
-        <div className="muted" style={{ padding: '20px 2px' }}>
-          No agents yet.
-        </div>
+        <EmptyState
+          title="No agents yet"
+          body="Create an agent to get an API key and an endpoint you can plug into Claude, ChatGPT, or any MCP client."
+          actionLabel="+ New agent"
+          onAction={() => setDraft('')}
+        />
       )}
+
+      {modalKey && <KeyModal {...modalKey} onClose={() => setModalKey(null)} />}
     </>
   );
 }
