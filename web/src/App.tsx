@@ -30,7 +30,10 @@ export function App() {
   const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
-    const drop = () => setUser(null);
+    const drop = () => {
+      setUser(null);
+      setPage('home');
+    };
     window.addEventListener('comind-unauthorized', drop);
     if (tokenStore.get()) {
       api
@@ -47,6 +50,7 @@ export function App() {
   const logout = () => {
     api.logout();
     setUser(null);
+    setPage('home');
   };
 
   if (loading) return <div className="page-loading text-muted">Loading…</div>;
@@ -66,6 +70,7 @@ export function App() {
             <button
               key={p.id}
               className={`side-item ${p.id === page ? 'active' : ''}`}
+              aria-current={p.id === page ? 'page' : undefined}
               onClick={() => {
                 setPage(p.id);
                 setNavOpen(false);

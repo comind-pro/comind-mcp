@@ -467,7 +467,7 @@ export function SourcesTab() {
       {ed && ed.id === 'new' && (
         <div className="scard open">
           <div className="scard-head" onClick={close}>
-            <span className="name">{ed.name || 'New source'}</span>
+            <span className="name">{ed.name || 'New connection'}</span>
             <span className="tbadge">{ed.kind}</span>
             <span className="chev up">⌄</span>
           </div>

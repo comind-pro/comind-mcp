@@ -6,10 +6,7 @@ const STEPS = [
     'Connect sources',
     'Add any MCP server or HTTP/OpenAPI API. comind-mcp introspects it and lists every tool it exposes.',
   ],
-  [
-    'Curate tools',
-    'Pick the tools that matter, rename them, tweak schemas, or merge several calls into one composite tool.',
-  ],
+  ['Curate tools', 'Pick the tools that matter, rename them, tweak schemas, or merge several calls into one recipe.'],
   [
     'Build a workspace',
     'Bundle the curated tools into a workspace — a single clean endpoint that hides the messy upstreams.',

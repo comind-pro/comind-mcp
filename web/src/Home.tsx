@@ -50,16 +50,49 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [totals, setTotals] = useState<Totals | null>(null);
   const [recent, setRecent] = useState<CallLog[]>([]);
+  const [err, setErr] = useState(false);
 
-  useEffect(() => {
-    void api.get<Source[]>('/sources').then(setSources);
-    void api.get<Tool[]>('/tools').then(setTools);
-    void api.get<Group[]>('/groups').then(setGroups);
-    void api.get<Agent[]>('/agents').then(setAgents);
+  const load = () => {
+    setErr(false);
+    void api
+      .get<Source[]>('/sources')
+      .then(setSources)
+      .catch(() => setErr(true));
+    void api
+      .get<Tool[]>('/tools')
+      .then(setTools)
+      .catch(() => setErr(true));
+    void api
+      .get<Group[]>('/groups')
+      .then(setGroups)
+      .catch(() => setErr(true));
+    void api
+      .get<Agent[]>('/agents')
+      .then(setAgents)
+      .catch(() => setErr(true));
     const from = new Date(Date.now() - 86_400_000).toISOString();
-    void api.get<{ totals: Totals }>(`/metrics?from=${encodeURIComponent(from)}`).then((m) => setTotals(m.totals));
-    void api.get<CallLog[]>('/logs?limit=5').then(setRecent);
-  }, []);
+    void api
+      .get<{ totals: Totals }>(`/metrics?from=${encodeURIComponent(from)}`)
+      .then((m) => setTotals(m.totals))
+      .catch(() => {});
+    void api
+      .get<CallLog[]>('/logs?limit=5')
+      .then(setRecent)
+      .catch(() => {});
+  };
+
+  useEffect(load, []);
+
+  if (err && (!sources || !tools || !groups || !agents)) {
+    return (
+      <div className="home-hero">
+        <p className="err-msg">Couldn't load your workspace.</p>
+        <button className="btn-primary" onClick={load}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   if (!sources || !tools || !groups || !agents) return <div className="text-muted">Loading…</div>;
 

@@ -45,8 +45,8 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
     setEd({
       id: 'new',
       kind: 'composite',
-      name: slugName('New composite tool'),
-      displayName: 'New composite tool',
+      name: slugName('New recipe'),
+      displayName: 'New recipe',
       description: '',
       meta: {
         readOnly: '',
@@ -463,7 +463,7 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
               style={{
                 fontSize: 13.5,
                 fontWeight: 600,
-                color: ed.kind === 'native' ? 'var(--accent)' : '#b48cf0',
+                color: 'var(--accent)',
               }}
             >
               {ed.name || 'new_tool'}

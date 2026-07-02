@@ -644,7 +644,7 @@ export function ToolEditor({
                             </span>
                             <span className="tbadge">
                               {x.kind === 'composite'
-                                ? 'composite'
+                                ? 'Recipe'
                                 : x.kind === 'virtual'
                                   ? 'virtual'
                                   : srcName(x.sourceId)}

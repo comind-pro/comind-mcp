@@ -28,7 +28,7 @@ export function ToolPicker({
     const byKey = new Map<string, Group>();
     for (const t of tools) {
       const key = t.kind === 'composite' ? '__composite' : (t.sourceId ?? '__none');
-      const label = t.kind === 'composite' ? 'Composite tools' : srcName(t.sourceId);
+      const label = t.kind === 'composite' ? 'Recipes' : srcName(t.sourceId);
       if (!byKey.has(key)) byKey.set(key, { key, label, tools: [] });
       byKey.get(key)!.tools.push(t);
     }
