@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { PageId } from '../App.js';
 import { api, type Source, type Tool } from '../api.js';
+import { EmptyState } from '../ui.js';
 import { buildInput, parseInput } from './SchemaBuilder.js';
 import { type Cfg, type Editing, type MetaForm, type Step, ToolEditor } from './ToolEditor.js';
 
-export function ToolsTab() {
+// UI label for a tool kind — "composite" surfaces to users as "Recipe".
+const kindLabel = (k: Tool['kind']) => (k === 'composite' ? 'Recipe' : k);
+
+export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   const [tools, setTools] = useState<Tool[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [err, setErr] = useState('');
 
   const [search, setSearch] = useState('');
-  const [fType, setFType] = useState<'all' | 'native' | 'composite'>('all');
+  const [fType, setFType] = useState<'all' | 'native' | 'composite' | 'virtual'>('all');
   const [fSource, setFSource] = useState('');
-  const [opened, setOpened] = useState<Set<string>>(new Set());
   const [ed, setEd] = useState<Editing | null>(null);
 
   const load = () =>
@@ -399,32 +403,6 @@ export function ToolsTab() {
       (!fSource || t.sourceId === fSource),
   );
 
-  const groups = useMemo(() => {
-    const m = new Map<string, { key: string; label: string; composite: boolean; tools: Tool[] }>();
-    for (const t of filtered) {
-      const key =
-        t.kind === 'composite' ? '__composite' : t.kind === 'virtual' ? '__virtual' : (t.sourceId ?? '__none');
-      if (!m.has(key)) {
-        m.set(key, {
-          key,
-          label:
-            t.kind === 'composite' ? 'Composite tools' : t.kind === 'virtual' ? 'Virtual tools' : srcName(t.sourceId),
-          composite: t.kind === 'composite' || t.kind === 'virtual',
-          tools: [],
-        });
-      }
-      m.get(key)!.tools.push(t);
-    }
-    return [...m.values()].sort((a, b) => Number(a.composite) - Number(b.composite) || a.label.localeCompare(b.label));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, sources]);
-
-  const toggleGroup = (k: string) => {
-    const next = new Set(opened);
-    next.has(k) ? next.delete(k) : next.add(k);
-    setOpened(next);
-  };
-
   const visibleTotal = tools.filter((t) => t.visible).length;
 
   const onSave = () =>
@@ -456,9 +434,8 @@ export function ToolsTab() {
   return (
     <>
       <div className="intro">
-        <b>Tools</b> — everything from your sources. <b>native</b> = one direct call (appear after Import).{' '}
-        <b>composite</b> = one tool that internally makes several calls. Click a row to edit, toggle the switch to
-        show/hide from agents.
+        Tools are the individual actions agents can call. Hide the noisy ones, rename the cryptic ones, or combine
+        several into a recipe.
       </div>
 
       <div className="page-head">
@@ -472,19 +449,29 @@ export function ToolsTab() {
             + New virtual tool
           </button>
           <button className="btn-primary" onClick={openNewComposite}>
-            + New composite tool
+            + New recipe
           </button>
         </div>
       </div>
 
-      {/* draft composite */}
-      {ed?.id === 'new' && (
+      {/* editor panel — new draft or the tool being edited */}
+      {ed && (
         <div className="scard open" style={{ marginBottom: 18 }}>
           <div className="scard-head">
-            <span className="mono" style={{ fontSize: 13.5, fontWeight: 600, color: '#b48cf0' }}>
+            <span
+              className="mono"
+              style={{
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: ed.kind === 'native' ? 'var(--accent)' : '#b48cf0',
+              }}
+            >
               {ed.name || 'new_tool'}
             </span>
-            <span className="tbadge composite">{ed.kind} · draft</span>
+            <span className={`tbadge ${ed.kind === 'composite' ? 'composite' : ''}`}>
+              {kindLabel(ed.kind)}
+              {ed.id === 'new' ? ' · draft' : ''}
+            </span>
             <span className="edit-link" style={{ marginLeft: 'auto' }} onClick={close}>
               Close
             </span>
@@ -510,9 +497,9 @@ export function ToolsTab() {
           />
         </span>
         <span className="seg">
-          {(['all', 'native', 'composite'] as const).map((v) => (
+          {(['all', 'native', 'composite', 'virtual'] as const).map((v) => (
             <span key={v} className={fType === v ? 'on' : ''} onClick={() => setFType(v)}>
-              {v === 'all' ? 'All' : v === 'native' ? 'Native' : 'Composite'}
+              {v === 'all' ? 'All' : v === 'native' ? 'Native' : v === 'composite' ? 'Recipes' : 'Virtual'}
             </span>
           ))}
         </span>
@@ -528,65 +515,66 @@ export function ToolsTab() {
 
       {err && !ed && <div className="err-msg">{err}</div>}
 
-      {!groups.length && (
+      {tools.length === 0 ? (
+        <EmptyState
+          title="No tools yet"
+          body="Tools appear here after you import them from a connection."
+          actionLabel="Go to Connections"
+          onAction={() => onNavigate('connections')}
+        />
+      ) : filtered.length === 0 ? (
         <div className="muted" style={{ textAlign: 'center', padding: '50px 20px' }}>
-          Nothing found. Import tools from a source (Sources tab).
+          Nothing found.
         </div>
-      )}
-
-      {groups.map((g) => {
-        const isOpen = opened.has(g.key) || search.length > 0 || (ed != null && g.tools.some((t) => t.id === ed.id));
-        return (
-          <div key={g.key} style={{ marginBottom: 18 }}>
-            <div className="tgroup-head" onClick={() => toggleGroup(g.key)}>
-              <span className={`gchev ${isOpen ? '' : 'closed'}`}>⌄</span>
-              <span className="gtitle">{g.label}</span>
-              <span className={`tbadge ${g.composite ? 'composite' : ''}`}>{g.composite ? 'composite' : 'source'}</span>
-              <span className="gcount">{g.tools.length} tools</span>
-            </div>
-            {isOpen &&
-              g.tools.map((t) => {
+      ) : (
+        <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+          <table className="tools-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Connection</th>
+                <th>Kind</th>
+                <th style={{ textAlign: 'center' }}>Visible</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((t) => {
                 const rowOpen = ed?.id === t.id;
-                const comp = t.kind === 'composite';
                 return (
-                  <div key={t.id} className={`scard ${rowOpen ? 'open' : ''}`}>
-                    <div className="scard-head" onClick={() => open(t)}>
-                      <span
-                        className={`switch ${t.visible ? 'on' : ''}`}
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          toggleVisible(t);
-                        }}
-                      >
-                        <span className="knob" />
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 11, flex: 1, minWidth: 0 }}>
-                        <span
-                          className="mono"
-                          style={{ fontSize: 13.5, fontWeight: 600, color: comp ? '#b48cf0' : 'var(--accent)' }}
-                        >
-                          {t.name}
-                        </span>
-                        <span
-                          className="muted"
-                          style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        >
-                          {t.displayName ?? ''}
-                        </span>
-                      </span>
-                      <span className={`tbadge tool-badge ${comp ? 'composite' : ''}`}>
-                        {comp ? 'composite' : 'native'}
-                      </span>
-                      <span className="edit-link">{rowOpen ? 'Close' : 'Edit'}</span>
-                      <span className={`chev ${rowOpen ? 'up' : ''}`}>⌄</span>
-                    </div>
-                    {rowOpen && ed && <div className="scard-body">{editor(ed)}</div>}
-                  </div>
+                  <tr key={t.id} className={rowOpen ? 'active' : ''}>
+                    <td>
+                      <div className={t.displayName ? '' : 'mono'} style={{ fontWeight: 500 }}>
+                        {t.displayName || t.name}
+                      </div>
+                      {t.displayName && <div className="mono tool-subname">{t.name}</div>}
+                    </td>
+                    <td>
+                      <span className="tbadge">{t.sourceId ? srcName(t.sourceId) : '—'}</span>
+                    </td>
+                    <td>
+                      <span className={`tbadge ${t.kind === 'composite' ? 'composite' : ''}`}>{kindLabel(t.kind)}</span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={t.visible}
+                        onChange={() => toggleVisible(t)}
+                        aria-label={`Visible to agents: ${t.displayName || t.name}`}
+                      />
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="ghost mini" onClick={() => open(t)}>
+                        {rowOpen ? 'Close' : 'Edit'}
+                      </button>
+                    </td>
+                  </tr>
                 );
               })}
-          </div>
-        );
-      })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }

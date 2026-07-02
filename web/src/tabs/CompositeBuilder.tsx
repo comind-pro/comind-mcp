@@ -76,7 +76,7 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>New composite tool</h2>
+        <h2 style={{ margin: 0 }}>New recipe</h2>
         <div className="row" style={{ gap: 2 }}>
           <button className={mode === 'form' ? 'mini' : 'ghost mini'} onClick={() => switchMode('form')}>
             Form
@@ -188,7 +188,7 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
 
       <div className="spacer" />
       <button onClick={create} disabled={!name}>
-        Create composite
+        Create recipe
       </button>
       {err && <div className="err-msg">{err}</div>}
     </div>

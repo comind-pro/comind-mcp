@@ -96,7 +96,7 @@ export function App() {
         </header>
         {page === 'home' && <Home onNavigate={setPage} />}
         {page === 'connections' && <SourcesTab />}
-        {page === 'tools' && <ToolsTab />}
+        {page === 'tools' && <ToolsTab onNavigate={setPage} />}
         {page === 'workspaces' && <GroupsTab />}
         {page === 'agents' && <AgentsTab />}
         {page === 'secrets' && <SecretsTab />}

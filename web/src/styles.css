@@ -1525,3 +1525,27 @@ tr.sec-head:hover td {
   color: var(--text-muted);
   font-size: 13px;
 }
+
+/* Tools screen — flat table inside a .card (scrolls horizontally on mobile via base rule) */
+.tools-table .tool-subname {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.tools-table th:first-child,
+.tools-table td:first-child {
+  padding-left: 14px;
+}
+.tools-table th:last-child,
+.tools-table td:last-child {
+  padding-right: 14px;
+}
+.tools-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.tools-table tbody tr:hover {
+  background: var(--panel2);
+}
+.tools-table tr.active {
+  background: var(--panel2);
+}

@@ -1,5 +1,6 @@
 import { type Dispatch, type SetStateAction, useState } from 'react';
 import { api, type Source, type Tool } from '../api.js';
+import { Advanced } from '../ui.js';
 import { OutputField } from './CompositeBuilder.js';
 import { buildInput, type Field, FieldRows, parseInput, ValueInput } from './SchemaBuilder.js';
 
@@ -515,10 +516,7 @@ export function ToolEditor({
         )}
 
         {e.meta && (
-          <>
-            <div className="editor-section" style={{ marginTop: 20 }}>
-              Discovery metadata
-            </div>
+          <Advanced summary="Metadata & examples">
             <div className="hint">
               Helps agents call this tool safely & correctly — surfaced via <code className="mono">system.context</code>
               .
@@ -593,7 +591,7 @@ export function ToolEditor({
               }
             />
             {e.meta.examplesErr && <div className="err-msg">{e.meta.examplesErr}</div>}
-          </>
+          </Advanced>
         )}
 
         {isComp && (
@@ -854,120 +852,100 @@ export function ToolEditor({
         {err && <div className="err-msg">{err}</div>}
       </div>
 
-      {/* RIGHT: JSON | Test */}
+      {/* RIGHT: test runner (Raw JSON tucked into Advanced) */}
       <div className="editor-right">
-        <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
-          <span className="seg">
-            <span className={e.right === 'json' ? 'on' : ''} onClick={() => patch({ right: 'json' })}>
-              JSON
-            </span>
-            <span className={e.right === 'test' ? 'on' : ''} onClick={() => patch({ right: 'test' })}>
-              Test run
-            </span>
-          </span>
+        <div className="editor-section">Test run</div>
+        <div className="hint">
+          {isComp ? 'runs the whole tool — all steps in order' : 'one call with test arguments'}
         </div>
-
-        {e.right === 'json' ? (
-          <>
-            <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-              <span className="field-label" style={{ margin: 0 }}>
-                Config · JSON
+        {e.params.map((p, i) => (
+          <div key={i} style={{ marginBottom: 10 }}>
+            <div className="field-label" style={{ marginBottom: 4 }}>
+              <span className="mono" style={{ color: 'var(--text)' }}>
+                {p.name || '(unnamed)'}
+              </span>{' '}
+              <span style={{ fontWeight: 400 }}>
+                {p.schema.type}
+                {e.required.includes(p.name) ? ' · required' : ''}
               </span>
-              <span className="tbadge">edits ↔ form</span>
             </div>
-            <textarea
-              className="json-area"
-              spellCheck={false}
-              value={e.jsonRaw != null ? e.jsonRaw : assembled}
-              onChange={(ev) => onToolJson(ev.target.value)}
+            <ValueInput
+              schema={p.schema}
+              value={e.testVals[p.name]}
+              invalid={e.required.includes(p.name) && (e.testVals[p.name] === undefined || e.testVals[p.name] === '')}
+              onChange={(v) => patch({ testVals: { ...e.testVals, [p.name]: v } })}
             />
-            {e.jsonError ? (
-              <div className="err-msg" style={{ marginTop: 8 }}>
-                ⚠ {e.jsonError}
-              </div>
-            ) : (
-              <div className="hint" style={{ marginTop: 8 }}>
-                Edits here update the form. Name is locked.
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="hint">
-              {isComp ? 'runs the whole tool — all steps in order' : 'one call with test arguments'}
-            </div>
-            {e.params.map((p, i) => (
-              <div key={i} style={{ marginBottom: 10 }}>
-                <div className="field-label" style={{ marginBottom: 4 }}>
-                  <span className="mono" style={{ color: 'var(--text)' }}>
-                    {p.name || '(unnamed)'}
-                  </span>{' '}
-                  <span style={{ fontWeight: 400 }}>
-                    {p.schema.type}
-                    {e.required.includes(p.name) ? ' · required' : ''}
-                  </span>
-                </div>
-                <ValueInput
-                  schema={p.schema}
-                  value={e.testVals[p.name]}
-                  invalid={
-                    e.required.includes(p.name) && (e.testVals[p.name] === undefined || e.testVals[p.name] === '')
-                  }
-                  onChange={(v) => patch({ testVals: { ...e.testVals, [p.name]: v } })}
-                />
-              </div>
-            ))}
-            {!e.params.length && <div className="hint">Tool takes no input parameters.</div>}
-            <div className="spacer" />
-            <button
-              className="btn-primary"
-              onClick={() => runTest(e)}
-              disabled={e.testing || (e.id === 'new' && !isVirt)}
-            >
-              {e.testing ? <span className="spin" /> : '▶'} {isComp ? 'Run full tool' : 'Run test'}
-            </button>
-            {e.id === 'new' && !isVirt && (
-              <div className="hint" style={{ marginTop: 6 }}>
-                Create the tool first to test it.
-              </div>
-            )}
-            {e.id === 'new' && isVirt && (
-              <div className="hint" style={{ marginTop: 6 }}>
-                Runs the request without saving.
-              </div>
-            )}
-            {err && <div className="err-msg">{err}</div>}
-
-            {e.testOut && (
-              <div style={{ marginTop: 16 }}>
-                {e.testOut.steps && e.testOut.steps.length > 0 && (
-                  <>
-                    <div className="editor-section">Trace</div>
-                    {e.testOut.steps.map((s) => (
-                      <div key={s.id} className="trace-item">
-                        <span className="dot" style={{ background: s.isError ? 'var(--err)' : 'var(--ok)' }} />
-                        <div style={{ fontSize: 12, marginBottom: 4 }}>
-                          <span className="muted">{s.id}</span>{' '}
-                          <span className="mono" style={{ color: 'var(--accent)' }}>
-                            {s.tool}
-                          </span>{' '}
-                          <span className={`badge ${s.isError ? 'err' : 'ok'}`}>
-                            {s.skipped ? 'skip' : s.isError ? 'err' : 'ok'}
-                          </span>
-                        </div>
-                        <pre className="code-block">{s.text || '(empty)'}</pre>
-                      </div>
-                    ))}
-                  </>
-                )}
-                <div className="editor-section">Output{e.testOut.isError ? ' · error' : ''}</div>
-                <pre className="code-block" style={{ color: e.testOut.isError ? 'var(--err)' : undefined }}>
-                  {e.testOut.content?.[0]?.text ?? '(empty)'}
-                </pre>
-              </div>
-            )}
-          </>
+          </div>
+        ))}
+        {!e.params.length && <div className="hint">Tool takes no input parameters.</div>}
+        <div className="spacer" />
+        <button className="btn-primary" onClick={() => runTest(e)} disabled={e.testing || (e.id === 'new' && !isVirt)}>
+          {e.testing ? <span className="spin" /> : '▶'} {isComp ? 'Run full tool' : 'Run test'}
+        </button>
+        {e.id === 'new' && !isVirt && (
+          <div className="hint" style={{ marginTop: 6 }}>
+            Create the tool first to test it.
+          </div>
         )}
+        {e.id === 'new' && isVirt && (
+          <div className="hint" style={{ marginTop: 6 }}>
+            Runs the request without saving.
+          </div>
+        )}
+        {err && <div className="err-msg">{err}</div>}
+
+        {e.testOut && (
+          <div style={{ marginTop: 16 }}>
+            {e.testOut.steps && e.testOut.steps.length > 0 && (
+              <>
+                <div className="editor-section">Trace</div>
+                {e.testOut.steps.map((s) => (
+                  <div key={s.id} className="trace-item">
+                    <span className="dot" style={{ background: s.isError ? 'var(--err)' : 'var(--ok)' }} />
+                    <div style={{ fontSize: 12, marginBottom: 4 }}>
+                      <span className="muted">{s.id}</span>{' '}
+                      <span className="mono" style={{ color: 'var(--accent)' }}>
+                        {s.tool}
+                      </span>{' '}
+                      <span className={`badge ${s.isError ? 'err' : 'ok'}`}>
+                        {s.skipped ? 'skip' : s.isError ? 'err' : 'ok'}
+                      </span>
+                    </div>
+                    <pre className="code-block">{s.text || '(empty)'}</pre>
+                  </div>
+                ))}
+              </>
+            )}
+            <div className="editor-section">Output{e.testOut.isError ? ' · error' : ''}</div>
+            <pre className="code-block" style={{ color: e.testOut.isError ? 'var(--err)' : undefined }}>
+              {e.testOut.content?.[0]?.text ?? '(empty)'}
+            </pre>
+          </div>
+        )}
+
+        <Advanced summary="Raw JSON">
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+            <span className="field-label" style={{ margin: 0 }}>
+              Config · JSON
+            </span>
+            <span className="tbadge">edits ↔ form</span>
+          </div>
+          <textarea
+            className="json-area"
+            spellCheck={false}
+            value={e.jsonRaw != null ? e.jsonRaw : assembled}
+            onChange={(ev) => onToolJson(ev.target.value)}
+          />
+          {e.jsonError ? (
+            <div className="err-msg" style={{ marginTop: 8 }}>
+              ⚠ {e.jsonError}
+            </div>
+          ) : (
+            <div className="hint" style={{ marginTop: 8 }}>
+              Edits here update the form. Name is locked.
+            </div>
+          )}
+        </Advanced>
       </div>
     </div>
   );
