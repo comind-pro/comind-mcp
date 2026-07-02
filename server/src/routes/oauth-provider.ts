@@ -42,9 +42,8 @@ function groupIdFromResource(resource: string | undefined): string | null {
 }
 
 /** Agent-wide endpoint `<base>/a/mcp` — token covers all the agent's groups. */
-// ponytail: `/x` is the temp probe-cache-bypass alias in gateway.ts; drop together with it.
 function isAgentResource(resource: string | undefined): boolean {
-  return !!resource && /\/a\/mcp(\/x)?\/?$/.test(resource);
+  return !!resource && /\/a\/mcp\/?$/.test(resource);
 }
 
 export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {

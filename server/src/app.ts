@@ -7,7 +7,6 @@ import { verifyJwt } from './lib/auth.js';
 import { agentRoutes } from './routes/agents.js';
 import { authRoutes } from './routes/auth.js';
 import { compositeRoutes } from './routes/composite.js';
-import { registerCapture } from './routes/debug.js';
 import { gatewayRoutes } from './routes/gateway.js';
 import { groupRoutes } from './routes/groups.js';
 import { oauthRoutes } from './routes/oauth.js';
@@ -69,8 +68,7 @@ export function buildApp(): FastifyInstance {
       path === '/oauth/authorize' ||
       path === '/oauth/token' ||
       path.startsWith('/g/') ||
-      path.startsWith('/a/mcp') ||
-      path === '/oauth/_capture' // self-authed via agent key
+      path === '/a/mcp'
     );
   };
   app.addHook('preHandler', async (req, reply) => {
@@ -95,7 +93,6 @@ export function buildApp(): FastifyInstance {
   app.register(oauthRoutes);
   app.register(oauthProviderRoutes);
   app.register(gatewayRoutes);
-  registerCapture(app);
 
   app.get('/healthz', async () => {
     let dbOk = false;
