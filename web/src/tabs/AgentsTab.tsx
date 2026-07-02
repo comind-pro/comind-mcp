@@ -1,28 +1,6 @@
 import { useEffect, useState } from 'react';
 import { type Agent, type AgentKey, api, type Group, SYSTEM_TOOLS } from '../api.js';
-
-function Snip({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {
-      /* clipboard blocked */
-    }
-  };
-  return (
-    <div className="row" style={{ alignItems: 'stretch', gap: 6, marginBottom: 8 }}>
-      <div className="endpoint mono grow" style={{ whiteSpace: 'pre-wrap' }}>
-        {text}
-      </div>
-      <button className="ghost" onClick={copy} style={{ alignSelf: 'flex-start' }}>
-        {copied ? 'Copied' : 'Copy'}
-      </button>
-    </div>
-  );
-}
+import { CopyRow } from '../ui.js';
 
 interface InspectGroup {
   group: { id: string; name: string; slug: string; schedulingEnabled: boolean };
@@ -220,17 +198,17 @@ export function AgentsTab() {
         {ep && (
           <>
             <div className="field-label">MCP endpoint</div>
-            <Snip text={ep} />
+            <CopyRow text={ep} />
             <div className="field-label" style={{ marginTop: 10 }}>
               Claude Code / Cursor / any MCP client
             </div>
-            <Snip
+            <CopyRow
               text={`claude mcp add ${addName} --transport http ${ep} --header "Authorization: Bearer <AGENT_KEY>"`}
             />
             <div className="field-label" style={{ marginTop: 10 }}>
               curl (raw JSON-RPC — tools/list)
             </div>
-            <Snip
+            <CopyRow
               text={`curl -X POST ${ep} \\
   -H "Authorization: Bearer <AGENT_KEY>" \\
   -H "Content-Type: application/json" \\

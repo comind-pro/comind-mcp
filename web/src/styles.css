@@ -1364,6 +1364,56 @@ tr.sec-head:hover td {
 .text-muted {
   color: var(--text-muted);
 }
+.copy-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.copy-row-text {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  margin-top: 8px;
+}
+.empty-state-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.empty-state-body {
+  color: var(--text-muted);
+  max-width: 440px;
+  margin: 0 auto 16px;
+}
+.advanced {
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.advanced > summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  user-select: none;
+}
+.advanced-body {
+  padding: 4px 12px 12px;
+}
 .nav-burger {
   display: none;
 }
