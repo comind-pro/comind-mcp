@@ -165,6 +165,8 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
 
     let created = 0;
     for (const t of upstream) {
+      // NB: dots are fine here — the MCP gateway maps names onto the MCP-safe
+      // charset at the boundary (see lib/tool-name.ts); stored names stay stable.
       const name = `${prefix}.${t.name}`;
       const values = {
         id: newId(),
