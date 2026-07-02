@@ -72,7 +72,13 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
     bearer_methods_supported: ['header'],
     scopes_supported: SCOPES,
   });
-  app.get('/.well-known/oauth-protected-resource', async () => prMetadata(BASE));
+  // Root metadata: `resource` MUST equal the endpoint the client connects to.
+  // Claude.ai's connection probe fetches THIS (not the path-scoped variant the
+  // WWW-Authenticate header points at) and rejects the server as "not a valid
+  // MCP server" unless `resource` exactly matches the connector URL. `/a/mcp`
+  // (agent-wide) is the canonical endpoint; path-scoped metadata below still
+  // serves the per-group resource for the OAuth flow.
+  app.get('/.well-known/oauth-protected-resource', async () => prMetadata(`${BASE}/a/mcp`));
   app.get('/.well-known/oauth-protected-resource/*', async (req) => {
     const star = (req.params as Record<string, string>)['*'] || '';
     return prMetadata(`${BASE}/${star}`.replace(/\/$/, ''));
