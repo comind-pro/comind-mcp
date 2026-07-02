@@ -48,6 +48,27 @@ export function EmptyState({
   );
 }
 
+export function Sparkline({ points }: { points: number[] }) {
+  const w = 100;
+  const h = 28;
+  const pad = 2;
+  const max = Math.max(...points, 1);
+  const step = points.length > 1 ? (w - pad * 2) / (points.length - 1) : 0;
+  const pts = points.map((v, i) => `${pad + i * step},${h - pad - (v / max) * (h - pad * 2)}`).join(' ');
+  return (
+    <svg className="sparkline" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
+      <polyline
+        points={pts}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function Advanced({ summary = 'Advanced', children }: { summary?: string; children: ReactNode }) {
   return (
     <details className="advanced">

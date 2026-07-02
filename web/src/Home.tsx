@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { PageId } from './App.js';
 import { type Agent, api, type CallLog, type Group, type Source, type Tool } from './api.js';
+import { Sparkline } from './ui.js';
 
 interface Totals {
   calls: number;
@@ -43,6 +44,18 @@ export function deriveSteps(counts: { sources: number; tools: number; groups: nu
   ];
 }
 
+/** Daily call counts for the last `days` days, oldest first. */
+export function bucketDays(timestamps: (number | string)[], now: number, days = 7): number[] {
+  const buckets = new Array(days).fill(0);
+  const dayMs = 86_400_000;
+  for (const t of timestamps) {
+    const age = now - new Date(t).getTime();
+    if (age < 0 || age >= days * dayMs) continue;
+    buckets[days - 1 - Math.floor(age / dayMs)]++;
+  }
+  return buckets;
+}
+
 export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   const [sources, setSources] = useState<Source[] | null>(null);
   const [tools, setTools] = useState<Tool[] | null>(null);
@@ -50,6 +63,7 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [totals, setTotals] = useState<Totals | null>(null);
   const [recent, setRecent] = useState<CallLog[]>([]);
+  const [spark, setSpark] = useState<number[] | null>(null);
   const [err, setErr] = useState(false);
 
   const load = () => {
@@ -78,6 +92,18 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
     void api
       .get<CallLog[]>('/logs?limit=5')
       .then(setRecent)
+      .catch(() => {});
+    const week = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    void api
+      .get<CallLog[]>(`/logs?from=${encodeURIComponent(week)}&limit=1000`)
+      .then((rows) =>
+        setSpark(
+          bucketDays(
+            rows.map((r) => r.ts),
+            Date.now(),
+          ),
+        ),
+      )
       .catch(() => {});
   };
 
@@ -148,6 +174,7 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
         <StatCard
           value={totals ? `${totals.calls}` : '…'}
           label={`calls · 24h${totals?.errors ? ` (${totals.errors} errors)` : ''}`}
+          spark={spark}
           onClick={() => onNavigate('activity')}
         />
       </div>
@@ -178,11 +205,22 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   );
 }
 
-function StatCard({ value, label, onClick }: { value: number | string; label: string; onClick: () => void }) {
+function StatCard({
+  value,
+  label,
+  spark,
+  onClick,
+}: {
+  value: number | string;
+  label: string;
+  spark?: number[] | null;
+  onClick: () => void;
+}) {
   return (
     <button className="stat-card" onClick={onClick}>
       <span className="stat-card-v">{value}</span>
       <span className="stat-card-l">{label}</span>
+      {spark?.some((v) => v > 0) && <Sparkline points={spark} />}
     </button>
   );
 }
