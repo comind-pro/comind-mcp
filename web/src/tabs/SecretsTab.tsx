@@ -78,7 +78,7 @@ export function SecretsTab() {
       {draft && (
         <div className="scard open">
           <div className="scard-body">
-            <div className="editor-left" style={{ borderRight: 'none' }}>
+            <div className="editor-left no-border-r">
               <div className="field-label">Name · uppercase Latin (e.g. TITAN_TOKEN)</div>
               <div className="row">
                 <input
@@ -154,7 +154,7 @@ export function SecretsTab() {
                 </td>
                 <td>
                   {editId === s.id ? (
-                    <div className="row" style={{ gap: 4 }}>
+                    <div className="row gap-4">
                       <input
                         className="grow"
                         type={s.kind === 'env' ? 'text' : 'password'}
@@ -176,7 +176,7 @@ export function SecretsTab() {
                       </button>
                     </div>
                   ) : (
-                    <div className="row" style={{ gap: 4 }}>
+                    <div className="row gap-4">
                       <button className="ghost mini" onClick={() => startEdit(s)}>
                         Edit
                       </button>

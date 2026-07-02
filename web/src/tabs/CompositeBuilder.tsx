@@ -76,7 +76,7 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>New recipe</h2>
+        <h2 className="m0">New recipe</h2>
         <div className="row" style={{ gap: 2 }}>
           <button className={mode === 'form' ? 'mini' : 'ghost mini'} onClick={() => switchMode('form')}>
             Form
@@ -92,8 +92,7 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
 
       <div className="spacer" />
       <input
-        className="grow"
-        style={{ width: '100%' }}
+        className="grow w-full"
         placeholder="name (e.g. ops.report)"
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -135,11 +134,9 @@ export function CompositeBuilder({ tools, onCreated }: { tools: Tool[]; onCreate
                 onChange={(v) => setStep(i, { when: v || undefined })}
                 placeholder="$.input.flag"
               />
-              <div className="hint" style={{ marginTop: 6 }}>
-                args
-              </div>
+              <div className="hint mt-6">args</div>
               {Object.entries(s.args ?? {}).map(([k, v]) => (
-                <div key={k} className="row" style={{ marginBottom: 4 }}>
+                <div key={k} className="row mb-4">
                   <input style={{ width: 140 }} value={k} onChange={(e) => renameArg(i, k, e.target.value)} />
                   <input
                     className="grow mono"

@@ -352,7 +352,7 @@ export function ToolEditor({
       <div className="editor-left">
         <div className="editor-section">Definition</div>
         <div className="row" style={{ gap: 12, marginBottom: 12 }}>
-          <div style={{ flex: 1 }}>
+          <div className="flex-1">
             <div className="field-label">Name · unique · {isComp ? 'from display name' : 'from source'} · locked</div>
             <input
               className="mono"
@@ -366,10 +366,10 @@ export function ToolEditor({
               }
             />
           </div>
-          <div style={{ flex: 1 }}>
+          <div className="flex-1">
             <div className="field-label">Display name</div>
             <input
-              style={{ width: '100%' }}
+              className="w-full"
               value={e.displayName}
               onChange={(ev) => setDisplay(ev.target.value)}
               placeholder="shown to agents"
@@ -387,9 +387,7 @@ export function ToolEditor({
         {isVirt && e.req && (
           <>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-              <span className="editor-section" style={{ margin: 0 }}>
-                Endpoint
-              </span>
+              <span className="editor-section m0">Endpoint</span>
               <span className="seg">
                 <span className={e.executable !== false ? 'on' : ''} onClick={() => patch({ executable: true })}>
                   Executable
@@ -428,9 +426,7 @@ export function ToolEditor({
                 placeholder="https://api.example.com/v1/foo?id=${args.id}"
               />
             </div>
-            <div className="field-label" style={{ marginTop: 10 }}>
-              Headers · JSON (optional)
-            </div>
+            <div className="field-label mt-10">Headers · JSON (optional)</div>
             <textarea
               className="json-area mono"
               style={{ minHeight: 60 }}
@@ -438,9 +434,7 @@ export function ToolEditor({
               onChange={(ev) => setReq({ headers: ev.target.value })}
               placeholder={'{ "authorization": "Bearer ${secret.API_TOKEN}" }'}
             />
-            <div className="field-label" style={{ marginTop: 10 }}>
-              Query · JSON (optional)
-            </div>
+            <div className="field-label mt-10">Query · JSON (optional)</div>
             <textarea
               className="json-area mono"
               style={{ minHeight: 50 }}
@@ -448,9 +442,7 @@ export function ToolEditor({
               onChange={(ev) => setReq({ query: ev.target.value })}
               placeholder={'{ "limit": "${args.limit}" }'}
             />
-            <div className="field-label" style={{ marginTop: 10 }}>
-              Body · JSON (optional, non-GET)
-            </div>
+            <div className="field-label mt-10">Body · JSON (optional, non-GET)</div>
             <textarea
               className="json-area mono"
               style={{ minHeight: 70 }}
@@ -486,9 +478,7 @@ export function ToolEditor({
         {isVirt && e.executable === false && (
           <>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
-              <span className="field-label" style={{ margin: 0 }}>
-                Response body · optional · returned on call
-              </span>
+              <span className="field-label m0">Response body · optional · returned on call</span>
               <span className="seg">
                 <span className={e.respMode !== 'text' ? 'on' : ''} onClick={() => patch({ respMode: 'json' })}>
                   JSON
@@ -528,13 +518,9 @@ export function ToolEditor({
                   ['dangerous', 'Dangerous'],
                 ] as const
               ).map(([k, label]) => (
-                <div key={k} style={{ flex: 1 }}>
+                <div key={k} className="flex-1">
                   <div className="field-label">{label}</div>
-                  <select
-                    style={{ width: '100%' }}
-                    value={e.meta![k]}
-                    onChange={(ev) => setMeta({ [k]: ev.target.value })}
-                  >
+                  <select className="w-full" value={e.meta![k]} onChange={(ev) => setMeta({ [k]: ev.target.value })}>
                     <option value="">— unknown —</option>
                     <option value="true">yes</option>
                     <option value="false">no</option>
@@ -542,18 +528,14 @@ export function ToolEditor({
                 </div>
               ))}
             </div>
-            <div className="field-label" style={{ marginTop: 10 }}>
-              Permissions · comma-separated
-            </div>
+            <div className="field-label mt-10">Permissions · comma-separated</div>
             <input
-              style={{ width: '100%' }}
+              className="w-full"
               value={e.meta.perms}
               onChange={(ev) => setMeta({ perms: ev.target.value })}
               placeholder="ga4.read, gmail.read"
             />
-            <div className="field-label" style={{ marginTop: 10 }}>
-              Recommended use · automation hints
-            </div>
+            <div className="field-label mt-10">Recommended use · automation hints</div>
             <div className="row" style={{ gap: 12 }}>
               {(
                 [
@@ -562,15 +544,9 @@ export function ToolEditor({
                   ['confirm', 'Needs confirmation'],
                 ] as const
               ).map(([k, label]) => (
-                <div key={k} style={{ flex: 1 }}>
-                  <div className="field-label" style={{ fontWeight: 400 }}>
-                    {label}
-                  </div>
-                  <select
-                    style={{ width: '100%' }}
-                    value={e.meta![k]}
-                    onChange={(ev) => setMeta({ [k]: ev.target.value })}
-                  >
+                <div key={k} className="flex-1">
+                  <div className="field-label fw-400">{label}</div>
+                  <select className="w-full" value={e.meta![k]} onChange={(ev) => setMeta({ [k]: ev.target.value })}>
                     <option value="">—</option>
                     <option value="true">yes</option>
                     <option value="false">no</option>
@@ -578,9 +554,7 @@ export function ToolEditor({
                 </div>
               ))}
             </div>
-            <div className="field-label" style={{ marginTop: 10 }}>
-              Examples · JSON array of {'{ description, input }'}
-            </div>
+            <div className="field-label mt-10">Examples · JSON array of {'{ description, input }'}</div>
             <textarea
               className="json-area mono"
               style={{ minHeight: 120 }}
@@ -597,10 +571,8 @@ export function ToolEditor({
         {isComp && (
           <>
             <div className="row" style={{ justifyContent: 'space-between', margin: '20px 0 8px' }}>
-              <span className="editor-section" style={{ margin: 0 }}>
-                Steps
-              </span>
-              <span className="hint" style={{ margin: 0 }}>
+              <span className="editor-section m0">Steps</span>
+              <span className="hint m0">
                 each step calls another tool · refs <code>$.input.x</code> / <code>$.steps.s1.text</code>
               </span>
             </div>
@@ -637,7 +609,7 @@ export function ToolEditor({
                         </span>
                       </>
                     )}
-                    <span className="inline-x" style={{ marginLeft: 'auto' }} onClick={() => rmStep(i)}>
+                    <span className="inline-x ml-auto" onClick={() => rmStep(i)}>
                       ×
                     </span>
                   </div>
@@ -646,7 +618,7 @@ export function ToolEditor({
                     <div className="picker-pop">
                       <div className="ph">
                         <input
-                          style={{ width: '100%' }}
+                          className="w-full"
                           value={e.pickerQuery}
                           onChange={(ev) => patch({ pickerQuery: ev.target.value })}
                           placeholder="Search tool…"
@@ -768,9 +740,7 @@ export function ToolEditor({
                       )}
                       {info.tool?.outputSchema && (
                         <>
-                          <div className="step-schema-head" style={{ marginTop: 10 }}>
-                            OUTPUT SCHEMA
-                          </div>
+                          <div className="step-schema-head mt-10">OUTPUT SCHEMA</div>
                           <pre className="code-block">{JSON.stringify(info.tool.outputSchema, null, 2)}</pre>
                         </>
                       )}
@@ -780,17 +750,13 @@ export function ToolEditor({
                   {stp && !stp.running && (stp.out || stp.err) && (
                     <div style={{ marginTop: 10, marginLeft: 30 }}>
                       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span className="step-schema-head" style={{ margin: 0 }}>
-                          RESULT
-                        </span>
+                        <span className="step-schema-head m0">RESULT</span>
                         <span className="inline-x" onClick={() => closeStepTest(st.id)}>
                           ×
                         </span>
                       </div>
                       {stp.err ? (
-                        <div className="err-msg" style={{ margin: 0 }}>
-                          {stp.err}
-                        </div>
+                        <div className="err-msg m0">{stp.err}</div>
                       ) : (
                         <pre
                           className="code-block"
@@ -836,7 +802,7 @@ export function ToolEditor({
         )}
 
         {/* actions */}
-        <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
+        <div className="row divider-top">
           <button className="btn-primary" onClick={onSave}>
             {e.id === 'new' ? 'Create tool' : 'Save changes'}
           </button>
@@ -844,7 +810,7 @@ export function ToolEditor({
             Cancel
           </button>
           {e.id !== 'new' && (
-            <button className="danger" style={{ marginLeft: 'auto' }} onClick={onDelete}>
+            <button className="danger ml-auto" onClick={onDelete}>
               Delete
             </button>
           )}
@@ -860,11 +826,11 @@ export function ToolEditor({
         </div>
         {e.params.map((p, i) => (
           <div key={i} style={{ marginBottom: 10 }}>
-            <div className="field-label" style={{ marginBottom: 4 }}>
+            <div className="field-label mb-4">
               <span className="mono" style={{ color: 'var(--text)' }}>
                 {p.name || '(unnamed)'}
               </span>{' '}
-              <span style={{ fontWeight: 400 }}>
+              <span className="fw-400">
                 {p.schema.type}
                 {e.required.includes(p.name) ? ' · required' : ''}
               </span>
@@ -882,16 +848,8 @@ export function ToolEditor({
         <button className="btn-primary" onClick={() => runTest(e)} disabled={e.testing || (e.id === 'new' && !isVirt)}>
           {e.testing ? <span className="spin" /> : '▶'} {isComp ? 'Run full tool' : 'Run test'}
         </button>
-        {e.id === 'new' && !isVirt && (
-          <div className="hint" style={{ marginTop: 6 }}>
-            Create the tool first to test it.
-          </div>
-        )}
-        {e.id === 'new' && isVirt && (
-          <div className="hint" style={{ marginTop: 6 }}>
-            Runs the request without saving.
-          </div>
-        )}
+        {e.id === 'new' && !isVirt && <div className="hint mt-6">Create the tool first to test it.</div>}
+        {e.id === 'new' && isVirt && <div className="hint mt-6">Runs the request without saving.</div>}
         {err && <div className="err-msg">{err}</div>}
 
         {e.testOut && (
@@ -925,9 +883,7 @@ export function ToolEditor({
 
         <Advanced summary="Raw JSON">
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-            <span className="field-label" style={{ margin: 0 }}>
-              Config · JSON
-            </span>
+            <span className="field-label m0">Config · JSON</span>
             <span className="tbadge">edits ↔ form</span>
           </div>
           <textarea
@@ -937,13 +893,9 @@ export function ToolEditor({
             onChange={(ev) => onToolJson(ev.target.value)}
           />
           {e.jsonError ? (
-            <div className="err-msg" style={{ marginTop: 8 }}>
-              ⚠ {e.jsonError}
-            </div>
+            <div className="err-msg mt-8">⚠ {e.jsonError}</div>
           ) : (
-            <div className="hint" style={{ marginTop: 8 }}>
-              Edits here update the form. Name is locked.
-            </div>
+            <div className="hint mt-8">Edits here update the form. Name is locked.</div>
           )}
         </Advanced>
       </div>

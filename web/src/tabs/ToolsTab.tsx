@@ -472,7 +472,7 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
               {kindLabel(ed.kind)}
               {ed.id === 'new' ? ' · draft' : ''}
             </span>
-            <span className="edit-link" style={{ marginLeft: 'auto' }} onClick={close}>
+            <span className="edit-link ml-auto" onClick={close}>
               Close
             </span>
             <span className="chev up">⌄</span>
@@ -485,7 +485,13 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
       <div className="chip-row">
         <span className="chip-search">
           <span
-            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}
+            style={{
+              position: 'absolute',
+              left: 10,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--text-muted)',
+            }}
           >
             ⌕
           </span>

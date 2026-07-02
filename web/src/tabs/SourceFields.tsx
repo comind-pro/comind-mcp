@@ -200,8 +200,8 @@ function KvEditor({ obj, kv, valuePlaceholder }: { obj: Cfg; kv: any; valuePlace
   return (
     <>
       {Object.entries(obj).map(([k, v]) => (
-        <div key={k} className="row" style={{ marginBottom: 4 }}>
-          <input style={{ width: 160 }} value={k} onChange={(e) => kv.rename(k, e.target.value)} />
+        <div key={k} className="row mb-4">
+          <input className="w-160" value={k} onChange={(e) => kv.rename(k, e.target.value)} />
           <input
             className="grow mono"
             value={String(v)}
@@ -332,9 +332,9 @@ export function SourceFields({
           />
           <h3>Endpoints</h3>
           {(cfg.endpoints ?? []).map((ep: Cfg, i: number) => (
-            <div key={i} className="row" style={{ marginBottom: 4 }}>
+            <div key={i} className="row mb-4">
               <input
-                style={{ width: 120 }}
+                className="w-120"
                 placeholder="name"
                 value={ep.name}
                 onChange={(e) =>
@@ -587,9 +587,7 @@ export function SourceFields({
                 onChange={(v) => setAuthField('injectPrefix', v)}
                 placeholder="Bearer "
               />
-              <div className="hint" style={{ marginTop: 6 }}>
-                Body (login payload — custom field names)
-              </div>
+              <div className="hint mt-6">Body (login payload — custom field names)</div>
               <KvEditor obj={body} kv={bodyKv} valuePlaceholder="${secret.PASSWORD} or value" />
             </>
           )}

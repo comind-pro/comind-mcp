@@ -98,7 +98,7 @@ export function GroupsTab() {
   const assignedNames = tools.filter((t) => assigned.has(t.id)).map((t) => t.name);
 
   const body = (g: Group) => (
-    <div className="editor-left" style={{ borderRight: 'none' }}>
+    <div className="editor-left no-border-r">
       <CopyRow label="MCP endpoint" text={`${api.base}/g/${g.slug}/mcp`} />
       <div className="hint">Connect it from the Agents page — the agent's key authorizes this endpoint.</div>
 
@@ -119,13 +119,7 @@ export function GroupsTab() {
         Run a tool automatically on a cron schedule. Connected agents can also schedule themselves.
       </div>
       <div className="row">
-        <input
-          className="mono"
-          style={{ width: 160 }}
-          placeholder="0 9 * * *"
-          value={cron}
-          onChange={(e) => setCron(e.target.value)}
-        />
+        <input className="mono w-160" placeholder="0 9 * * *" value={cron} onChange={(e) => setCron(e.target.value)} />
         <select className="grow" value={schTool} onChange={(e) => setSchTool(e.target.value)}>
           <option value="">— tool —</option>
           {assignedNames.map((n) => (
@@ -145,9 +139,7 @@ export function GroupsTab() {
           className="row"
           style={{ marginBottom: 6, alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 6 }}
         >
-          <span className="mono" style={{ width: 120 }}>
-            {s.cron}
-          </span>
+          <span className="mono w-120">{s.cron}</span>
           <span className="mono grow">{s.toolName}</span>
           <span className="tbadge">{s.createdBy}</span>
           <span className="muted" style={{ fontSize: 12, width: 150, textAlign: 'right' }}>
@@ -161,13 +153,9 @@ export function GroupsTab() {
           </button>
         </div>
       ))}
-      {!schedules.length && (
-        <div className="muted" style={{ fontSize: 12 }}>
-          No schedules.
-        </div>
-      )}
+      {!schedules.length && <div className="muted fs-12">No schedules.</div>}
 
-      <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
+      <div className="row divider-top">
         <button className="danger" onClick={() => delGroup(g)}>
           Delete workspace
         </button>
@@ -197,7 +185,7 @@ export function GroupsTab() {
       {draft !== null && (
         <div className="scard open">
           <div className="scard-body">
-            <div className="editor-left" style={{ borderRight: 'none' }}>
+            <div className="editor-left no-border-r">
               <div className="field-label">Name · slug auto-generated</div>
               <div className="row">
                 <input
@@ -231,7 +219,7 @@ export function GroupsTab() {
               <span className="muted" style={{ fontSize: 12.5 }}>
                 {counts[g.id] ?? '…'} tools
               </span>
-              <span style={{ marginLeft: 'auto' }} />
+              <span className="ml-auto" />
               <span className="edit-link">{open ? 'Close' : 'Configure'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
             </div>

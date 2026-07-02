@@ -208,7 +208,7 @@ export function SourcesTab() {
   };
 
   const dotColor = (status: string) =>
-    status === 'ok' ? 'var(--ok)' : status === 'error' ? 'var(--err)' : 'var(--muted)';
+    status === 'ok' ? 'var(--ok)' : status === 'error' ? 'var(--err)' : 'var(--text-muted)';
 
   const editor = (e: Editing, isNew: boolean) => {
     const jsonText = e.jsonRaw != null ? e.jsonRaw : JSON.stringify(e.cfg, null, 2);
@@ -219,7 +219,7 @@ export function SourcesTab() {
     return (
       <div className="editor-split">
         {/* LEFT: form */}
-        <div className="editor-left" style={{ borderRight: 'none' }}>
+        <div className="editor-left no-border-r">
           {e.created && e.importedTools && (
             <div style={{ marginBottom: 20 }}>
               <div className="status-line" style={{ color: 'var(--ok)', marginBottom: 10 }}>
@@ -233,9 +233,7 @@ export function SourcesTab() {
                   <span className="mono" style={{ color: 'var(--accent)', fontSize: 13 }}>
                     {t.name}
                   </span>
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    {t.description ?? ''}
-                  </span>
+                  <span className="muted fs-12">{t.description ?? ''}</span>
                 </div>
               ))}
             </div>
@@ -274,9 +272,9 @@ export function SourcesTab() {
                 <code>{'${secret.NAME}'}</code>.
               </div>
               {e.secrets.map((s, i) => (
-                <div key={i} className="row" style={{ marginBottom: 4 }}>
+                <div key={i} className="row mb-4">
                   <input
-                    style={{ width: 160 }}
+                    className="w-160"
                     placeholder="NAME"
                     value={s.name}
                     onChange={(ev) =>
@@ -343,7 +341,7 @@ export function SourcesTab() {
                     <button className="ghost" onClick={() => refreshObjects(e.id)} disabled={busy === 'objects'}>
                       {busy === 'objects' ? 'Refreshing…' : 'Refresh objects'}
                     </button>
-                    <span className="muted" style={{ fontSize: 12 }}>
+                    <span className="muted fs-12">
                       {objs.length} object{objs.length === 1 ? '' : 's'}
                     </span>
                   </div>
@@ -352,7 +350,7 @@ export function SourcesTab() {
                       <span className="mono" style={{ fontSize: 12.5 }}>
                         {o.id}
                       </span>
-                      <span className="muted" style={{ fontSize: 12 }}>
+                      <span className="muted fs-12">
                         {o.name}
                         {o.product_hint ? ` · ${o.product_hint}` : ''}
                       </span>
@@ -363,7 +361,7 @@ export function SourcesTab() {
             })()}
 
           {/* actions */}
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
+          <div className="row divider-top">
             {isNew && !e.created && (
               <button className="btn-primary" onClick={createSource} disabled={!e.name || !!busy}>
                 {busy === 'create' ? 'Creating…' : 'Create source'}
@@ -411,7 +409,7 @@ export function SourcesTab() {
             )}
 
             {!isNew && (
-              <button className="danger" style={{ marginLeft: 'auto' }} onClick={del}>
+              <button className="danger ml-auto" onClick={del}>
                 Delete
               </button>
             )}
@@ -426,9 +424,7 @@ export function SourcesTab() {
 
           <Advanced summary="Raw JSON config">
             <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-              <span className="field-label" style={{ margin: 0 }}>
-                Config · JSON
-              </span>
+              <span className="field-label m0">Config · JSON</span>
               <span className="tbadge">edits ↔ form</span>
             </div>
             <textarea
@@ -438,11 +434,9 @@ export function SourcesTab() {
               onChange={(ev) => onJson(ev.target.value)}
             />
             {e.jsonError ? (
-              <div className="err-msg" style={{ marginTop: 8 }}>
-                ⚠ {e.jsonError}
-              </div>
+              <div className="err-msg mt-8">⚠ {e.jsonError}</div>
             ) : (
-              <div className="hint" style={{ marginTop: 8 }}>
+              <div className="hint mt-8">
                 Edits here update the form. Secrets stay as references <code>{'${secret.NAME}'}</code>.
               </div>
             )}
@@ -491,7 +485,7 @@ export function SourcesTab() {
               <span className="status-line src-status" style={{ color: dotColor(s.status) }}>
                 <span className="status-dot" style={{ background: dotColor(s.status) }} /> {s.status}
               </span>
-              <span style={{ marginLeft: 'auto' }} />
+              <span className="ml-auto" />
               <span className="edit-link">{open ? 'Close' : 'Edit'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
             </div>

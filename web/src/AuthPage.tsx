@@ -147,9 +147,7 @@ export function AuthPage({ onAuth }: { onAuth: (u: AuthUser) => void }) {
 
         <div className="landing-auth">
           <div className="card" style={{ width: 360 }}>
-            <div className="brand" style={{ marginBottom: 4 }}>
-              {mode === 'login' ? 'Welcome back' : 'Create your account'}
-            </div>
+            <div className="brand mb-4">{mode === 'login' ? 'Welcome back' : 'Create your account'}</div>
             <div className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
               {mode === 'login' ? 'Sign in to your gateway' : 'Start aggregating in seconds'}
             </div>

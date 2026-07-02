@@ -177,11 +177,9 @@ export function AgentsTab() {
     const ep = single ? (g ? `${api.base}/g/${g.id}/mcp` : '') : `${api.base}/a/mcp`;
     const addName = single ? (g?.slug ?? 'vmcp') : a.name.replace(/\s+/g, '-');
     return (
-      <div className="editor-left" style={{ borderRight: 'none' }}>
+      <div className="editor-left no-border-r">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span className="editor-section" style={{ margin: 0 }}>
-            Connect
-          </span>
+          <span className="editor-section m0">Connect</span>
           <span className="seg">
             <span className={!single ? 'on' : ''} onClick={() => setConnMode('all')}>
               All workspaces
@@ -227,15 +225,11 @@ export function AgentsTab() {
           <>
             <div className="field-label">MCP endpoint</div>
             <CopyRow text={ep} />
-            <div className="field-label" style={{ marginTop: 10 }}>
-              Claude Code / Cursor / any MCP client
-            </div>
+            <div className="field-label mt-10">Claude Code / Cursor / any MCP client</div>
             <CopyRow
               text={`claude mcp add ${addName} --transport http ${ep} --header "Authorization: Bearer <AGENT_KEY>"`}
             />
-            <div className="field-label" style={{ marginTop: 10 }}>
-              curl (raw JSON-RPC — tools/list)
-            </div>
+            <div className="field-label mt-10">curl (raw JSON-RPC — tools/list)</div>
             <CopyRow
               text={`curl -X POST ${ep} \\
   -H "Authorization: Bearer <AGENT_KEY>" \\
@@ -254,9 +248,7 @@ export function AgentsTab() {
             <span className="tbadge" style={{ minWidth: 120, textAlign: 'center' }}>
               {gr.name}
             </span>
-            <span className="mono muted grow" style={{ fontSize: 12 }}>
-              /g/{gr.slug}/mcp
-            </span>
+            <span className="mono muted grow fs-12">/g/{gr.slug}/mcp</span>
             <button className="danger" onClick={() => revoke(a.id, gr.id)}>
               Revoke
             </button>
@@ -267,7 +259,7 @@ export function AgentsTab() {
             No access granted.
           </div>
         )}
-        <div className="row" style={{ marginTop: 6 }}>
+        <div className="row mt-6">
           <select
             className="grow"
             value={addSel[a.id] ?? ''}
@@ -290,7 +282,7 @@ export function AgentsTab() {
         {inspect[a.id] && (
           <div style={{ marginTop: 8, fontSize: 12.5 }}>
             {inspect[a.id].map((ig) => (
-              <div key={ig.group.id} style={{ marginBottom: 4 }}>
+              <div key={ig.group.id} className="mb-4">
                 <b>{ig.group.name}</b>: {ig.tools.map((t) => t.name).join(', ') || '—'}
                 {ig.builtinTools.length > 0 && ` + ${ig.builtinTools.join(', ')}`}
               </div>
@@ -308,13 +300,11 @@ export function AgentsTab() {
             const open = exTool === s.name;
             return (
               <div key={s.name}>
-                <div className="picker-item" style={{ alignItems: 'center' }}>
+                <div className="picker-item">
                   <input type="checkbox" checked={sysTools.has(s.name)} onChange={() => toggleSys(s.name)} />
                   <span className="mono">{s.name}</span>
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    {s.label}
-                  </span>
-                  <span style={{ marginLeft: 'auto' }} />
+                  <span className="muted fs-12">{s.label}</span>
+                  <span className="ml-auto" />
                   <button className="ghost mini" onClick={() => setExTool(open ? null : s.name)}>
                     {open ? 'hide' : 'example'}
                   </button>
@@ -327,10 +317,10 @@ export function AgentsTab() {
                       padding: '8px 10px',
                       fontSize: 11.5,
                       lineHeight: 1.45,
-                      background: 'var(--panel2)',
+                      background: 'var(--surface-inset)',
                       border: '1px solid var(--border)',
                       borderRadius: 6,
-                      color: 'var(--muted)',
+                      color: 'var(--text-muted)',
                       overflowX: 'auto',
                       whiteSpace: 'pre',
                     }}
@@ -348,9 +338,7 @@ export function AgentsTab() {
         </Advanced>
 
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', margin: '22px 0 8px' }}>
-          <span className="editor-section" style={{ margin: 0 }}>
-            API keys
-          </span>
+          <span className="editor-section m0">API keys</span>
           <button className="btn-primary" onClick={() => addKey(a.id)}>
             + Add key
           </button>
@@ -359,17 +347,15 @@ export function AgentsTab() {
           const fresh = freshKeys[k.id];
           return (
             <div key={k.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-              <div className="row" style={{ alignItems: 'center' }}>
+              <div className="row">
                 <span className="mono" style={{ fontSize: 13, opacity: k.archived ? 0.5 : 1 }}>
                   {k.prefix}
                   {'…'}
                 </span>
                 {k.label && <span className="tbadge">{k.label}</span>}
                 {k.archived && <span className="badge muted">archived</span>}
-                <span className="muted" style={{ fontSize: 12 }}>
-                  added {new Date(k.createdAt).toLocaleDateString()}
-                </span>
-                <span style={{ marginLeft: 'auto' }} />
+                <span className="muted fs-12">added {new Date(k.createdAt).toLocaleDateString()}</span>
+                <span className="ml-auto" />
                 <button className="ghost" onClick={() => setArchived(a.id, k.id, !k.archived)}>
                   {k.archived ? 'Unarchive' : 'Archive'}
                 </button>
@@ -395,14 +381,10 @@ export function AgentsTab() {
             </div>
           );
         })}
-        {!(keys[a.id] ?? []).length && (
-          <div className="muted" style={{ fontSize: 12 }}>
-            No keys.
-          </div>
-        )}
+        {!(keys[a.id] ?? []).length && <div className="muted fs-12">No keys.</div>}
 
-        <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
-          <button className="danger" style={{ marginLeft: 'auto' }} onClick={() => del(a.id)}>
+        <div className="row divider-top">
+          <button className="danger ml-auto" onClick={() => del(a.id)}>
             Delete agent
           </button>
         </div>
@@ -430,7 +412,7 @@ export function AgentsTab() {
       {draft !== null && (
         <div className="scard open">
           <div className="scard-body">
-            <div className="editor-left" style={{ borderRight: 'none' }}>
+            <div className="editor-left no-border-r">
               <div className="field-label">Name</div>
               <div className="row">
                 <input
@@ -463,10 +445,10 @@ export function AgentsTab() {
               <span className="muted" style={{ fontSize: 12, width: 70 }}>
                 {a.keyCount ?? 0} key{(a.keyCount ?? 0) === 1 ? '' : 's'}
               </span>
-              <span className="muted" style={{ fontSize: 12 }}>
+              <span className="muted fs-12">
                 {granted.length ? `${granted.length} workspace${granted.length === 1 ? '' : 's'}` : 'no access'}
               </span>
-              <span style={{ marginLeft: 'auto' }} />
+              <span className="ml-auto" />
               <span className="edit-link">{open ? 'Close' : 'Manage'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
             </div>

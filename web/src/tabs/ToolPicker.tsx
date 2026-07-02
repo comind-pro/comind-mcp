@@ -79,7 +79,7 @@ export function ToolPicker({
                   ({selCount}/{g.tools.length})
                 </span>
               </span>
-              <span className="row" style={{ gap: 4 }}>
+              <span className="row gap-4">
                 <button className="ghost mini" onClick={() => bulk(visible, true)}>
                   all
                 </button>
