@@ -194,7 +194,8 @@ export function AgentsTab() {
     const grantedIds = new Set(granted.map((g) => g.id));
     const available = groups.filter((g) => !grantedIds.has(g.id));
     const single = connMode === 'single';
-    const g = granted.find((x) => x.id === connGroup);
+    // fall back to the first granted workspace — connGroup may be stale after a fresh grant
+    const g = granted.find((x) => x.id === connGroup) ?? granted[0];
     const ep = single ? (g ? `${api.base}/g/${g.id}/mcp` : '') : `${api.base}/a/mcp`;
     const addName = single ? (g?.slug ?? 'vmcp') : a.name.replace(/\s+/g, '-');
     return (
@@ -225,7 +226,7 @@ export function AgentsTab() {
               <select
                 className="grow"
                 style={{ width: '100%', marginBottom: 10 }}
-                value={connGroup}
+                value={g?.id ?? ''}
                 onChange={(e) => setConnGroup(e.target.value)}
               >
                 {granted.map((x) => (
