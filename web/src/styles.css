@@ -1,14 +1,25 @@
 :root {
-  --bg: #0f1216;
-  --panel: #181d24;
-  --panel2: #232c38;
-  --border: #313d4c;
-  --border-strong: #44525f;
-  --text: #e6edf3;
-  --muted: #9aa7b6;
-  --accent: #4f9cf9;
-  --ok: #3fb950;
-  --err: #f85149;
+  /* light (default) */
+  --surface: #fafafa;
+  --surface-raised: #ffffff;
+  --surface-inset: #f0f1f3;
+  --border: #e4e6ea;
+  --border-strong: #cdd1d8;
+  --text: #1a2027;
+  --text-muted: #667180;
+  --accent: #2f6feb;
+  --accent-soft: #e7effc;
+  --ok: #1a7f37;
+  --err: #cf222e;
+  --warn: #9a6700;
+  --shadow: 0 1px 3px rgba(20, 24, 30, 0.08);
+
+  /* legacy aliases — removed in the final CSS purge task */
+  --bg: var(--surface);
+  --panel: var(--surface-raised);
+  --panel2: var(--surface-inset);
+  --muted: var(--text-muted);
+
   font-family:
     ui-sans-serif,
     system-ui,
@@ -16,6 +27,25 @@
     Segoe UI,
     Roboto,
     sans-serif;
+  font-size: 14px;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --surface: #0f1216;
+  --surface-raised: #181d24;
+  --surface-inset: #232c38;
+  --border: #313d4c;
+  --border-strong: #44525f;
+  --text: #e6edf3;
+  --text-muted: #9aa7b6;
+  --accent: #4f9cf9;
+  --accent-soft: #1c2a41;
+  --ok: #3fb950;
+  --err: #f85149;
+  --warn: #d29922;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
 }
 * {
   box-sizing: border-box;
