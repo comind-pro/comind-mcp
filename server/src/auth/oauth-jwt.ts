@@ -54,12 +54,14 @@ export interface AccessTokenClaims {
 /** Sign an RS256 JWT access token. `nowMs` is injectable for tests. */
 export function signAccessToken(c: AccessTokenClaims, nowMs = Date.now()): string {
   const now = Math.floor(nowMs / 1000);
-  const header = { alg: 'RS256', typ: 'JWT', kid: publicJwk.kid };
+  // typ "at+jwt" per RFC 9068 — OAuth clients (Claude.ai) that decode the access
+  // token to validate it require this media type, not a bare "JWT".
+  const header = { alg: 'RS256', typ: 'at+jwt', kid: publicJwk.kid };
   const payload = {
     iss: c.iss,
     sub: c.sub,
     aud: c.aud,
-    azp: c.clientId,
+    client_id: c.clientId,
     scope: c.scope,
     iat: now,
     exp: now + c.expiresInS,
