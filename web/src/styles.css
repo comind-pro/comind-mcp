@@ -427,8 +427,20 @@ button.mini {
 /* form builder */
 .builder {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px;
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--surface);
+}
+.builder h3 {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+  margin: 16px 0 8px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.builder h3:first-child {
+  margin-top: 0;
 }
 .builder-field {
   display: flex;
@@ -447,10 +459,6 @@ button.mini {
 .builder-field > select {
   width: 100%;
 }
-.builder h3 {
-  margin-top: 14px;
-}
-
 /* collapsible setup instructions */
 .setup {
   border: 1px solid var(--border-strong);
@@ -646,12 +654,16 @@ button.mini {
   min-width: 0;
 }
 .editor-section {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 18px 0 10px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text);
+  margin: 22px 0 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.editor-section:first-child {
+  border-top: none;
+  padding-top: 0;
 }
 .editor-section:first-child {
   margin-top: 0;
