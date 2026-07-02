@@ -11,10 +11,13 @@ const STEPS = [
     'Pick the tools that matter, rename them, tweak schemas, or merge several calls into one composite tool.',
   ],
   [
-    'Build a V-MCP',
-    'Bundle the curated tools into a virtual MCP — a single clean endpoint that hides the messy upstreams.',
+    'Build a workspace',
+    'Bundle the curated tools into a workspace — a single clean endpoint that hides the messy upstreams.',
   ],
-  ['Grant agents', 'Issue per-agent keys with scoped access to specific V-MCPs. Rotate or revoke any key instantly.'],
+  [
+    'Grant agents',
+    'Issue per-agent keys with scoped access to specific workspaces. Rotate or revoke any key instantly.',
+  ],
   [
     'Observe',
     'Every call is logged: which agent, which tool, latency, errors. Schedule jobs and store secrets in the vault.',
@@ -55,7 +58,7 @@ function SourcesShot() {
 
 function VmcpShot() {
   return (
-    <Shot title="V-MCP · support-bot">
+    <Shot title="Workspace · support-bot">
       <div className="shot-row">
         <input type="checkbox" checked readOnly /> github.create_issue
       </div>
@@ -150,29 +153,20 @@ export function AuthPage({ onAuth }: { onAuth: (u: AuthUser) => void }) {
             <div className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
               {mode === 'login' ? 'Sign in to your gateway' : 'Start aggregating in seconds'}
             </div>
-            <input
-              style={{ width: '100%', marginBottom: 8 }}
-              placeholder="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <input
-              style={{ width: '100%', marginBottom: 8 }}
-              placeholder="password (8+ characters)"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && submit()}
-            />
-            {err && <div className="err-msg">{err}</div>}
-            <button
-              style={{ width: '100%', marginTop: 4 }}
-              onClick={submit}
-              disabled={busy || !email || password.length < 8}
-            >
-              {mode === 'login' ? 'Sign in' : 'Sign up'}
-            </button>
+            <div className="auth-form">
+              <input placeholder="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input
+                placeholder="password (8+ characters)"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submit()}
+              />
+              {err && <div className="err-msg">{err}</div>}
+              <button onClick={submit} disabled={busy || !email || password.length < 8}>
+                {mode === 'login' ? 'Sign in' : 'Sign up'}
+              </button>
+            </div>
             <div className="muted" style={{ fontSize: 12, marginTop: 12, textAlign: 'center' }}>
               {mode === 'login' ? 'No account?' : 'Already have an account?'}{' '}
               <a
@@ -193,8 +187,8 @@ export function AuthPage({ onAuth }: { onAuth: (u: AuthUser) => void }) {
       <section className="landing-section">
         <h2 className="landing-h2">What it looks like</h2>
         <p className="landing-sub">
-          Connect raw sources on the left, shape them into a clean V-MCP in the middle, hand scoped keys to agents on
-          the right.
+          Connect raw sources on the left, shape them into a clean workspace in the middle, hand scoped keys to agents
+          on the right.
         </p>
         <div className="landing-shots">
           <div>
