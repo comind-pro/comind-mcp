@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Group, type Schedule, type Source, type Tool } from '../api.js';
+import { CopyRow, EmptyState } from '../ui.js';
 import { ToolPicker } from './ToolPicker.js';
 
 export function GroupsTab() {
@@ -83,7 +84,7 @@ export function GroupsTab() {
   };
 
   const delGroup = async (g: Group) => {
-    if (!confirm(`Delete V-MCP "${g.name}"? Its agents grants and schedules will be removed too.`)) return;
+    if (!confirm(`Delete workspace "${g.name}"? Its agent grants and schedules will be removed too.`)) return;
     setErr('');
     try {
       await api.del(`/groups/${g.id}`);
@@ -98,27 +99,24 @@ export function GroupsTab() {
 
   const body = (g: Group) => (
     <div className="editor-left" style={{ borderRight: 'none' }}>
-      <div className="hint">
-        Endpoint <code className="mono">/g/{g.slug}/mcp</code> — connect it from the <b>Agents</b> tab (pick an agent →
-        Connect → Single V-MCP).
-      </div>
+      <CopyRow label="MCP endpoint" text={`${api.base}/g/${g.slug}/mcp`} />
+      <div className="hint">Connect it from the Agents page — the agent's key authorizes this endpoint.</div>
 
       <div className="editor-section" style={{ marginTop: 14 }}>
-        Toolset
+        Tools in this workspace
       </div>
-      <div className="hint">Tools this V-MCP exposes to agents. Don't forget to save.</div>
+      <div className="hint">Tools assigned to this workspace. Don't forget to save.</div>
       <ToolPicker tools={tools} sources={sources} selected={assigned} onChange={setAssigned} />
       <div className="spacer" />
       <button className="btn-primary" onClick={() => saveToolset(g)}>
-        Save toolset ({assigned.size})
+        Save tools ({assigned.size})
       </button>
 
       <div className="editor-section" style={{ marginTop: 22 }}>
         Schedules
       </div>
       <div className="hint">
-        Cron schedules that auto-run a group tool. Run now — execute immediately. Agents can also self-schedule via
-        schedule_task / list_schedules / cancel_schedule.
+        Run a tool automatically on a cron schedule. Connected agents can also schedule themselves.
       </div>
       <div className="row">
         <input
@@ -171,7 +169,7 @@ export function GroupsTab() {
 
       <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
         <button className="danger" onClick={() => delGroup(g)}>
-          Delete V-MCP
+          Delete workspace
         </button>
       </div>
       {err && <div className="err-msg">{err}</div>}
@@ -181,17 +179,16 @@ export function GroupsTab() {
   return (
     <>
       <div className="intro">
-        <b>V-MCP (virtual MCP)</b> — assemble tools from different sources into one virtual MCP server with a single
-        endpoint <code>/g/&lt;slug&gt;/mcp</code>. Give different V-MCPs to different agents → each sees only its set.
-        Built-in self-cron tools let a connected agent schedule itself.
+        A workspace bundles chosen tools into one endpoint you hand to an agent. Different agents can get different
+        workspaces.
       </div>
 
       <div className="page-head">
         <div>
-          <span className="sub">{groups.length} servers</span>
+          <span className="sub">{groups.length} workspaces</span>
         </div>
         <button className="btn-primary" onClick={() => setDraft(draft === null ? '' : null)}>
-          + New V-MCP
+          + New workspace
         </button>
       </div>
 
@@ -244,9 +241,12 @@ export function GroupsTab() {
       })}
 
       {!groups.length && draft === null && (
-        <div className="muted" style={{ padding: '20px 2px' }}>
-          No V-MCP servers yet.
-        </div>
+        <EmptyState
+          title="No workspaces yet"
+          body="A workspace turns your curated tools into a single endpoint for an agent."
+          actionLabel="+ New workspace"
+          onAction={() => setDraft('')}
+        />
       )}
     </>
   );
