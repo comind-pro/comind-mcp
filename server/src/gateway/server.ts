@@ -1,6 +1,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { and, eq, inArray } from 'drizzle-orm';
+import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, tools } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
@@ -198,9 +199,16 @@ async function groupVisibleTools(groupId: string) {
  * Build the virtual MCP server for one group: it exposes the group's curated,
  * visible tools and dispatches calls through the shared runtime.
  */
+// Branding surfaced in the MCP `initialize` serverInfo — MCP clients (Claude.ai,
+// ChatGPT) render the connector's title/icon from here instead of a letter fallback.
+const branding = {
+  websiteUrl: 'https://comind.pro',
+  icons: [{ src: `${config.publicBaseUrl}/favicon.svg`, mimeType: 'image/svg+xml', sizes: ['any'] }],
+};
+
 export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
   const server = new Server(
-    { name: `comind:${auth.groupSlug}`, version: '0.1.0' },
+    { name: `comind:${auth.groupSlug}`, version: '0.1.0', title: `Comind · ${auth.groupSlug}`, ...branding },
     { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) || undefined },
   );
 
@@ -275,7 +283,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
  */
 export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
   const server = new Server(
-    { name: 'comind:agent', version: '0.1.0' },
+    { name: 'comind:agent', version: '0.1.0', title: 'ComindMCP', ...branding },
     { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) || undefined },
   );
 
