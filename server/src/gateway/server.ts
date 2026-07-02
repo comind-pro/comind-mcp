@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, tools } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
+import { mcpToolName } from '../lib/tool-name.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { createSchedule, deleteSchedule, isValidCron, listByGroup, toolInGroup } from '../scheduler/service.js';
 import { handleSystemTool, pickSystemTools, SYSTEM_TOOL_NAMES, systemInstructions } from './system-tools.js';
@@ -215,7 +216,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const list = await groupVisibleTools(auth.groupId);
     const toolDefs = list.map((t) => ({
-      name: t.name,
+      name: mcpToolName(t.name),
       description: t.displayName
         ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
         : (t.description ?? undefined),
@@ -255,11 +256,14 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
     }
 
     // Gate: the agent may only call tools assigned & visible in its group.
+    // Clients call with the MCP-safe name from tools/list; resolve it back to
+    // the stored name (older clients may still send the raw one).
     const allowed = await groupVisibleTools(auth.groupId);
-    if (!allowed.some((t) => t.name === name)) {
+    const tool = allowed.find((t) => t.name === name || mcpToolName(t.name) === name);
+    if (!tool) {
       return { content: [{ type: 'text', text: `Tool not in group: ${name}` }], isError: true };
     }
-    const result = await invokeTool(name, a, {
+    const result = await invokeTool(tool.name, a, {
       ownerId: auth.ownerId,
       agentId: auth.agentId,
       groupId: auth.groupId,
@@ -287,12 +291,14 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
     { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) || undefined },
   );
 
-  // name -> { groupId, tool } across all reachable groups (first group wins).
+  // MCP-safe name -> { groupId, tool } across all reachable groups (first group
+  // wins; a post-sanitize collision like `a.b` vs `a_b` hides the later tool).
   const index = async () => {
     const map = new Map<string, { groupId: string; tool: Awaited<ReturnType<typeof groupVisibleTools>>[number] }>();
     for (const g of auth.groups) {
       for (const t of await groupVisibleTools(g.id)) {
-        if (!map.has(t.name)) map.set(t.name, { groupId: g.id, tool: t });
+        const key = mcpToolName(t.name);
+        if (!map.has(key)) map.set(key, { groupId: g.id, tool: t });
       }
     }
     return map;
@@ -303,7 +309,7 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
     return {
       tools: [
         ...[...map.values()].map(({ tool: t }) => ({
-          name: t.name,
+          name: mcpToolName(t.name),
           description: t.displayName
             ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
             : (t.description ?? undefined),
@@ -341,11 +347,13 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
       };
     }
 
-    const hit = (await index()).get(name);
+    // Index is keyed by MCP-safe name; sanitize the incoming name too so older
+    // clients that saw the raw (dotted) name still resolve.
+    const hit = (await index()).get(mcpToolName(name));
     if (!hit) {
       return { content: [{ type: 'text', text: `Tool not available to this agent: ${name}` }], isError: true };
     }
-    const result = await invokeTool(name, (args ?? {}) as Record<string, unknown>, {
+    const result = await invokeTool(hit.tool.name, (args ?? {}) as Record<string, unknown>, {
       ownerId: auth.ownerId,
       agentId: auth.agentId,
       groupId: hit.groupId,
