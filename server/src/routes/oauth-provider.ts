@@ -223,11 +223,15 @@ async function issueTokens(clientId: string, agentId: string, groupId: string | 
   // Access token is an RS256 JWT bound (aud) to the V-MCP resource, so clients
   // that inspect the token accept it. The gateway still validates by tokenHash
   // (see gateway/server.ts) — the JWT signature is for the client, not us.
+  // Grant the full advertised scope set — clients (Claude.ai) request
+  // `mcp offline_access` and abort if the granted `scope` drops what they asked
+  // for (e.g. offline_access, the refresh grant).
+  const grantedScope = SCOPES.join(' ');
   const access = signAccessToken({
     iss: BASE,
     sub: agentId,
     aud: resourceFor(groupId),
-    scope: 'mcp',
+    scope: grantedScope,
     clientId,
     expiresInS: TOKEN_TTL_S,
   });
@@ -247,7 +251,7 @@ async function issueTokens(clientId: string, agentId: string, groupId: string | 
     token_type: 'Bearer',
     expires_in: TOKEN_TTL_S,
     refresh_token: refresh,
-    scope: 'mcp',
+    scope: grantedScope,
   };
 }
 
