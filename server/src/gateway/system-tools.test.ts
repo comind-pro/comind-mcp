@@ -29,20 +29,21 @@ describe('SYSTEM_TOOLS metadata', () => {
 });
 
 describe('pickSystemTools', () => {
-  it('returns only requested tools, ignores unknown', () => {
-    expect(pickSystemTools(['system.debug']).map((t) => t.name)).toEqual(['system.debug']);
+  it('returns only requested tools with MCP-safe exposed names, ignores unknown', () => {
+    // Config uses canonical dotted names; the exposed MCP name is sanitized.
+    expect(pickSystemTools(['system.debug']).map((t) => t.name)).toEqual(['system_debug']);
     expect(pickSystemTools(['system.whoami', 'system.bogus'])).toHaveLength(0); // legacy names gone
     expect(pickSystemTools([])).toHaveLength(0);
   });
 });
 
 describe('systemInstructions', () => {
-  it('mentions only enabled tools, empty when none', () => {
+  it('mentions only enabled tools (by their client-visible name), empty when none', () => {
     expect(systemInstructions([])).toBe('');
     const ctxOnly = systemInstructions(['system.context']);
-    expect(ctxOnly).toContain('system.context');
-    expect(ctxOnly).not.toContain('system.debug');
-    expect(systemInstructions(['system.context', 'system.debug'])).toContain('system.debug');
+    expect(ctxOnly).toContain('system_context');
+    expect(ctxOnly).not.toContain('system_debug');
+    expect(systemInstructions(['system.context', 'system.debug'])).toContain('system_debug');
   });
 });
 

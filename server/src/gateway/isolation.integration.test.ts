@@ -6,6 +6,7 @@ import { agentGroups, agentKeys, agents, callLogs, groups, groupTools, sources, 
 import { signJwt } from '../lib/auth.js';
 import { hashKey } from '../lib/crypto.js';
 import { newId } from '../lib/id.js';
+import { mcpToolName } from '../lib/tool-name.js';
 import { authenticateAgent, authenticateAgentAll } from './server.js';
 import { handleSystemTool, type SystemCtx } from './system-tools.js';
 
@@ -171,14 +172,15 @@ d('cross-owner isolation', () => {
     const toolNames = sc.tools.map((t: any) => t.name);
     expect(srcIds).toContain(A.sourceId);
     expect(srcIds).not.toContain(B.sourceId);
-    expect(toolNames).toContain(A.toolName);
-    expect(toolNames).not.toContain(B.toolName);
+    // system.context exposes MCP-safe names (dots sanitized to underscores).
+    expect(toolNames).toContain(mcpToolName(A.toolName));
+    expect(toolNames).not.toContain(mcpToolName(B.toolName));
 
     // enriched discovery metadata
     expect(typeof sc.server.server_time).toBe('string');
     expect(new Date(sc.server.server_time).toString()).not.toBe('Invalid Date');
-    const tool = sc.tools.find((t: any) => t.name === A.toolName);
-    expect(tool.callable).toBe(A.toolName);
+    const tool = sc.tools.find((t: any) => t.name === mcpToolName(A.toolName));
+    expect(tool.callable).toBe(mcpToolName(A.toolName));
     expect(tool.read_only).toBe(true);
     expect(tool.permissions).toEqual(['ga4.read']);
     expect(tool.examples).toHaveLength(1);

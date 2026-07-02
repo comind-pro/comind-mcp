@@ -3,7 +3,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { and, eq, inArray } from 'drizzle-orm';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, tools } from '../db/schema.js';
+import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, sources, tools } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
 import { mcpToolName, mcpToolTitle } from '../lib/tool-name.js';
 import { invokeTool } from '../runtime/invoker.js';
@@ -199,6 +199,30 @@ async function groupVisibleTools(groupId: string) {
   return rows.filter((t) => t.visible);
 }
 
+type ToolRow = Awaited<ReturnType<typeof groupVisibleTools>>[number];
+
+/** Human titles for a tool list; when two tools resolve to the same title the
+ *  source name is appended to disambiguate ("Run report (GA prod)"). */
+async function toolTitles(list: ToolRow[]): Promise<Map<string, string>> {
+  const base = new Map(list.map((t) => [t.id, mcpToolTitle(t.displayName ?? t.name)]));
+  const counts = new Map<string, number>();
+  for (const title of base.values()) counts.set(title, (counts.get(title) ?? 0) + 1);
+  const dupSrcIds = [
+    ...new Set(
+      list.filter((t) => (counts.get(base.get(t.id)!) ?? 0) > 1 && t.sourceId).map((t) => t.sourceId as string),
+    ),
+  ];
+  if (!dupSrcIds.length) return base;
+  const srcRows = await db.select().from(sources).where(inArray(sources.id, dupSrcIds));
+  const srcName = new Map(srcRows.map((s) => [s.id, s.name]));
+  for (const t of list) {
+    const title = base.get(t.id)!;
+    const src = t.sourceId ? srcName.get(t.sourceId) : undefined;
+    if ((counts.get(title) ?? 0) > 1 && src) base.set(t.id, `${title} (${src})`);
+  }
+  return base;
+}
+
 /**
  * Build the virtual MCP server for one group: it exposes the group's curated,
  * visible tools and dispatches calls through the shared runtime.
@@ -218,9 +242,10 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const list = await groupVisibleTools(auth.groupId);
+    const titles = await toolTitles(list);
     const toolDefs = list.map((t) => ({
       name: mcpToolName(t.name),
-      title: mcpToolTitle(t.displayName ?? t.name),
+      title: titles.get(t.id),
       description: t.displayName
         ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
         : (t.description ?? undefined),
@@ -311,11 +336,13 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const map = await index();
+    const listed = [...map.values()].map(({ tool }) => tool);
+    const titles = await toolTitles(listed);
     return {
       tools: [
-        ...[...map.values()].map(({ tool: t }) => ({
+        ...listed.map((t) => ({
           name: mcpToolName(t.name),
-          title: mcpToolTitle(t.displayName ?? t.name),
+          title: titles.get(t.id),
           description: t.displayName
             ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
             : (t.description ?? undefined),
