@@ -58,9 +58,11 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
 
   // Agent-wide endpoint: one URL exposing the union of tools across every group
   // the authenticated agent may reach. Bearer = agent key or agent-wide OAuth token.
-  app.post('/a/mcp', async (req, reply) => {
+  // `metaSuffix` selects which protected-resource doc the 401 challenge points at.
+  type ReqLike = { headers: { authorization?: string }; raw: import('node:http').IncomingMessage; body?: unknown };
+  const serveAgent = (metaSuffix: string) => async (req: ReqLike, reply: FastifyReply) => {
     const auth = await authenticateAgentAll(req.headers.authorization);
-    if (!auth) return challenge(reply, '');
+    if (!auth) return challenge(reply, metaSuffix);
     const server = await buildAgentServer(auth);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     reply.raw.on('close', () => {
@@ -70,21 +72,28 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
     await server.connect(transport);
     reply.hijack();
     await transport.handleRequest(req.raw, reply.raw, req.body);
-  });
+  };
+  const agentNoStream = (metaSuffix: string) => async (req: ReqLike, reply: FastifyReply) => {
+    const auth = await authenticateAgentAll(req.headers.authorization);
+    return auth ? methodNotAllowed(reply) : challenge(reply, metaSuffix);
+  };
+  app.post('/a/mcp', serveAgent(''));
+  app.get('/a/mcp', agentNoStream(''));
+  app.delete('/a/mcp', agentNoStream(''));
 
-  // GET/DELETE: unauthenticated → 401-challenge (so the connection probe sees a
-  // valid OAuth-protected MCP server); authenticated → 405 (stateless, no SSE).
+  // Alias with per-path discovery (401 → its OWN protected-resource doc, not the
+  // root). A URL Claude.ai has no cached verdict for → forces a fresh connection
+  // probe we can observe. Routes to `server` via the /a/mcp ingress prefix. (temp)
+  app.post('/a/mcpx', serveAgent('/a/mcpx'));
+  app.get('/a/mcpx', agentNoStream('/a/mcpx'));
+  app.delete('/a/mcpx', agentNoStream('/a/mcpx'));
+
+  // GET/DELETE for groups: unauthenticated → 401-challenge; authenticated → 405.
   const groupNoStream = async (req: { params: unknown; headers: { authorization?: string } }, reply: FastifyReply) => {
     const { groupId } = req.params as { groupId: string };
     const auth = await authenticateAgent(groupId, req.headers.authorization);
     return auth ? methodNotAllowed(reply) : challenge(reply, `/g/${groupId}/mcp`);
   };
-  const agentNoStream = async (req: { headers: { authorization?: string } }, reply: FastifyReply) => {
-    const auth = await authenticateAgentAll(req.headers.authorization);
-    return auth ? methodNotAllowed(reply) : challenge(reply, '');
-  };
   app.get('/g/:groupId/mcp', groupNoStream);
   app.delete('/g/:groupId/mcp', groupNoStream);
-  app.get('/a/mcp', agentNoStream);
-  app.delete('/a/mcp', agentNoStream);
 }
