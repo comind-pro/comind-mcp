@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AuthPage } from './AuthPage.js';
 import { type AuthUser, api, tokenStore } from './api.js';
 import { Home } from './Home.js';
+import { Icon, type IconName } from './icons.js';
 import { AgentsTab } from './tabs/AgentsTab.js';
 import { GroupsTab } from './tabs/GroupsTab.js';
 import { LogsTab } from './tabs/LogsTab.js';
@@ -12,14 +13,14 @@ import { getTheme, toggleTheme } from './theme.js';
 
 export type PageId = 'home' | 'connections' | 'tools' | 'workspaces' | 'agents' | 'secrets' | 'activity';
 
-const PAGES: { id: PageId; label: string; hint: string | null; icon: string }[] = [
-  { id: 'home', label: 'Home', hint: null, icon: '⌂' },
-  { id: 'connections', label: 'Connections', hint: 'sources', icon: '⇄' },
-  { id: 'tools', label: 'Tools', hint: null, icon: '⚒' },
-  { id: 'workspaces', label: 'Workspaces', hint: 'virtual MCP servers', icon: '▦' },
-  { id: 'agents', label: 'Agents', hint: null, icon: '◉' },
-  { id: 'secrets', label: 'Secrets', hint: null, icon: '🔒' },
-  { id: 'activity', label: 'Activity', hint: 'call logs', icon: '≡' },
+const PAGES: { id: PageId; label: string; hint: string | null; icon: IconName }[] = [
+  { id: 'home', label: 'Home', hint: null, icon: 'home' },
+  { id: 'connections', label: 'Connections', hint: 'sources', icon: 'plug' },
+  { id: 'tools', label: 'Tools', hint: null, icon: 'wrench' },
+  { id: 'workspaces', label: 'Workspaces', hint: 'virtual MCP servers', icon: 'grid' },
+  { id: 'agents', label: 'Agents', hint: null, icon: 'bot' },
+  { id: 'secrets', label: 'Secrets', hint: null, icon: 'lock' },
+  { id: 'activity', label: 'Activity', hint: 'call logs', icon: 'pulse' },
 ];
 
 export function App() {
@@ -76,20 +77,24 @@ export function App() {
                 setNavOpen(false);
               }}
             >
-              <span className="side-icon">{p.icon}</span>
+              <span className="side-icon">
+                <Icon name={p.icon} />
+              </span>
               {p.label}
             </button>
           ))}
         </nav>
         <div className="side-foot">
           <button className="side-item" onClick={() => setTheme(toggleTheme())}>
-            <span className="side-icon">{theme === 'light' ? '☾' : '☀'}</span>
+            <span className="side-icon">
+              <Icon name={theme === 'light' ? 'moon' : 'sun'} />
+            </span>
             {theme === 'light' ? 'Dark mode' : 'Light mode'}
           </button>
           <div className="side-user" title={user.email}>
             <span className="side-user-email">{user.email}</span>
-            <button className="side-logout" onClick={logout}>
-              Log out
+            <button className="side-logout" onClick={logout} title="Log out" aria-label="Log out">
+              <Icon name="logout" size={16} />
             </button>
           </div>
         </div>

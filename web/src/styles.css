@@ -118,7 +118,10 @@ h3 {
 }
 .side-icon {
   width: 18px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 .side-foot {
   margin-top: auto;
@@ -140,12 +143,19 @@ h3 {
   color: var(--text-muted);
 }
 .side-logout {
+  display: flex;
+  align-items: center;
   border: none;
   background: none;
-  color: var(--accent);
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 13px;
-  padding: 0;
+  padding: 4px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.side-logout:hover {
+  color: var(--err);
+  background: var(--surface-inset);
 }
 .main {
   flex: 1;
