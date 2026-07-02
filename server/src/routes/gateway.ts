@@ -11,13 +11,18 @@ import { authenticateAgent, authenticateAgentAll, buildAgentServer, buildGroupSe
  * server", so GET/DELETE must 401-challenge too, not 405.
  */
 function challenge(reply: FastifyReply, resourcePath: string): FastifyReply {
+  // Plain-text body (not a JSON-RPC error): a connection probe that parses the
+  // 401 body as an MCP message must fall back to the WWW-Authenticate challenge,
+  // not mistake it for an application-level error. Mirrors known-good servers.
   return reply
     .code(401)
     .header(
       'WWW-Authenticate',
       `Bearer resource_metadata="${config.publicBaseUrl}/.well-known/oauth-protected-resource/${resourcePath}"`,
     )
-    .send({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized' }, id: null });
+    .header('content-type', 'text/plain; charset=utf-8')
+    .header('x-content-type-options', 'nosniff')
+    .send('missing bearer token');
 }
 
 /** Stateless transport: no server-initiated streams / session teardown. */
