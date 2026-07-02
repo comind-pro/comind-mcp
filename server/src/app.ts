@@ -69,7 +69,7 @@ export function buildApp(): FastifyInstance {
       path === '/oauth/authorize' ||
       path === '/oauth/token' ||
       path.startsWith('/g/') ||
-      path === '/a/mcp' ||
+      path.startsWith('/a/mcp') ||
       path === '/oauth/_capture' // self-authed via agent key
     );
   };

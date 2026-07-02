@@ -84,9 +84,9 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
   // Alias with per-path discovery (401 → its OWN protected-resource doc, not the
   // root). A URL Claude.ai has no cached verdict for → forces a fresh connection
   // probe we can observe. Routes to `server` via the /a/mcp ingress prefix. (temp)
-  app.post('/a/mcpx', serveAgent('/a/mcpx'));
-  app.get('/a/mcpx', agentNoStream('/a/mcpx'));
-  app.delete('/a/mcpx', agentNoStream('/a/mcpx'));
+  app.post('/a/mcp/x', serveAgent('/a/mcp/x'));
+  app.get('/a/mcp/x', agentNoStream('/a/mcp/x'));
+  app.delete('/a/mcp/x', agentNoStream('/a/mcp/x'));
 
   // GET/DELETE for groups: unauthenticated → 401-challenge; authenticated → 405.
   const groupNoStream = async (req: { params: unknown; headers: { authorization?: string } }, reply: FastifyReply) => {
