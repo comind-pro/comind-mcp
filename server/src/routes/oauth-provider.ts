@@ -187,7 +187,7 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
         return tokenError(reply, 'invalid_grant', 'redirect_uri mismatch');
       if (sha256b64url(code_verifier) !== row.codeChallenge) return tokenError(reply, 'invalid_grant', 'PKCE failed');
 
-      return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId));
+      return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId, b.resource));
     }
 
     if (grant === 'refresh_token') {
@@ -199,7 +199,7 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(oauthAccessTokens.refreshHash, hashKey(refresh)));
       if (!row) return tokenError(reply, 'invalid_grant', 'unknown refresh_token');
       await db.delete(oauthAccessTokens).where(eq(oauthAccessTokens.id, row.id)); // rotate
-      return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId));
+      return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId, b.resource));
     }
 
     return tokenError(reply, 'unsupported_grant_type', `grant_type ${grant} not supported`);
@@ -222,17 +222,22 @@ async function validateAuthorizeParams(p: Record<string, string | undefined>): P
   return null;
 }
 
-async function issueTokens(clientId: string, agentId: string, groupId: string | null) {
+async function issueTokens(clientId: string, agentId: string, groupId: string | null, requestedResource?: string) {
   // Access token is an RS256 JWT bound (aud) to the V-MCP resource, so clients
   // that inspect the token accept it. The gateway still validates by tokenHash
   // (see gateway/server.ts) — the JWT signature is for the client, not us.
   // Grant just `mcp` (offline_access is implied by returning a refresh_token) —
   // matches working connectors; clients accept a granted subset of the request.
   const grantedScope = 'mcp';
+  // RFC 8707: aud must echo the resource the client asked for (Claude.ai
+  // inspects the JWT and rejects an aud that differs from the connector URL).
+  const validResource =
+    requestedResource &&
+    (groupIdFromResource(requestedResource) === groupId || (groupId === null && isAgentResource(requestedResource)));
   const access = signAccessToken({
     iss: BASE,
     sub: agentId,
-    aud: resourceFor(groupId),
+    aud: validResource ? requestedResource.replace(/\/$/, '') : resourceFor(groupId),
     scope: grantedScope,
     clientId,
     expiresInS: TOKEN_TTL_S,
