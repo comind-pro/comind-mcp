@@ -40,7 +40,8 @@ function redact(body: unknown): unknown {
 
 export function registerCapture(app: FastifyInstance): void {
   app.addHook('onResponse', async (req, reply) => {
-    if (!WATCH.test(req.url.split('?')[0])) return;
+    const p = req.url.split('?')[0];
+    if (p === '/oauth/_capture' || !WATCH.test(p)) return;
     const h = req.headers;
     RING.push({
       t: Date.now(),
@@ -57,7 +58,9 @@ export function registerCapture(app: FastifyInstance): void {
     if (RING.length > CAP) RING.splice(0, RING.length - CAP);
   });
 
-  app.get('/debug/requests', async (req, reply) => {
+  // Mounted under /oauth so DO's ingress routes it to the server component
+  // (a bare /debug prefix falls through to the static web app).
+  app.get('/oauth/_capture', async (req, reply) => {
     const auth = req.headers.authorization;
     const token = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : '';
     if (!token) return reply.code(401).send({ error: 'agent key required' });

@@ -70,7 +70,7 @@ export function buildApp(): FastifyInstance {
       path === '/oauth/token' ||
       path.startsWith('/g/') ||
       path === '/a/mcp' ||
-      path === '/debug/requests' // self-authed via agent key
+      path === '/oauth/_capture' // self-authed via agent key
     );
   };
   app.addHook('preHandler', async (req, reply) => {
