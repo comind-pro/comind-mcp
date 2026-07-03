@@ -5,6 +5,7 @@ import { Icon } from '../icons.js';
 import { EmptyState, Loading, Th, useSort } from '../ui.js';
 import { buildInput, parseInput } from './SchemaBuilder.js';
 import { type Cfg, type Editing, type MetaForm, type Step, ToolEditor } from './ToolEditor.js';
+import { ToolView } from './ToolView.js';
 
 // UI label for a tool kind — "composite" surfaces to users as "Recipe".
 const kindLabel = (k: Tool['kind']) => (k === 'composite' ? 'Recipe' : k);
@@ -18,6 +19,7 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   const [fType, setFType] = useState<'all' | 'native' | 'composite' | 'virtual'>('all');
   const [fSource, setFSource] = useState('');
   const [ed, setEd] = useState<Editing | null>(null);
+  const [view, setView] = useState<Tool | null>(null);
 
   const load = () =>
     api
@@ -571,7 +573,11 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
                 return (
                   <tr key={t.id} className={rowOpen ? 'active' : ''}>
                     <td>
-                      <div className={t.displayName ? '' : 'mono'} style={{ fontWeight: 500 }}>
+                      <div
+                        className={`tool-view-name ${t.displayName ? '' : 'mono'}`}
+                        style={{ fontWeight: 500 }}
+                        onClick={() => setView(t)}
+                      >
                         {t.displayName || t.name}
                       </div>
                       {t.displayName && <div className="mono tool-subname">{t.name}</div>}
@@ -601,6 +607,19 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {view && (
+        <ToolView
+          tool={view}
+          sourceName={srcName(view.sourceId)}
+          onEdit={() => {
+            const t = view;
+            setView(null);
+            void open(t);
+          }}
+          onClose={() => setView(null)}
+        />
       )}
     </>
   );

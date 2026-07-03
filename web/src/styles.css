@@ -1253,6 +1253,12 @@ button.mini {
   color: var(--text-muted);
   margin-top: 2px;
 }
+.tool-view-name {
+  cursor: pointer;
+}
+.tool-view-name:hover {
+  text-decoration: underline;
+}
 .tools-table th:first-child,
 .tools-table td:first-child {
   padding-left: 14px;
