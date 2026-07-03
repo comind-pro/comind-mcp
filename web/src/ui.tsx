@@ -1,5 +1,56 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { Icon } from './icons.js';
+
+export type SortDir = 1 | -1;
+
+export function useSort<T>(
+  rows: T[],
+  get: Record<string, (r: T) => string | number | boolean | null | undefined>,
+  initialKey?: string,
+  initialDir: SortDir = 1,
+) {
+  const [key, setKey] = useState<string | null>(initialKey ?? null);
+  const [dir, setDir] = useState<SortDir>(initialDir);
+  const toggle = (k: string) => {
+    if (k === key) setDir((d) => (d === 1 ? -1 : 1));
+    else {
+      setKey(k);
+      setDir(1);
+    }
+  };
+  const sorted = useMemo(() => {
+    if (!key || !get[key]) return rows;
+    const g = get[key];
+    return [...rows].sort((a, b) => {
+      const va = g(a);
+      const vb = g(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb)) * dir;
+    });
+  }, [rows, key, dir, get]);
+  return { sorted, key, dir, toggle };
+}
+
+export function Th({
+  id,
+  label,
+  sort,
+}: {
+  id: string;
+  label: string;
+  sort: { key: string | null; dir: SortDir; toggle: (k: string) => void };
+}) {
+  const active = sort.key === id;
+  return (
+    <th className={`th-sort${active ? ' on' : ''}`} onClick={() => sort.toggle(id)}>
+      {label}
+      <span className="th-arrow">{active ? (sort.dir === 1 ? '↑' : '↓') : ''}</span>
+    </th>
+  );
+}
 
 export function CopyRow({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);

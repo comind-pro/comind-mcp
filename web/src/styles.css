@@ -373,6 +373,24 @@ th {
   font-weight: 500;
   font-size: 12px;
 }
+.th-sort {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.th-sort:hover {
+  color: var(--text);
+}
+.th-sort.on {
+  color: var(--text);
+}
+.th-arrow {
+  display: inline-block;
+  width: 12px;
+  margin-left: 2px;
+  color: var(--accent);
+  font-size: 11px;
+}
 code,
 .mono {
   font-family: ui-monospace, Menlo, monospace;

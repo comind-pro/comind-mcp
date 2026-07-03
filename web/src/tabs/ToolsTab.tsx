@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { PageId } from '../App.js';
 import { api, type Source, type Tool } from '../api.js';
 import { Icon } from '../icons.js';
-import { EmptyState, Loading } from '../ui.js';
+import { EmptyState, Loading, Th, useSort } from '../ui.js';
 import { buildInput, parseInput } from './SchemaBuilder.js';
 import { type Cfg, type Editing, type MetaForm, type Step, ToolEditor } from './ToolEditor.js';
 
@@ -32,9 +32,32 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
     void api.get<Source[]>('/sources').then(setSources);
   }, []);
 
+  const srcName = (id: string | null) => sources.find((s) => s.id === id)?.name ?? 'Unknown source';
+
+  // ----- filtering / sorting (hooks must run before the loading early-return below) -----
+  const filtered = (tools ?? []).filter(
+    (t) =>
+      (!search ||
+        t.name.toLowerCase().includes(search.toLowerCase()) ||
+        (t.displayName ?? '').toLowerCase().includes(search.toLowerCase())) &&
+      (fType === 'all' || t.kind === fType) &&
+      (!fSource || t.sourceId === fSource),
+  );
+  // getter map needs `sources` (for srcName) so it's memoized instead of module-level,
+  // but the reference stays stable across renders unless sources actually change.
+  const sortGetters = useMemo(
+    () => ({
+      name: (t: Tool) => (t.displayName || t.name).toLowerCase(),
+      connection: (t: Tool) => (t.sourceId ? srcName(t.sourceId).toLowerCase() : ''),
+      kind: (t: Tool) => t.kind,
+      visible: (t: Tool) => t.visible,
+    }),
+    [sources],
+  );
+  const sort = useSort(filtered, sortGetters);
+
   if (tools === null) return <Loading />;
 
-  const srcName = (id: string | null) => sources.find((s) => s.id === id)?.name ?? 'Unknown source';
   const patch = (p: Partial<Editing>) => setEd((e) => (e ? { ...e, ...p } : e));
   const setMeta = (p: Partial<MetaForm>) => setEd((e) => (e?.meta ? { ...e, meta: { ...e.meta, ...p } } : e));
   const close = () => setEd(null);
@@ -401,16 +424,6 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
     await api.patch(`/tools/${t.id}`, { visible: !t.visible }).catch((e) => setErr(String(e.message)));
   };
 
-  // ----- filtering / grouping -----
-  const filtered = tools.filter(
-    (t) =>
-      (!search ||
-        t.name.toLowerCase().includes(search.toLowerCase()) ||
-        (t.displayName ?? '').toLowerCase().includes(search.toLowerCase())) &&
-      (fType === 'all' || t.kind === fType) &&
-      (!fSource || t.sourceId === fSource),
-  );
-
   const visibleTotal = tools.filter((t) => t.visible).length;
 
   const onSave = () =>
@@ -545,15 +558,15 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
           <table className="tools-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Connection</th>
-                <th>Kind</th>
-                <th style={{ textAlign: 'center' }}>Visible</th>
+                <Th id="name" label="Name" sort={sort} />
+                <Th id="connection" label="Connection" sort={sort} />
+                <Th id="kind" label="Kind" sort={sort} />
+                <Th id="visible" label="Visible" sort={sort} />
                 <th />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t) => {
+              {sort.sorted.map((t) => {
                 const rowOpen = ed?.id === t.id;
                 return (
                   <tr key={t.id} className={rowOpen ? 'active' : ''}>
