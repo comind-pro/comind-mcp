@@ -28,7 +28,7 @@ export function ToolPicker({
     const byKey = new Map<string, Group>();
     for (const t of tools) {
       const key = t.kind === 'composite' ? '__composite' : (t.sourceId ?? '__none');
-      const label = t.kind === 'composite' ? 'Composite tools' : srcName(t.sourceId);
+      const label = t.kind === 'composite' ? 'Recipes' : srcName(t.sourceId);
       if (!byKey.has(key)) byKey.set(key, { key, label, tools: [] });
       byKey.get(key)!.tools.push(t);
     }
@@ -79,7 +79,7 @@ export function ToolPicker({
                   ({selCount}/{g.tools.length})
                 </span>
               </span>
-              <span className="row" style={{ gap: 4 }}>
+              <span className="row gap-4">
                 <button className="ghost mini" onClick={() => bulk(visible, true)}>
                   all
                 </button>

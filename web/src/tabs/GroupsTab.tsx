@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, type Group, type Schedule, type Source, type Tool } from '../api.js';
+import { Icon } from '../icons.js';
+import { CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
 import { ToolPicker } from './ToolPicker.js';
 
 export function GroupsTab() {
-  const [groups, setGroups] = useState<Group[]>([]);
+  const [groups, setGroups] = useState<Group[] | null>(null);
   const [tools, setTools] = useState<Tool[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -14,6 +16,25 @@ export function GroupsTab() {
   const [schTool, setSchTool] = useState('');
   const [err, setErr] = useState('');
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [saveState, setSaveState] = useState<'' | 'saving' | 'saved'>('');
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef<{ groupId: string; toolIds: string[] } | null>(null);
+  const { confirm, element: confirmEl } = useConfirm();
+
+  // cleanup fires on openId change (before the next open) and on unmount — flush any
+  // debounced save still pending instead of dropping it, so the last toggle isn't lost.
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (savedResetTimer.current) clearTimeout(savedResetTimer.current);
+      const p = pending.current;
+      if (p) {
+        pending.current = null;
+        void api.put(`/groups/${p.groupId}/tools`, { toolIds: p.toolIds }).catch(() => {});
+      }
+    };
+  }, [openId]);
 
   const loadCounts = async (gs: Group[]) => {
     const entries = await Promise.all(
@@ -22,15 +43,22 @@ export function GroupsTab() {
     setCounts(Object.fromEntries(entries));
   };
   const loadGroups = async () => {
-    const gs = await api.get<Group[]>('/groups');
-    setGroups(gs);
-    void loadCounts(gs);
+    try {
+      const gs = await api.get<Group[]>('/groups');
+      setGroups(gs);
+      void loadCounts(gs);
+    } catch (e) {
+      setErr(String((e as Error).message));
+      setGroups([]);
+    }
   };
   useEffect(() => {
     void loadGroups();
     void api.get<Tool[]>('/tools').then(setTools);
     void api.get<Source[]>('/sources').then(setSources);
   }, []);
+
+  if (groups === null) return <Loading />;
 
   const select = async (g: Group) => {
     if (openId === g.id) return setOpenId(null);
@@ -44,22 +72,38 @@ export function GroupsTab() {
   const create = async () => {
     setErr('');
     try {
-      await api.post('/groups', { name: draft });
+      const g = await api.post<Group>('/groups', { name: draft });
       setDraft(null);
       await loadGroups();
+      // open the new workspace right away
+      setOpenId(g.id);
+      setAssigned(new Set());
+      setSchedules([]);
     } catch (e) {
       setErr(String((e as Error).message));
     }
   };
 
-  const saveToolset = async (g: Group) => {
-    setErr('');
-    try {
-      await api.put(`/groups/${g.id}/tools`, { toolIds: [...assigned] });
-      setCounts((c) => ({ ...c, [g.id]: assigned.size }));
-    } catch (e) {
-      setErr(String((e as Error).message));
-    }
+  const onToolsChange = (next: Set<string>, groupId: string) => {
+    setAssigned(next);
+    pending.current = { groupId, toolIds: [...next] };
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      setErr('');
+      setSaveState('saving');
+      try {
+        await api.put(`/groups/${groupId}/tools`, { toolIds: [...next] });
+        pending.current = null;
+        setCounts((c) => ({ ...c, [groupId]: next.size }));
+        setSaveState('saved');
+        if (savedResetTimer.current) clearTimeout(savedResetTimer.current);
+        savedResetTimer.current = setTimeout(() => setSaveState((s) => (s === 'saved' ? '' : s)), 1500);
+      } catch (e) {
+        pending.current = null;
+        setErr(String((e as Error).message));
+        setSaveState('');
+      }
+    }, 600);
   };
 
   const addSchedule = async (g: Group) => {
@@ -83,7 +127,13 @@ export function GroupsTab() {
   };
 
   const delGroup = async (g: Group) => {
-    if (!confirm(`Delete V-MCP "${g.name}"? Its agents grants and schedules will be removed too.`)) return;
+    if (
+      !(await confirm(
+        `Delete workspace "${g.name}"? Its agent grants and schedules will be removed too.`,
+        'Delete workspace',
+      ))
+    )
+      return;
     setErr('');
     try {
       await api.del(`/groups/${g.id}`);
@@ -97,37 +147,25 @@ export function GroupsTab() {
   const assignedNames = tools.filter((t) => assigned.has(t.id)).map((t) => t.name);
 
   const body = (g: Group) => (
-    <div className="editor-left" style={{ borderRight: 'none' }}>
-      <div className="hint">
-        Endpoint <code className="mono">/g/{g.slug}/mcp</code> — connect it from the <b>Agents</b> tab (pick an agent →
-        Connect → Single V-MCP).
-      </div>
+    <div className="editor-left no-border-r">
+      <CopyRow label="MCP endpoint" text={`${api.base}/g/${g.slug}/mcp`} />
+      <div className="hint">Connect it from the Agents page — the agent's key authorizes this endpoint.</div>
 
       <div className="editor-section" style={{ marginTop: 14 }}>
-        Toolset
+        Tools in this workspace
+        {saveState && <span className="save-state">{saveState === 'saving' ? 'Saving…' : 'Saved'}</span>}
       </div>
-      <div className="hint">Tools this V-MCP exposes to agents. Don't forget to save.</div>
-      <ToolPicker tools={tools} sources={sources} selected={assigned} onChange={setAssigned} />
-      <div className="spacer" />
-      <button className="btn-primary" onClick={() => saveToolset(g)}>
-        Save toolset ({assigned.size})
-      </button>
+      <div className="hint">Changes save automatically.</div>
+      <ToolPicker tools={tools} sources={sources} selected={assigned} onChange={(next) => onToolsChange(next, g.id)} />
 
       <div className="editor-section" style={{ marginTop: 22 }}>
         Schedules
       </div>
       <div className="hint">
-        Cron schedules that auto-run a group tool. Run now — execute immediately. Agents can also self-schedule via
-        schedule_task / list_schedules / cancel_schedule.
+        Run a tool automatically on a cron schedule. Connected agents can also schedule themselves.
       </div>
       <div className="row">
-        <input
-          className="mono"
-          style={{ width: 160 }}
-          placeholder="0 9 * * *"
-          value={cron}
-          onChange={(e) => setCron(e.target.value)}
-        />
+        <input className="mono w-160" placeholder="0 9 * * *" value={cron} onChange={(e) => setCron(e.target.value)} />
         <select className="grow" value={schTool} onChange={(e) => setSchTool(e.target.value)}>
           <option value="">— tool —</option>
           {assignedNames.map((n) => (
@@ -147,9 +185,7 @@ export function GroupsTab() {
           className="row"
           style={{ marginBottom: 6, alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 6 }}
         >
-          <span className="mono" style={{ width: 120 }}>
-            {s.cron}
-          </span>
+          <span className="mono w-120">{s.cron}</span>
           <span className="mono grow">{s.toolName}</span>
           <span className="tbadge">{s.createdBy}</span>
           <span className="muted" style={{ fontSize: 12, width: 150, textAlign: 'right' }}>
@@ -163,15 +199,11 @@ export function GroupsTab() {
           </button>
         </div>
       ))}
-      {!schedules.length && (
-        <div className="muted" style={{ fontSize: 12 }}>
-          No schedules.
-        </div>
-      )}
+      {!schedules.length && <div className="muted fs-12">No schedules.</div>}
 
-      <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
+      <div className="row divider-top">
         <button className="danger" onClick={() => delGroup(g)}>
-          Delete V-MCP
+          Delete workspace
         </button>
       </div>
       {err && <div className="err-msg">{err}</div>}
@@ -180,19 +212,18 @@ export function GroupsTab() {
 
   return (
     <>
+      {confirmEl}
       <div className="intro">
-        <b>V-MCP (virtual MCP)</b> — assemble tools from different sources into one virtual MCP server with a single
-        endpoint <code>/g/&lt;slug&gt;/mcp</code>. Give different V-MCPs to different agents → each sees only its set.
-        Built-in self-cron tools let a connected agent schedule itself.
+        A workspace bundles chosen tools into one endpoint you hand to an agent. Different agents can get different
+        workspaces.
       </div>
 
       <div className="page-head">
         <div>
-          <span className="title">V-MCP</span>
-          <span className="sub">{groups.length} servers</span>
+          <span className="sub">{groups.length} workspaces</span>
         </div>
         <button className="btn-primary" onClick={() => setDraft(draft === null ? '' : null)}>
-          + New V-MCP
+          + New workspace
         </button>
       </div>
 
@@ -201,7 +232,7 @@ export function GroupsTab() {
       {draft !== null && (
         <div className="scard open">
           <div className="scard-body">
-            <div className="editor-left" style={{ borderRight: 'none' }}>
+            <div className="editor-left no-border-r">
               <div className="field-label">Name · slug auto-generated</div>
               <div className="row">
                 <input
@@ -235,8 +266,8 @@ export function GroupsTab() {
               <span className="muted" style={{ fontSize: 12.5 }}>
                 {counts[g.id] ?? '…'} tools
               </span>
-              <span style={{ marginLeft: 'auto' }} />
-              <span className="edit-link">{open ? 'Close' : 'Configure'}</span>
+              <span className="ml-auto" />
+              <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Configure'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
             </div>
             {open && <div className="scard-body">{body(g)}</div>}
@@ -245,9 +276,12 @@ export function GroupsTab() {
       })}
 
       {!groups.length && draft === null && (
-        <div className="muted" style={{ padding: '20px 2px' }}>
-          No V-MCP servers yet.
-        </div>
+        <EmptyState
+          title="No workspaces yet"
+          body="A workspace turns your curated tools into a single endpoint for an agent."
+          actionLabel="+ New workspace"
+          onAction={() => setDraft('')}
+        />
       )}
     </>
   );

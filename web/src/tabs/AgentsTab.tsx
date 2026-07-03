@@ -1,28 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type Agent, type AgentKey, api, type Group, SYSTEM_TOOLS } from '../api.js';
-
-function Snip({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {
-      /* clipboard blocked */
-    }
-  };
-  return (
-    <div className="row" style={{ alignItems: 'stretch', gap: 6, marginBottom: 8 }}>
-      <div className="endpoint mono grow" style={{ whiteSpace: 'pre-wrap' }}>
-        {text}
-      </div>
-      <button className="ghost" onClick={copy} style={{ alignSelf: 'flex-start' }}>
-        {copied ? 'Copied' : 'Copy'}
-      </button>
-    </div>
-  );
-}
+import { Icon } from '../icons.js';
+import { Advanced, CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
 
 interface InspectGroup {
   group: { id: string; name: string; slug: string; schedulingEnabled: boolean };
@@ -30,8 +9,32 @@ interface InspectGroup {
   builtinTools: string[];
 }
 
+function KeyModal({ agent, apiKey, onClose }: { agent: Agent; apiKey: string; onClose: () => void }) {
+  const ep = `${api.base}/a/mcp`;
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>API key for “{agent.name}”</h3>
+        <div className="hint">This key is shown once. Copy it now — you can always create another one later.</div>
+        <CopyRow label="API key" text={apiKey} />
+        <CopyRow label="MCP endpoint" text={ep} />
+        <CopyRow
+          label="Claude Code / Cursor / any MCP client"
+          text={`claude mcp add ${agent.name.replace(/\s+/g, '-')} --transport http ${ep} --header "Authorization: Bearer ${apiKey}"`}
+        />
+        <div className="hint">
+          For claude.ai or ChatGPT: add the endpoint as a custom connector and paste the key when asked.
+        </div>
+        <button className="btn-primary" onClick={onClose}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AgentsTab() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<Agent[] | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [draft, setDraft] = useState<string | null>(null); // new-agent name (null = closed)
   const [openId, setOpenId] = useState<string | null>(null);
@@ -41,9 +44,29 @@ export function AgentsTab() {
   const [connGroup, setConnGroup] = useState('');
   const [keys, setKeys] = useState<Record<string, AgentKey[]>>({});
   const [freshKeys, setFreshKeys] = useState<Record<string, string>>({}); // keyId → raw token (shown once)
+  const [modalKey, setModalKey] = useState<{ agent: Agent; apiKey: string } | null>(null);
   const [sysTools, setSysTools] = useState<Set<string>>(new Set());
   const [exTool, setExTool] = useState<string | null>(null); // system tool whose example is open
   const [err, setErr] = useState('');
+  const [sysSaveState, setSysSaveState] = useState<'' | 'saving' | 'saved'>('');
+  const sysSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sysSavedResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sysPending = useRef<{ agentId: string; names: string[] } | null>(null);
+  const { confirm, element: confirmEl } = useConfirm();
+
+  // cleanup fires on openId change (before the next open) and on unmount — flush any
+  // debounced save still pending instead of dropping it, so the last toggle isn't lost.
+  useEffect(() => {
+    return () => {
+      if (sysSaveTimer.current) clearTimeout(sysSaveTimer.current);
+      if (sysSavedResetTimer.current) clearTimeout(sysSavedResetTimer.current);
+      const p = sysPending.current;
+      if (p) {
+        sysPending.current = null;
+        void api.put(`/agents/${p.agentId}/system-tools`, { names: p.names }).catch(() => {});
+      }
+    };
+  }, [openId]);
 
   const loadKeys = async (id: string) => {
     const ks = await api.get<AgentKey[]>(`/agents/${id}/keys`);
@@ -59,22 +82,28 @@ export function AgentsTab() {
     void loadKeys(a.id);
   };
 
-  const toggleSys = (name: string) => {
-    setSysTools((prev) => {
-      const next = new Set(prev);
-      next.has(name) ? next.delete(name) : next.add(name);
-      return next;
-    });
-  };
-
-  const saveSysTools = async (a: Agent) => {
-    setErr('');
-    try {
-      await api.put(`/agents/${a.id}/system-tools`, { names: [...sysTools] });
-      setAgents((as) => as.map((x) => (x.id === a.id ? { ...x, systemTools: [...sysTools] } : x)));
-    } catch (e) {
-      setErr(String((e as Error).message));
-    }
+  const toggleSys = (name: string, agentId: string) => {
+    const next = new Set(sysTools);
+    next.has(name) ? next.delete(name) : next.add(name);
+    setSysTools(next);
+    sysPending.current = { agentId, names: [...next] };
+    if (sysSaveTimer.current) clearTimeout(sysSaveTimer.current);
+    sysSaveTimer.current = setTimeout(async () => {
+      setErr('');
+      setSysSaveState('saving');
+      try {
+        await api.put(`/agents/${agentId}/system-tools`, { names: [...next] });
+        sysPending.current = null;
+        setAgents((as) => (as ?? []).map((x) => (x.id === agentId ? { ...x, systemTools: [...next] } : x)));
+        setSysSaveState('saved');
+        if (sysSavedResetTimer.current) clearTimeout(sysSavedResetTimer.current);
+        sysSavedResetTimer.current = setTimeout(() => setSysSaveState((s) => (s === 'saved' ? '' : s)), 1500);
+      } catch (e) {
+        sysPending.current = null;
+        setErr(String((e as Error).message));
+        setSysSaveState('');
+      }
+    }, 600);
   };
 
   const addKey = async (id: string) => {
@@ -82,6 +111,8 @@ export function AgentsTab() {
     try {
       const k = await api.post<AgentKey & { apiKey: string }>(`/agents/${id}/keys`, { label: '' });
       setFreshKeys((m) => ({ ...m, [k.id]: k.apiKey }));
+      const agent = agents?.find((x) => x.id === id);
+      if (agent) setModalKey({ agent, apiKey: k.apiKey });
       await loadKeys(id);
       await load();
     } catch (e) {
@@ -96,7 +127,7 @@ export function AgentsTab() {
   };
 
   const delKey = async (id: string, keyId: string) => {
-    if (!confirm('Delete this key? It stops working immediately.')) return;
+    if (!(await confirm('Delete this key? It stops working immediately.', 'Delete key'))) return;
     await api.del(`/agents/${id}/keys/${keyId}`).catch((e) => setErr(String(e.message)));
     setFreshKeys((m) => {
       const n = { ...m };
@@ -107,11 +138,20 @@ export function AgentsTab() {
     await load();
   };
 
-  const load = () => api.get<Agent[]>('/agents').then(setAgents);
+  const load = () =>
+    api
+      .get<Agent[]>('/agents')
+      .then(setAgents)
+      .catch((e) => {
+        setErr(String(e.message));
+        setAgents([]);
+      });
   useEffect(() => {
     void load();
     void api.get<Group[]>('/groups').then(setGroups);
   }, []);
+
+  if (agents === null) return <Loading />;
 
   const create = async () => {
     setErr('');
@@ -122,6 +162,7 @@ export function AgentsTab() {
       // open the new agent and reveal its first key once
       setOpenId(a.id);
       setConnMode('all');
+      setModalKey({ agent: a, apiKey: a.apiKey });
       const ks = await api.get<AgentKey[]>(`/agents/${a.id}/keys`);
       setKeys((m) => ({ ...m, [a.id]: ks }));
       if (ks[0]) setFreshKeys((m) => ({ ...m, [ks[0].id]: a.apiKey }));
@@ -131,7 +172,7 @@ export function AgentsTab() {
   };
 
   const del = async (id: string) => {
-    if (!confirm('Delete this agent? Its key stops working immediately.')) return;
+    if (!(await confirm('Delete this agent? Its key stops working immediately.', 'Delete agent'))) return;
     await api.del(`/agents/${id}`);
     if (openId === id) setOpenId(null);
     await load();
@@ -167,40 +208,39 @@ export function AgentsTab() {
     const grantedIds = new Set(granted.map((g) => g.id));
     const available = groups.filter((g) => !grantedIds.has(g.id));
     const single = connMode === 'single';
-    const g = granted.find((x) => x.id === connGroup);
+    // fall back to the first granted workspace — connGroup may be stale after a fresh grant
+    const g = granted.find((x) => x.id === connGroup) ?? granted[0];
     const ep = single ? (g ? `${api.base}/g/${g.id}/mcp` : '') : `${api.base}/a/mcp`;
     const addName = single ? (g?.slug ?? 'vmcp') : a.name.replace(/\s+/g, '-');
     return (
-      <div className="editor-left" style={{ borderRight: 'none' }}>
+      <div className="editor-left no-border-r">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span className="editor-section" style={{ margin: 0 }}>
-            Connect
-          </span>
+          <span className="editor-section m0">Connect</span>
           <span className="seg">
             <span className={!single ? 'on' : ''} onClick={() => setConnMode('all')}>
-              All V-MCPs
+              All workspaces
             </span>
             <span className={single ? 'on' : ''} onClick={() => setConnMode('single')}>
-              Single V-MCP
+              One workspace
             </span>
           </span>
         </div>
         <div className="hint">
           {single
-            ? 'Endpoint of one granted V-MCP — exposes only that V-MCP’s tools.'
-            : 'One endpoint exposing every tool from all V-MCPs granted to this agent.'}{' '}
+            ? 'Endpoint of one granted workspace — exposes only that workspace’s tools.'
+            : 'One endpoint exposing every tool from all workspaces granted to this agent.'}{' '}
           Token = this agent’s key (substitute for <code>&lt;AGENT_KEY&gt;</code>). For ChatGPT / Claude.ai add the
           endpoint as a connector.
         </div>
 
         {single && (
           <>
-            <div className="field-label">V-MCP</div>
+            <div className="field-label">Workspace</div>
             {granted.length ? (
               <select
                 className="grow"
                 style={{ width: '100%', marginBottom: 10 }}
-                value={connGroup}
+                value={g?.id ?? ''}
                 onChange={(e) => setConnGroup(e.target.value)}
               >
                 {granted.map((x) => (
@@ -211,7 +251,7 @@ export function AgentsTab() {
               </select>
             ) : (
               <div className="hint" style={{ marginTop: 0 }}>
-                No V-MCP granted yet — grant access below.
+                No workspace granted yet — grant access below.
               </div>
             )}
           </>
@@ -220,17 +260,13 @@ export function AgentsTab() {
         {ep && (
           <>
             <div className="field-label">MCP endpoint</div>
-            <Snip text={ep} />
-            <div className="field-label" style={{ marginTop: 10 }}>
-              Claude Code / Cursor / any MCP client
-            </div>
-            <Snip
+            <CopyRow text={ep} />
+            <div className="field-label mt-10">Claude Code / Cursor / any MCP client</div>
+            <CopyRow
               text={`claude mcp add ${addName} --transport http ${ep} --header "Authorization: Bearer <AGENT_KEY>"`}
             />
-            <div className="field-label" style={{ marginTop: 10 }}>
-              curl (raw JSON-RPC — tools/list)
-            </div>
-            <Snip
+            <div className="field-label mt-10">curl (raw JSON-RPC — tools/list)</div>
+            <CopyRow
               text={`curl -X POST ${ep} \\
   -H "Authorization: Bearer <AGENT_KEY>" \\
   -H "Content-Type: application/json" \\
@@ -241,16 +277,14 @@ export function AgentsTab() {
         )}
 
         <div className="editor-section" style={{ marginTop: 22 }}>
-          V-MCP access
+          Workspace access
         </div>
         {granted.map((gr) => (
           <div key={gr.id} className="row" style={{ marginBottom: 6, alignItems: 'center' }}>
             <span className="tbadge" style={{ minWidth: 120, textAlign: 'center' }}>
               {gr.name}
             </span>
-            <span className="mono muted grow" style={{ fontSize: 12 }}>
-              /g/{gr.slug}/mcp
-            </span>
+            <span className="mono muted grow fs-12">/g/{gr.slug}/mcp</span>
             <button className="danger" onClick={() => revoke(a.id, gr.id)}>
               Revoke
             </button>
@@ -261,13 +295,13 @@ export function AgentsTab() {
             No access granted.
           </div>
         )}
-        <div className="row" style={{ marginTop: 6 }}>
+        <div className="row mt-6">
           <select
             className="grow"
             value={addSel[a.id] ?? ''}
             onChange={(e) => setAddSel((s) => ({ ...s, [a.id]: e.target.value }))}
           >
-            <option value="">— grant V-MCP access —</option>
+            <option value="">— grant workspace access —</option>
             {available.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}
@@ -284,7 +318,7 @@ export function AgentsTab() {
         {inspect[a.id] && (
           <div style={{ marginTop: 8, fontSize: 12.5 }}>
             {inspect[a.id].map((ig) => (
-              <div key={ig.group.id} style={{ marginBottom: 4 }}>
+              <div key={ig.group.id} className="mb-4">
                 <b>{ig.group.name}</b>: {ig.tools.map((t) => t.name).join(', ') || '—'}
                 {ig.builtinTools.length > 0 && ` + ${ig.builtinTools.join(', ')}`}
               </div>
@@ -292,60 +326,52 @@ export function AgentsTab() {
           </div>
         )}
 
-        <div className="editor-section" style={{ marginTop: 22 }}>
-          System tools
-        </div>
-        <div className="hint">
-          Built-in <code className="mono">system.*</code> introspection tools this agent exposes — applied to every
-          V-MCP it connects to and the agent-wide <code className="mono">/a/mcp</code>. The agent calls these to learn
-          its context instead of guessing. Click <b>example</b> to see what each returns. Don't forget to save.
-        </div>
-        {SYSTEM_TOOLS.map((s) => {
-          const open = exTool === s.name;
-          return (
-            <div key={s.name}>
-              <div className="picker-item" style={{ alignItems: 'center' }}>
-                <input type="checkbox" checked={sysTools.has(s.name)} onChange={() => toggleSys(s.name)} />
-                <span className="mono">{s.name}</span>
-                <span className="muted" style={{ fontSize: 12 }}>
-                  {s.label}
-                </span>
-                <span style={{ marginLeft: 'auto' }} />
-                <button className="ghost mini" onClick={() => setExTool(open ? null : s.name)}>
-                  {open ? 'hide' : 'example'}
-                </button>
+        <Advanced summary="System tools (introspection)">
+          <div className="hint">
+            Built-in <code className="mono">system.*</code> introspection tools this agent exposes — applied to every
+            workspace it connects to and the agent-wide <code className="mono">/a/mcp</code>. The agent calls these to
+            learn its context instead of guessing. Click <b>example</b> to see what each returns.
+            {sysSaveState && <span className="save-state">{sysSaveState === 'saving' ? 'Saving…' : 'Saved'}</span>}
+          </div>
+          {SYSTEM_TOOLS.map((s) => {
+            const open = exTool === s.name;
+            return (
+              <div key={s.name}>
+                <div className="picker-item">
+                  <input type="checkbox" checked={sysTools.has(s.name)} onChange={() => toggleSys(s.name, a.id)} />
+                  <span className="mono">{s.name}</span>
+                  <span className="muted fs-12">{s.label}</span>
+                  <span className="ml-auto" />
+                  <button className="ghost mini" onClick={() => setExTool(open ? null : s.name)}>
+                    {open ? 'hide' : 'example'}
+                  </button>
+                </div>
+                {open && (
+                  <pre
+                    className="mono"
+                    style={{
+                      margin: '2px 0 8px 26px',
+                      padding: '8px 10px',
+                      fontSize: 11.5,
+                      lineHeight: 1.45,
+                      background: 'var(--surface-inset)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      color: 'var(--text-muted)',
+                      overflowX: 'auto',
+                      whiteSpace: 'pre',
+                    }}
+                  >
+                    {s.example}
+                  </pre>
+                )}
               </div>
-              {open && (
-                <pre
-                  className="mono"
-                  style={{
-                    margin: '2px 0 8px 26px',
-                    padding: '8px 10px',
-                    fontSize: 11.5,
-                    lineHeight: 1.45,
-                    background: 'var(--panel2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    color: 'var(--muted)',
-                    overflowX: 'auto',
-                    whiteSpace: 'pre',
-                  }}
-                >
-                  {s.example}
-                </pre>
-              )}
-            </div>
-          );
-        })}
-        <div className="spacer" />
-        <button className="btn-primary" onClick={() => saveSysTools(a)}>
-          Save system tools ({sysTools.size})
-        </button>
+            );
+          })}
+        </Advanced>
 
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', margin: '22px 0 8px' }}>
-          <span className="editor-section" style={{ margin: 0 }}>
-            API keys
-          </span>
+          <span className="editor-section m0">API keys</span>
           <button className="btn-primary" onClick={() => addKey(a.id)}>
             + Add key
           </button>
@@ -354,22 +380,30 @@ export function AgentsTab() {
           const fresh = freshKeys[k.id];
           return (
             <div key={k.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-              <div className="row" style={{ alignItems: 'center' }}>
+              <div className="row">
                 <span className="mono" style={{ fontSize: 13, opacity: k.archived ? 0.5 : 1 }}>
                   {k.prefix}
                   {'…'}
                 </span>
                 {k.label && <span className="tbadge">{k.label}</span>}
                 {k.archived && <span className="badge muted">archived</span>}
-                <span className="muted" style={{ fontSize: 12 }}>
-                  added {new Date(k.createdAt).toLocaleDateString()}
-                </span>
-                <span style={{ marginLeft: 'auto' }} />
-                <button className="ghost" onClick={() => setArchived(a.id, k.id, !k.archived)}>
-                  {k.archived ? 'Unarchive' : 'Archive'}
+                <span className="muted fs-12">added {new Date(k.createdAt).toLocaleDateString()}</span>
+                <span className="ml-auto" />
+                <button
+                  className="icon-btn"
+                  onClick={() => setArchived(a.id, k.id, !k.archived)}
+                  title={k.archived ? 'Unarchive' : 'Archive'}
+                  aria-label={k.archived ? 'Unarchive' : 'Archive'}
+                >
+                  <Icon name="archive" size={15} />
                 </button>
-                <button className="danger" onClick={() => delKey(a.id, k.id)}>
-                  Delete
+                <button
+                  className="icon-btn danger-i"
+                  onClick={() => delKey(a.id, k.id)}
+                  title="Delete key"
+                  aria-label="Delete key"
+                >
+                  <Icon name="trash" size={15} />
                 </button>
               </div>
               {fresh && (
@@ -390,14 +424,10 @@ export function AgentsTab() {
             </div>
           );
         })}
-        {!(keys[a.id] ?? []).length && (
-          <div className="muted" style={{ fontSize: 12 }}>
-            No keys.
-          </div>
-        )}
+        {!(keys[a.id] ?? []).length && <div className="muted fs-12">No keys.</div>}
 
-        <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
-          <button className="danger" style={{ marginLeft: 'auto' }} onClick={() => del(a.id)}>
+        <div className="row divider-top">
+          <button className="danger ml-auto" onClick={() => del(a.id)}>
             Delete agent
           </button>
         </div>
@@ -408,14 +438,14 @@ export function AgentsTab() {
 
   return (
     <>
+      {confirmEl}
       <div className="intro">
-        <b>Agents</b> — consumers. Each agent = one identity with a key. Grant the agent access to V-MCPs; the key works
-        only for granted V-MCPs. Access ≠ auto-connection: you add the V-MCP endpoint to your external agent yourself.
+        An agent is anything that connects from outside — Claude, ChatGPT, a script. Each agent gets its own key and
+        sees only the workspaces you grant it.
       </div>
 
       <div className="page-head">
         <div>
-          <span className="title">Agents</span>
           <span className="sub">{agents.length} agents</span>
         </div>
         <button className="btn-primary" onClick={() => setDraft(draft === null ? '' : null)}>
@@ -426,7 +456,7 @@ export function AgentsTab() {
       {draft !== null && (
         <div className="scard open">
           <div className="scard-body">
-            <div className="editor-left" style={{ borderRight: 'none' }}>
+            <div className="editor-left no-border-r">
               <div className="field-label">Name</div>
               <div className="row">
                 <input
@@ -442,7 +472,7 @@ export function AgentsTab() {
                   Cancel
                 </button>
               </div>
-              <div className="hint">Just a name. Grant V-MCP access after creating.</div>
+              <div className="hint">Just a name. Grant workspace access after creating.</div>
               {err && <div className="err-msg">{err}</div>}
             </div>
           </div>
@@ -459,11 +489,11 @@ export function AgentsTab() {
               <span className="muted" style={{ fontSize: 12, width: 70 }}>
                 {a.keyCount ?? 0} key{(a.keyCount ?? 0) === 1 ? '' : 's'}
               </span>
-              <span className="muted" style={{ fontSize: 12 }}>
-                {granted.length ? `${granted.length} V-MCP` : 'no access'}
+              <span className="muted fs-12">
+                {granted.length ? `${granted.length} workspace${granted.length === 1 ? '' : 's'}` : 'no access'}
               </span>
-              <span style={{ marginLeft: 'auto' }} />
-              <span className="edit-link">{open ? 'Close' : 'Manage'}</span>
+              <span className="ml-auto" />
+              <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Manage'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
             </div>
             {open && <div className="scard-body">{body(a)}</div>}
@@ -472,10 +502,15 @@ export function AgentsTab() {
       })}
 
       {!agents.length && draft === null && (
-        <div className="muted" style={{ padding: '20px 2px' }}>
-          No agents yet.
-        </div>
+        <EmptyState
+          title="No agents yet"
+          body="Create an agent to get an API key and an endpoint you can plug into Claude, ChatGPT, or any MCP client."
+          actionLabel="+ New agent"
+          onAction={() => setDraft('')}
+        />
       )}
+
+      {modalKey && <KeyModal {...modalKey} onClose={() => setModalKey(null)} />}
     </>
   );
 }

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, type Secret } from '../api.js';
+import { EmptyState, Loading, useConfirm } from '../ui.js';
 
 export function SecretsTab() {
-  const [secrets, setSecrets] = useState<Secret[]>([]);
+  const [secrets, setSecrets] = useState<Secret[] | null>(null);
   const [draft, setDraft] = useState(false);
   const [name, setName] = useState('');
   const [mode, setMode] = useState<'value' | 'envRef'>('value');
@@ -10,13 +11,19 @@ export function SecretsTab() {
   const [err, setErr] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
+  const { confirm, element: confirmEl } = useConfirm();
 
   const load = () =>
     api
       .get<Secret[]>('/secrets')
       .then(setSecrets)
-      .catch((e) => setErr(String(e.message)));
+      .catch((e) => {
+        setErr(String(e.message));
+        setSecrets([]);
+      });
   useEffect(() => void load(), []);
+
+  if (secrets === null) return <Loading />;
 
   const startEdit = (s: Secret) => {
     setEditId(s.id);
@@ -52,22 +59,20 @@ export function SecretsTab() {
   };
 
   const del = async (id: string) => {
-    if (!confirm('Delete this secret?')) return;
+    if (!(await confirm('Delete this secret?', 'Delete secret'))) return;
     await api.del(`/secrets/${id}`).catch((e) => setErr(String(e.message)));
     await load();
   };
 
   return (
     <>
+      {confirmEl}
       <div className="intro">
-        <b>Secrets</b> — tokens, keys, passwords. Stored encrypted (AES-256-GCM). In a source config you write only a
-        reference <code>{'${secret.NAME}'}</code>; at runtime comind substitutes the real value — the agent and JSON
-        never see it. <b>value</b> = encrypted value · <b>envRef</b> = name of a process env variable.
+        Secrets hold tokens and passwords your connections need. They're stored encrypted; agents never see them.
       </div>
 
       <div className="page-head">
         <div>
-          <span className="title">Secrets</span>
           <span className="sub">{secrets.length} stored</span>
         </div>
         <button className="btn-primary" onClick={() => setDraft(!draft)}>
@@ -80,7 +85,7 @@ export function SecretsTab() {
       {draft && (
         <div className="scard open">
           <div className="scard-body">
-            <div className="editor-left" style={{ borderRight: 'none' }}>
+            <div className="editor-left no-border-r">
               <div className="field-label">Name · uppercase Latin (e.g. TITAN_TOKEN)</div>
               <div className="row">
                 <input
@@ -96,8 +101,8 @@ export function SecretsTab() {
                   name="comind-secret-name"
                 />
                 <select value={mode} onChange={(e) => setMode(e.target.value as 'value' | 'envRef')}>
-                  <option value="value">value (encrypt)</option>
-                  <option value="envRef">envRef (env variable)</option>
+                  <option value="value">Paste a value (stored encrypted)</option>
+                  <option value="envRef">Reference a server env variable</option>
                 </select>
                 <input
                   className="grow"
@@ -156,7 +161,7 @@ export function SecretsTab() {
                 </td>
                 <td>
                   {editId === s.id ? (
-                    <div className="row" style={{ gap: 4 }}>
+                    <div className="row gap-4">
                       <input
                         className="grow"
                         type={s.kind === 'env' ? 'text' : 'password'}
@@ -178,7 +183,7 @@ export function SecretsTab() {
                       </button>
                     </div>
                   ) : (
-                    <div className="row" style={{ gap: 4 }}>
+                    <div className="row gap-4">
                       <button className="ghost mini" onClick={() => startEdit(s)}>
                         Edit
                       </button>
@@ -192,8 +197,13 @@ export function SecretsTab() {
             ))}
             {!secrets.length && (
               <tr>
-                <td colSpan={5} className="muted">
-                  No secrets yet.
+                <td colSpan={5}>
+                  <EmptyState
+                    title="No secrets yet"
+                    body="Add a secret to reference it from your source configs."
+                    actionLabel="+ New secret"
+                    onAction={() => setDraft(true)}
+                  />
                 </td>
               </tr>
             )}

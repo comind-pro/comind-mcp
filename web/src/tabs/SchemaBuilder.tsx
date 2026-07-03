@@ -104,11 +104,10 @@ export function FieldRows({
   return (
     <div style={depth ? { marginLeft: 14, paddingLeft: 12, borderLeft: '1px solid var(--border)' } : undefined}>
       {fields.map((f, i) => (
-        <div key={i} style={{ marginBottom: 8 }}>
-          <div className="row" style={{ alignItems: 'center' }}>
+        <div key={i} className="mb-8">
+          <div className="row">
             <input
-              style={{ width: 120 }}
-              className="mono"
+              className="w-120 mono"
               value={f.name}
               onChange={(e) => rename(i, e.target.value)}
               placeholder="name"
@@ -165,7 +164,7 @@ function NodeChildren({
     const items = schema.items ?? emptyNode();
     return (
       <div style={{ marginLeft: 14, paddingLeft: 12, borderLeft: '1px solid var(--border)', marginTop: 6 }}>
-        <div className="row" style={{ alignItems: 'center' }}>
+        <div className="row">
           <span className="muted" style={{ fontSize: 11, minWidth: 40 }}>
             items
           </span>
@@ -256,12 +255,12 @@ export function ValueInput({
     return (
       <div style={{ marginLeft: 12, paddingLeft: 10, borderLeft: '1px solid var(--border)' }}>
         {schema.properties.map((f, i) => (
-          <div key={i} style={{ marginBottom: 8 }}>
-            <div className="field-label" style={{ marginBottom: 4 }}>
+          <div key={i} className="mb-8">
+            <div className="field-label mb-4">
               <span className="mono" style={{ color: 'var(--text)' }}>
                 {f.name || '(unnamed)'}
               </span>{' '}
-              <span style={{ fontWeight: 400 }}>
+              <span className="fw-400">
                 {f.schema.type}
                 {schema.required.includes(f.name) ? ' · required' : ''}
               </span>
@@ -269,11 +268,7 @@ export function ValueInput({
             <ValueInput schema={f.schema} value={obj[f.name]} onChange={(v) => onChange({ ...obj, [f.name]: v })} />
           </div>
         ))}
-        {!schema.properties.length && (
-          <div className="hint" style={{ margin: 0 }}>
-            no fields
-          </div>
-        )}
+        {!schema.properties.length && <div className="hint m0">no fields</div>}
       </div>
     );
   }
@@ -284,7 +279,7 @@ export function ValueInput({
     return (
       <div style={{ marginLeft: 12, paddingLeft: 10, borderLeft: '1px solid var(--border)' }}>
         {arr.map((it: unknown, i: number) => (
-          <div key={i} style={{ marginBottom: 8 }}>
+          <div key={i} className="mb-8">
             <div className="field-label" style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className="muted">#{i + 1}</span>
               <span className="inline-x" onClick={() => onChange(arr.filter((_, j) => j !== i))}>

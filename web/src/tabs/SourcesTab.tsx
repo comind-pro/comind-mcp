@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react';
 import { api, type Source, type Tool } from '../api.js';
+import { Icon, type IconName } from '../icons.js';
+import { Advanced, EmptyState, Loading, useConfirm } from '../ui.js';
 import { type Cfg, DEFAULTS, KIND_META, type Kind, SourceFields } from './SourceFields.js';
 
 const KINDS: Kind[] = ['mcp', 'openapi', 'http', 'imap', 'sql', 'ga'];
+const KIND_ICON: Record<Kind, IconName> = {
+  mcp: 'network',
+  openapi: 'braces',
+  http: 'globe',
+  imap: 'mail',
+  sql: 'database',
+  ga: 'chart',
+};
 
 const hasInteractiveOAuth = (cfg: Cfg) =>
   ['oauth2_authorization_code', 'mcp_oauth'].includes((cfg?.auth as { type?: string })?.type ?? '');
@@ -24,17 +34,23 @@ interface Editing {
 }
 
 export function SourcesTab() {
-  const [sources, setSources] = useState<Source[]>([]);
+  const [sources, setSources] = useState<Source[] | null>(null);
   const [err, setErr] = useState('');
   const [ed, setEd] = useState<Editing | null>(null);
   const [busy, setBusy] = useState('');
+  const { confirm, element: confirmEl } = useConfirm();
 
   const load = () =>
     api
       .get<Source[]>('/sources')
       .then(setSources)
-      .catch((e) => setErr(String(e.message)));
+      .catch((e) => {
+        setErr(String(e.message));
+        setSources([]);
+      });
   useEffect(() => void load(), []);
+
+  if (sources === null) return <Loading />;
 
   const patch = (p: Partial<Editing>) => setEd((e) => (e ? { ...e, ...p } : e));
   const close = () => setEd(null);
@@ -200,22 +216,25 @@ export function SourcesTab() {
 
   const del = async () => {
     if (!ed || ed.id === 'new') return;
-    if (!confirm(`Delete source “${ed.name}”?`)) return;
+    if (!(await confirm(`Delete source “${ed.name}”?`, 'Delete connection'))) return;
     await api.del(`/sources/${ed.id}`).catch((e) => setErr(String(e.message)));
     await load();
     close();
   };
 
   const dotColor = (status: string) =>
-    status === 'ok' ? 'var(--ok)' : status === 'error' ? 'var(--err)' : 'var(--muted)';
+    status === 'ok' ? 'var(--ok)' : status === 'error' ? 'var(--err)' : 'var(--text-muted)';
 
   const editor = (e: Editing, isNew: boolean) => {
     const jsonText = e.jsonRaw != null ? e.jsonRaw : JSON.stringify(e.cfg, null, 2);
     const interactive = hasInteractiveOAuth(e.cfg);
+    const toolCount = /(\d+)\s*(tools?|operations?)/i.exec(e.testMsg)?.[1];
+    const testFirstLine = e.testMsg.split('\n')[0];
+    const testIsLong = e.testMsg.length > 140 || e.testMsg.includes('\n');
     return (
       <div className="editor-split">
         {/* LEFT: form */}
-        <div className="editor-left">
+        <div className="editor-left no-border-r">
           {e.created && e.importedTools && (
             <div style={{ marginBottom: 20 }}>
               <div className="status-line" style={{ color: 'var(--ok)', marginBottom: 10 }}>
@@ -229,9 +248,7 @@ export function SourcesTab() {
                   <span className="mono" style={{ color: 'var(--accent)', fontSize: 13 }}>
                     {t.name}
                   </span>
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    {t.description ?? ''}
-                  </span>
+                  <span className="muted fs-12">{t.description ?? ''}</span>
                 </div>
               ))}
             </div>
@@ -248,15 +265,15 @@ export function SourcesTab() {
           {isNew && (
             <>
               <div className="field-label">Type</div>
-              <div className="type-grid" style={{ marginBottom: 18 }}>
+              <div className="kind-cards">
                 {KINDS.map((k) => (
-                  <div key={k} className={`type-card ${e.kind === k ? 'on' : ''}`} onClick={() => setKind(k)}>
-                    <div style={{ flex: 1 }}>
-                      <div className="tc-title">{KIND_META[k].title}</div>
-                      <div className="tc-desc">{KIND_META[k].desc}</div>
-                    </div>
-                    <div className="tc-dot">{e.kind === k ? '✓' : ''}</div>
-                  </div>
+                  <button key={k} className={`kind-card ${e.kind === k ? 'active' : ''}`} onClick={() => setKind(k)}>
+                    <span className="kind-card-icon">
+                      <Icon name={KIND_ICON[k]} size={20} />
+                    </span>
+                    <span className="kind-card-title">{KIND_META[k].title}</span>
+                    <span className="kind-card-desc">{KIND_META[k].desc}</span>
+                  </button>
                 ))}
               </div>
             </>
@@ -273,9 +290,9 @@ export function SourcesTab() {
                 <code>{'${secret.NAME}'}</code>.
               </div>
               {e.secrets.map((s, i) => (
-                <div key={i} className="row" style={{ marginBottom: 4 }}>
+                <div key={i} className="row mb-4">
                   <input
-                    style={{ width: 160 }}
+                    className="w-160"
                     placeholder="NAME"
                     value={s.name}
                     onChange={(ev) =>
@@ -342,7 +359,7 @@ export function SourcesTab() {
                     <button className="ghost" onClick={() => refreshObjects(e.id)} disabled={busy === 'objects'}>
                       {busy === 'objects' ? 'Refreshing…' : 'Refresh objects'}
                     </button>
-                    <span className="muted" style={{ fontSize: 12 }}>
+                    <span className="muted fs-12">
                       {objs.length} object{objs.length === 1 ? '' : 's'}
                     </span>
                   </div>
@@ -351,7 +368,7 @@ export function SourcesTab() {
                       <span className="mono" style={{ fontSize: 12.5 }}>
                         {o.id}
                       </span>
-                      <span className="muted" style={{ fontSize: 12 }}>
+                      <span className="muted fs-12">
                         {o.name}
                         {o.product_hint ? ` · ${o.product_hint}` : ''}
                       </span>
@@ -362,7 +379,7 @@ export function SourcesTab() {
             })()}
 
           {/* actions */}
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }} className="row">
+          <div className="row divider-top">
             {isNew && !e.created && (
               <button className="btn-primary" onClick={createSource} disabled={!e.name || !!busy}>
                 {busy === 'create' ? 'Creating…' : 'Create source'}
@@ -404,47 +421,44 @@ export function SourcesTab() {
 
             {e.testState === 'ok' && (
               <span className="status-line" style={{ color: 'var(--ok)' }}>
-                <span className="status-dot" style={{ background: 'var(--ok)' }} /> connected
-              </span>
-            )}
-            {e.testState === 'error' && (
-              <span className="status-line" style={{ color: 'var(--err)' }}>
-                <span className="status-dot" style={{ background: 'var(--err)' }} /> {e.testMsg || 'failed'}
+                <span className="status-dot" style={{ background: 'var(--ok)' }} /> ✓ Connected
+                {toolCount ? ` · ${toolCount} tools` : ''}
               </span>
             )}
 
             {!isNew && (
-              <button className="danger" style={{ marginLeft: 'auto' }} onClick={del}>
+              <button className="danger ml-auto" onClick={del}>
                 Delete
               </button>
             )}
           </div>
-          {err && <div className="err-msg">{err}</div>}
-        </div>
-
-        {/* RIGHT: JSON config */}
-        <div className="editor-right">
-          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-            <span className="field-label" style={{ margin: 0 }}>
-              Config · JSON
-            </span>
-            <span className="tbadge">edits ↔ form</span>
-          </div>
-          <textarea
-            className="json-area"
-            spellCheck={false}
-            value={jsonText}
-            onChange={(ev) => onJson(ev.target.value)}
-          />
-          {e.jsonError ? (
-            <div className="err-msg" style={{ marginTop: 8 }}>
-              ⚠ {e.jsonError}
-            </div>
-          ) : (
-            <div className="hint" style={{ marginTop: 8 }}>
-              Edits here update the form. Secrets stay as references <code>{'${secret.NAME}'}</code>.
+          {e.testState === 'error' && (
+            <div className="err-msg">
+              Couldn't connect: {testFirstLine || 'unknown error'}
+              {testIsLong && <Advanced summary="Details">{e.testMsg}</Advanced>}
             </div>
           )}
+          {err && <div className="err-msg">{err}</div>}
+
+          <Advanced summary="Raw JSON config">
+            <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+              <span className="field-label m0">Config · JSON</span>
+              <span className="tbadge">edits ↔ form</span>
+            </div>
+            <textarea
+              className="json-area"
+              spellCheck={false}
+              value={jsonText}
+              onChange={(ev) => onJson(ev.target.value)}
+            />
+            {e.jsonError ? (
+              <div className="err-msg mt-8">⚠ {e.jsonError}</div>
+            ) : (
+              <div className="hint mt-8">
+                Edits here update the form. Secrets stay as references <code>{'${secret.NAME}'}</code>.
+              </div>
+            )}
+          </Advanced>
         </div>
       </div>
     );
@@ -452,18 +466,17 @@ export function SourcesTab() {
 
   return (
     <>
+      {confirmEl}
       <div className="intro">
-        <b>Sources</b> — where tools come from. Fill the form (or edit <b>JSON</b>) → Create → Test → Import. Tokens go
-        through <b>Secrets</b> (<code>{'${secret.NAME}'}</code>), not in JSON. Click a row to edit.
+        Connections are the upstream systems your tools come from. Add one, test it, then import its tools.
       </div>
 
       <div className="page-head">
         <div>
-          <span className="title">Sources</span>
           <span className="sub">{sources.length} connected</span>
         </div>
         <button className="btn-primary" onClick={openNew}>
-          + New source
+          + New connection
         </button>
       </div>
 
@@ -473,7 +486,7 @@ export function SourcesTab() {
       {ed && ed.id === 'new' && (
         <div className="scard open">
           <div className="scard-head" onClick={close}>
-            <span className="name">{ed.name || 'New source'}</span>
+            <span className="name">{ed.name || 'New connection'}</span>
             <span className="tbadge">{ed.kind}</span>
             <span className="chev up">⌄</span>
           </div>
@@ -491,8 +504,8 @@ export function SourcesTab() {
               <span className="status-line src-status" style={{ color: dotColor(s.status) }}>
                 <span className="status-dot" style={{ background: dotColor(s.status) }} /> {s.status}
               </span>
-              <span style={{ marginLeft: 'auto' }} />
-              <span className="edit-link">{open ? 'Close' : 'Edit'}</span>
+              <span className="ml-auto" />
+              <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Edit'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
             </div>
             {s.status === 'error' && s.statusMessage && !open && <div className="src-err">{s.statusMessage}</div>}
@@ -502,9 +515,12 @@ export function SourcesTab() {
       })}
 
       {!sources.length && !ed && (
-        <div className="muted" style={{ padding: '20px 2px' }}>
-          No sources yet.
-        </div>
+        <EmptyState
+          title="No connections yet"
+          body="Connect an MCP server, REST API, database, or email account — comind will list every tool it offers."
+          actionLabel="+ New connection"
+          onAction={openNew}
+        />
       )}
     </>
   );
