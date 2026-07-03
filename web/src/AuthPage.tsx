@@ -126,6 +126,7 @@ export function AuthPage({ onAuth }: { onAuth: (u: AuthUser) => void }) {
               GitHub
             </a>
           </div>
+          <div className="landing-eyebrow">Self-hosted MCP gateway</div>
           <h1 className="landing-h1">One gateway for all your MCP tools.</h1>
           <p className="landing-tagline">
             Agents shouldn't juggle a dozen MCP servers and APIs. comind-mcp <b>aggregates</b> them, lets you{' '}

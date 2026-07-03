@@ -1319,18 +1319,26 @@ tr.detail-row td {
 
 /* landing (unauthenticated root) */
 .landing {
-  max-width: 1040px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: 0 24px 80px;
 }
 .landing-section {
-  padding-top: 56px;
+  padding-top: 64px;
+}
+.landing-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
 }
 .landing-h1 {
-  font-size: 32px;
-  line-height: 1.2;
+  font-size: clamp(34px, 4.5vw, 46px);
+  line-height: 1.12;
   margin: 0 0 16px;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.02em;
 }
 .landing-h2 {
   font-size: 22px;
@@ -1405,6 +1413,10 @@ tr.detail-row td {
   display: flex;
   justify-content: center;
 }
+.landing-auth .card {
+  border-radius: 14px;
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--accent) 10%, transparent);
+}
 
 /* auth card inputs/buttons: full-width, stacked with spacing */
 .auth-form input {
@@ -1421,12 +1433,25 @@ tr.detail-row td {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 18px;
+  align-items: start;
+}
+/* the middle shot floats slightly — reads as "the transformation step" */
+.landing-shots > div:nth-child(2) {
+  transform: translateY(-10px);
 }
 .shot {
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
+  box-shadow: var(--shadow);
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.shot:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .shot-bar {
   display: flex;
@@ -1516,14 +1541,19 @@ tr.detail-row td {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--surface-inset);
-  border: 1px solid var(--accent);
+  background: var(--accent-soft);
   color: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
   font-weight: 600;
+}
+.landing-step {
+  transition: border-color 0.12s ease;
+}
+.landing-step:hover {
+  border-color: var(--border-strong);
 }
 .landing-step-title {
   font-weight: 600;
@@ -1551,6 +1581,9 @@ tr.detail-row td {
   }
   .landing-shots {
     grid-template-columns: 1fr;
+  }
+  .landing-shots > div:nth-child(2) {
+    transform: none;
   }
   .landing-steps {
     grid-template-columns: 1fr;
