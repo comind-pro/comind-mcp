@@ -63,9 +63,13 @@ export function GroupsTab() {
   const create = async () => {
     setErr('');
     try {
-      await api.post('/groups', { name: draft });
+      const g = await api.post<Group>('/groups', { name: draft });
       setDraft(null);
       await loadGroups();
+      // open the new workspace right away
+      setOpenId(g.id);
+      setAssigned(new Set());
+      setSchedules([]);
     } catch (e) {
       setErr(String((e as Error).message));
     }

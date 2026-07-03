@@ -294,7 +294,8 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
         });
         if (Object.keys(mb).length) await api.patch(`/tools/${created.id}`, mb);
         await load();
-        close();
+        // stay in the editor, now bound to the saved tool
+        setEd((prev) => (prev && prev.id === 'new' ? { ...prev, id: created.id } : prev));
         return;
       }
       const idBody: Cfg = { displayName: e.displayName || null, description: e.description || null, ...mb };
@@ -362,7 +363,8 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
         });
         if (Object.keys(mb).length) await api.patch(`/tools/${created.id}`, mb);
         await load();
-        close();
+        // stay in the editor, now bound to the saved tool
+        setEd((prev) => (prev && prev.id === 'new' ? { ...prev, id: created.id } : prev));
         return;
       }
       await api.patch(`/virtual-tools/${e.id}`, {
