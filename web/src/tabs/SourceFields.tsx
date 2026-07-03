@@ -140,57 +140,86 @@ const SETUP: Partial<Record<Kind, ReactNode>> = {
   mcp: (
     <ol>
       <li>
-        Get the remote MCP server’s <b>URL</b> (Streamable HTTP or SSE).
+        Paste the server’s <b>MCP URL</b> — it usually ends in <code>/mcp</code>. <b>transport</b> “http (Streamable)”
+        fits most servers; pick <code>sse</code> only if the server’s docs say so.
       </li>
       <li>
-        If it needs auth, pick an <b>Authorization</b> type below and store the token in <b>Secrets</b>.
+        If the server needs a token, set <b>Authorization</b> below and store the value as a secret, referencing it as{' '}
+        <code>{'${secret.API_TOKEN}'}</code>. Some servers use OAuth instead — pick <code>mcp_oauth</code> and you’ll be
+        sent to the provider to approve access.
       </li>
       <li>
-        For user-OAuth remote MCPs, choose <code>mcp_oauth</code>, Create, then press <b>Connect</b>.
+        <b>Test connection</b>, then <b>Import tools</b>.
       </li>
     </ol>
   ),
   openapi: (
     <ol>
       <li>
-        Provide the <b>OpenAPI spec URL</b> (or paste an inline spec in JSON mode).
+        Paste a link to the API’s <b>OpenAPI 3.x spec</b> (JSON or YAML) as the <b>Spec URL</b>.
       </li>
       <li>
-        Set <b>Base URL</b> if the spec’s server URL is missing/relative.
+        <b>Base URL</b> is optional — only set it when the spec’s own server URL is wrong for you.
       </li>
       <li>
-        Add auth below if the API needs it; tokens go through <b>Secrets</b>.
+        If the API needs auth, configure it under <b>Authorization</b> below using secrets.
+      </li>
+      <li>
+        <b>Test connection</b>, then <b>Import tools</b>: every operation in the spec becomes a tool you can curate.
       </li>
     </ol>
   ),
   http: (
     <ol>
       <li>
-        Set the <b>Base URL</b> and add each <b>endpoint</b> (name, method, path).
+        Set the <b>Base URL</b> of the service.
       </li>
       <li>
-        Use <code>{'{param}'}</code> in paths; configure auth/headers below.
+        Add each endpoint you want as a tool: a short <b>name</b>, <b>method</b>, and <b>path</b> — path params in curly
+        braces like <code>/users/{'{id}'}</code> become tool inputs.
       </li>
+      <li>
+        <b>Health path</b> is optional — it’s used by <b>Test connection</b>.
+      </li>
+      <li>Add auth/headers as needed via secrets.</li>
     </ol>
   ),
   imap: (
     <ol>
       <li>
-        Use an <b>app password</b> (not your login password) from your mail provider.
+        Enter your <b>IMAP</b> host/port (incoming) and, if you also want to send mail, <b>SMTP</b> host/port.
       </li>
-      <li>Fill IMAP host/port; SMTP is optional (leave empty for a read-only mailbox).</li>
       <li>
-        Store the password as a secret <code>MAIL_PASS</code> and keep <code>{'${secret.MAIL_PASS}'}</code> here.
+        <b>User</b> is the mailbox address. For the password, use an app password, not your main one — e.g. Gmail:{' '}
+        <a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noreferrer">
+          app passwords
+        </a>{' '}
+        (requires 2FA).
+      </li>
+      <li>
+        Store it as a secret named <code>MAIL_PASS</code> below — the config references{' '}
+        <code>{'${secret.MAIL_PASS}'}</code>.
+      </li>
+      <li>
+        <b>Test connection</b>, then <b>Import tools</b> (read, search, send).
       </li>
     </ol>
   ),
   sql: (
     <ol>
       <li>
-        Use a <b>read-only</b> Postgres user (every query runs in a READ ONLY transaction).
+        Paste a Postgres <b>connection URL</b>, e.g. <code>postgres://user:pass@host:5432/db</code> — store it as a
+        secret <code>DB_URL</code>; the config references <code>{'${secret.DB_URL}'}</code>.
       </li>
       <li>
-        Store the connection string as a secret <code>DB_URL</code>; keep <code>{'${secret.DB_URL}'}</code> here.
+        Use a <b>READ-ONLY</b> database user — the connector only runs SELECTs, but least privilege is the right
+        default.
+      </li>
+      <li>
+        <b>Schema</b> (default <code>public</code>) and <b>Max rows</b> cap what queries can touch.
+      </li>
+      <li>
+        <b>Test connection</b>, then <b>Import tools</b>.
       </li>
     </ol>
   ),
