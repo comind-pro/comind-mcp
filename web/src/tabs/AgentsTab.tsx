@@ -50,12 +50,21 @@ export function AgentsTab() {
   const [err, setErr] = useState('');
   const [sysSaveState, setSysSaveState] = useState<'' | 'saving' | 'saved'>('');
   const sysSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sysSavedResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sysPending = useRef<{ agentId: string; names: string[] } | null>(null);
   const { confirm, element: confirmEl } = useConfirm();
 
-  // ponytail: cleanup fires on openId change (before the next open) and on unmount.
+  // cleanup fires on openId change (before the next open) and on unmount — flush any
+  // debounced save still pending instead of dropping it, so the last toggle isn't lost.
   useEffect(() => {
     return () => {
       if (sysSaveTimer.current) clearTimeout(sysSaveTimer.current);
+      if (sysSavedResetTimer.current) clearTimeout(sysSavedResetTimer.current);
+      const p = sysPending.current;
+      if (p) {
+        sysPending.current = null;
+        void api.put(`/agents/${p.agentId}/system-tools`, { names: p.names }).catch(() => {});
+      }
     };
   }, [openId]);
 
@@ -77,16 +86,20 @@ export function AgentsTab() {
     const next = new Set(sysTools);
     next.has(name) ? next.delete(name) : next.add(name);
     setSysTools(next);
+    sysPending.current = { agentId, names: [...next] };
     if (sysSaveTimer.current) clearTimeout(sysSaveTimer.current);
     sysSaveTimer.current = setTimeout(async () => {
       setErr('');
       setSysSaveState('saving');
       try {
         await api.put(`/agents/${agentId}/system-tools`, { names: [...next] });
+        sysPending.current = null;
         setAgents((as) => (as ?? []).map((x) => (x.id === agentId ? { ...x, systemTools: [...next] } : x)));
         setSysSaveState('saved');
-        setTimeout(() => setSysSaveState((s) => (s === 'saved' ? '' : s)), 1500);
+        if (sysSavedResetTimer.current) clearTimeout(sysSavedResetTimer.current);
+        sysSavedResetTimer.current = setTimeout(() => setSysSaveState((s) => (s === 'saved' ? '' : s)), 1500);
       } catch (e) {
+        sysPending.current = null;
         setErr(String((e as Error).message));
         setSysSaveState('');
       }

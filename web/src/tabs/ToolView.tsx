@@ -47,7 +47,7 @@ export function ToolView({
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0 }}>{tool.displayName || tool.name}</h3>
           <span className={`tbadge ${tool.kind === 'composite' ? 'composite' : ''}`}>{kindLabel(tool.kind)}</span>
-          <span className="tbadge">{sourceName}</span>
+          {tool.sourceId && <span className="tbadge">{sourceName}</span>}
         </div>
         <div className="mono tool-subname">{tool.name}</div>
         {tool.description && <p className="hint">{tool.description}</p>}

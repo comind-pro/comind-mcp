@@ -45,9 +45,11 @@ export function Th({
 }) {
   const active = sort.key === id;
   return (
-    <th className={`th-sort${active ? ' on' : ''}`} onClick={() => sort.toggle(id)}>
-      {label}
-      <span className="th-arrow">{active ? (sort.dir === 1 ? '↑' : '↓') : ''}</span>
+    <th className={`th-sort${active ? ' on' : ''}`}>
+      <button type="button" onClick={() => sort.toggle(id)}>
+        {label}
+        <span className="th-arrow">{active ? (sort.dir === 1 ? '↑' : '↓') : ''}</span>
+      </button>
     </th>
   );
 }
@@ -108,7 +110,7 @@ export function Loading() {
   );
 }
 
-export function Sparkline({ points }: { points: number[] }) {
+export function Sparkline({ points, title }: { points: number[]; title?: string }) {
   const w = 100;
   const h = 28;
   const pad = 2;
@@ -116,7 +118,13 @@ export function Sparkline({ points }: { points: number[] }) {
   const step = points.length > 1 ? (w - pad * 2) / (points.length - 1) : 0;
   const pts = points.map((v, i) => `${pad + i * step},${h - pad - (v / max) * (h - pad * 2)}`).join(' ');
   return (
-    <svg className="sparkline" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
+    <svg
+      className="sparkline"
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      aria-hidden={title ? undefined : 'true'}
+    >
+      {title && <title>{title}</title>}
       <polyline
         points={pts}
         fill="none"
@@ -135,8 +143,10 @@ export function useConfirm() {
     label: string;
     resolve: (v: boolean) => void;
   } | null>(null);
-  const confirm = (msg: string, label = 'Delete') =>
-    new Promise<boolean>((resolve) => setState({ msg, label, resolve }));
+  const confirm = (msg: string, label = 'Delete') => {
+    if (state) state.resolve(false);
+    return new Promise<boolean>((resolve) => setState({ msg, label, resolve }));
+  };
   const settle = (v: boolean) => {
     state?.resolve(v);
     setState(null);

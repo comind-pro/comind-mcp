@@ -384,6 +384,13 @@ th {
 .th-sort.on {
   color: var(--text);
 }
+.th-sort button {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  white-space: nowrap;
+}
 .th-arrow {
   display: inline-block;
   width: 12px;
@@ -738,8 +745,6 @@ button.mini {
 .editor-section:first-child {
   border-top: none;
   padding-top: 0;
-}
-.editor-section:first-child {
   margin-top: 0;
 }
 .field-label {

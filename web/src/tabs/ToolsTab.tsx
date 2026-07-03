@@ -578,7 +578,15 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
                       <div
                         className={`tool-view-name ${t.displayName ? '' : 'mono'}`}
                         style={{ fontWeight: 500 }}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => setView(t)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setView(t);
+                          }
+                        }}
                       >
                         {t.displayName || t.name}
                       </div>

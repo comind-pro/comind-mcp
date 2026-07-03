@@ -18,13 +18,21 @@ export function GroupsTab() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [saveState, setSaveState] = useState<'' | 'saving' | 'saved'>('');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef<{ groupId: string; toolIds: string[] } | null>(null);
   const { confirm, element: confirmEl } = useConfirm();
 
-  // ponytail: cleanup fires on openId change (before the next open) and on unmount,
-  // which is enough to stop a stale debounce from firing after switching workspaces.
+  // cleanup fires on openId change (before the next open) and on unmount — flush any
+  // debounced save still pending instead of dropping it, so the last toggle isn't lost.
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (savedResetTimer.current) clearTimeout(savedResetTimer.current);
+      const p = pending.current;
+      if (p) {
+        pending.current = null;
+        void api.put(`/groups/${p.groupId}/tools`, { toolIds: p.toolIds }).catch(() => {});
+      }
     };
   }, [openId]);
 
@@ -78,16 +86,20 @@ export function GroupsTab() {
 
   const onToolsChange = (next: Set<string>, groupId: string) => {
     setAssigned(next);
+    pending.current = { groupId, toolIds: [...next] };
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       setErr('');
       setSaveState('saving');
       try {
         await api.put(`/groups/${groupId}/tools`, { toolIds: [...next] });
+        pending.current = null;
         setCounts((c) => ({ ...c, [groupId]: next.size }));
         setSaveState('saved');
-        setTimeout(() => setSaveState((s) => (s === 'saved' ? '' : s)), 1500);
+        if (savedResetTimer.current) clearTimeout(savedResetTimer.current);
+        savedResetTimer.current = setTimeout(() => setSaveState((s) => (s === 'saved' ? '' : s)), 1500);
       } catch (e) {
+        pending.current = null;
         setErr(String((e as Error).message));
         setSaveState('');
       }

@@ -187,6 +187,7 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
           value={totals ? `${totals.calls}` : '…'}
           label={`calls · 24h${totals?.errors ? ` (${totals.errors} errors)` : ''}`}
           spark={spark}
+          sparkTitle="Calls per day, last 7 days"
           onClick={() => onNavigate('activity')}
         />
       </div>
@@ -225,6 +226,7 @@ function StatCard({
   sub,
   subTone,
   spark,
+  sparkTitle,
   onClick,
 }: {
   value: number | string;
@@ -232,6 +234,7 @@ function StatCard({
   sub?: string;
   subTone?: 'err';
   spark?: number[] | null;
+  sparkTitle?: string;
   onClick: () => void;
 }) {
   return (
@@ -239,7 +242,7 @@ function StatCard({
       <span className="stat-card-v">{value}</span>
       <span className="stat-card-l">{label}</span>
       {sub && <span className={`stat-card-sub${subTone === 'err' ? ' err' : ''}`}>{sub}</span>}
-      {spark?.some((v) => v > 0) && <Sparkline points={spark} />}
+      {spark?.some((v) => v > 0) && <Sparkline points={spark} title={sparkTitle} />}
     </button>
   );
 }
