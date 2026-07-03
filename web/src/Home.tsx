@@ -130,6 +130,7 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   });
   const allDone = steps.every((s) => s.done);
   const firstOpen = steps.findIndex((s) => !s.done);
+  const failing = sources.filter((s) => s.status === 'error').length;
 
   if (!sources.length) {
     return (
@@ -168,8 +169,19 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
       )}
 
       <div className="home-stats">
-        <StatCard value={sources.length} label="connections" onClick={() => onNavigate('connections')} />
-        <StatCard value={tools.length} label="tools" onClick={() => onNavigate('tools')} />
+        <StatCard
+          value={sources.length}
+          label="connections"
+          sub={failing ? `${failing} failing` : 'all healthy'}
+          subTone={failing ? 'err' : undefined}
+          onClick={() => onNavigate('connections')}
+        />
+        <StatCard
+          value={tools.length}
+          label="tools"
+          sub={`${tools.filter((t) => t.visible).length} visible to agents`}
+          onClick={() => onNavigate('tools')}
+        />
         <StatCard value={groups.length} label="workspaces" onClick={() => onNavigate('workspaces')} />
         <StatCard
           value={totals ? `${totals.calls}` : '…'}
@@ -210,11 +222,15 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
 function StatCard({
   value,
   label,
+  sub,
+  subTone,
   spark,
   onClick,
 }: {
   value: number | string;
   label: string;
+  sub?: string;
+  subTone?: 'err';
   spark?: number[] | null;
   onClick: () => void;
 }) {
@@ -222,6 +238,7 @@ function StatCard({
     <button className="stat-card" onClick={onClick}>
       <span className="stat-card-v">{value}</span>
       <span className="stat-card-l">{label}</span>
+      {sub && <span className={`stat-card-sub${subTone === 'err' ? ' err' : ''}`}>{sub}</span>}
       {spark?.some((v) => v > 0) && <Sparkline points={spark} />}
     </button>
   );
