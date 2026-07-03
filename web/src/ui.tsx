@@ -129,6 +129,36 @@ export function Sparkline({ points }: { points: number[] }) {
   );
 }
 
+export function useConfirm() {
+  const [state, setState] = useState<{
+    msg: string;
+    label: string;
+    resolve: (v: boolean) => void;
+  } | null>(null);
+  const confirm = (msg: string, label = 'Delete') =>
+    new Promise<boolean>((resolve) => setState({ msg, label, resolve }));
+  const settle = (v: boolean) => {
+    state?.resolve(v);
+    setState(null);
+  };
+  const element = state ? (
+    <div className="modal-overlay" onClick={() => settle(false)}>
+      <div className="modal modal-confirm" onClick={(e) => e.stopPropagation()}>
+        <p className="confirm-msg">{state.msg}</p>
+        <div className="confirm-actions">
+          <button className="ghost" onClick={() => settle(false)}>
+            Cancel
+          </button>
+          <button className="danger" onClick={() => settle(true)}>
+            {state.label}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+  return { confirm, element };
+}
+
 export function Advanced({ summary = 'Advanced', children }: { summary?: string; children: ReactNode }) {
   return (
     <details className="advanced">

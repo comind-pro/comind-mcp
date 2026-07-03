@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Secret } from '../api.js';
-import { EmptyState, Loading } from '../ui.js';
+import { EmptyState, Loading, useConfirm } from '../ui.js';
 
 export function SecretsTab() {
   const [secrets, setSecrets] = useState<Secret[] | null>(null);
@@ -11,6 +11,7 @@ export function SecretsTab() {
   const [err, setErr] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
+  const { confirm, element: confirmEl } = useConfirm();
 
   const load = () =>
     api
@@ -58,13 +59,14 @@ export function SecretsTab() {
   };
 
   const del = async (id: string) => {
-    if (!confirm('Delete this secret?')) return;
+    if (!(await confirm('Delete this secret?', 'Delete secret'))) return;
     await api.del(`/secrets/${id}`).catch((e) => setErr(String(e.message)));
     await load();
   };
 
   return (
     <>
+      {confirmEl}
       <div className="intro">
         Secrets hold tokens and passwords your connections need. They're stored encrypted; agents never see them.
       </div>

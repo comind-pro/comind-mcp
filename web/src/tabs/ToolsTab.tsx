@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { PageId } from '../App.js';
 import { api, type Source, type Tool } from '../api.js';
 import { Icon } from '../icons.js';
-import { EmptyState, Loading, Th, useSort } from '../ui.js';
+import { EmptyState, Loading, Th, useConfirm, useSort } from '../ui.js';
 import { buildInput, parseInput } from './SchemaBuilder.js';
 import { type Cfg, type Editing, type MetaForm, type Step, ToolEditor } from './ToolEditor.js';
 import { ToolView } from './ToolView.js';
@@ -57,6 +57,7 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
     [sources],
   );
   const sort = useSort(filtered, sortGetters);
+  const { confirm, element: confirmEl } = useConfirm();
 
   if (tools === null) return <Loading />;
 
@@ -415,7 +416,7 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   };
 
   const del = async (id: string) => {
-    if (!confirm('Delete this tool?')) return;
+    if (!(await confirm('Delete this tool?', 'Delete tool'))) return;
     await api.del(`/tools/${id}`).catch((e) => setErr(String(e.message)));
     if (ed?.id === id) close();
     await load();
@@ -456,6 +457,7 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
 
   return (
     <>
+      {confirmEl}
       <div className="intro">
         Tools are the individual actions agents can call. Hide the noisy ones, rename the cryptic ones, or combine
         several into a recipe.

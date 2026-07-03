@@ -1097,6 +1097,19 @@ button.mini {
 .modal h3 {
   margin: 0 0 4px;
 }
+.modal-confirm {
+  width: min(420px, calc(100vw - 32px));
+}
+.confirm-msg {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .nav-burger {
   display: none;
 }

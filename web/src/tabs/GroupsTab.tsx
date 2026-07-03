@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, type Group, type Schedule, type Source, type Tool } from '../api.js';
 import { Icon } from '../icons.js';
-import { CopyRow, EmptyState, Loading } from '../ui.js';
+import { CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
 import { ToolPicker } from './ToolPicker.js';
 
 export function GroupsTab() {
@@ -18,6 +18,7 @@ export function GroupsTab() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [saveState, setSaveState] = useState<'' | 'saving' | 'saved'>('');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { confirm, element: confirmEl } = useConfirm();
 
   // ponytail: cleanup fires on openId change (before the next open) and on unmount,
   // which is enough to stop a stale debounce from firing after switching workspaces.
@@ -114,7 +115,13 @@ export function GroupsTab() {
   };
 
   const delGroup = async (g: Group) => {
-    if (!confirm(`Delete workspace "${g.name}"? Its agent grants and schedules will be removed too.`)) return;
+    if (
+      !(await confirm(
+        `Delete workspace "${g.name}"? Its agent grants and schedules will be removed too.`,
+        'Delete workspace',
+      ))
+    )
+      return;
     setErr('');
     try {
       await api.del(`/groups/${g.id}`);
@@ -193,6 +200,7 @@ export function GroupsTab() {
 
   return (
     <>
+      {confirmEl}
       <div className="intro">
         A workspace bundles chosen tools into one endpoint you hand to an agent. Different agents can get different
         workspaces.

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type Agent, type AgentKey, api, type Group, SYSTEM_TOOLS } from '../api.js';
 import { Icon } from '../icons.js';
-import { Advanced, CopyRow, EmptyState, Loading } from '../ui.js';
+import { Advanced, CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
 
 interface InspectGroup {
   group: { id: string; name: string; slug: string; schedulingEnabled: boolean };
@@ -50,6 +50,7 @@ export function AgentsTab() {
   const [err, setErr] = useState('');
   const [sysSaveState, setSysSaveState] = useState<'' | 'saving' | 'saved'>('');
   const sysSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { confirm, element: confirmEl } = useConfirm();
 
   // ponytail: cleanup fires on openId change (before the next open) and on unmount.
   useEffect(() => {
@@ -113,7 +114,7 @@ export function AgentsTab() {
   };
 
   const delKey = async (id: string, keyId: string) => {
-    if (!confirm('Delete this key? It stops working immediately.')) return;
+    if (!(await confirm('Delete this key? It stops working immediately.', 'Delete key'))) return;
     await api.del(`/agents/${id}/keys/${keyId}`).catch((e) => setErr(String(e.message)));
     setFreshKeys((m) => {
       const n = { ...m };
@@ -158,7 +159,7 @@ export function AgentsTab() {
   };
 
   const del = async (id: string) => {
-    if (!confirm('Delete this agent? Its key stops working immediately.')) return;
+    if (!(await confirm('Delete this agent? Its key stops working immediately.', 'Delete agent'))) return;
     await api.del(`/agents/${id}`);
     if (openId === id) setOpenId(null);
     await load();
@@ -424,6 +425,7 @@ export function AgentsTab() {
 
   return (
     <>
+      {confirmEl}
       <div className="intro">
         An agent is anything that connects from outside — Claude, ChatGPT, a script. Each agent gets its own key and
         sees only the workspaces you grant it.

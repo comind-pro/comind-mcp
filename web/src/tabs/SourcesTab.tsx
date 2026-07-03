@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Source, type Tool } from '../api.js';
 import { Icon, type IconName } from '../icons.js';
-import { Advanced, EmptyState, Loading } from '../ui.js';
+import { Advanced, EmptyState, Loading, useConfirm } from '../ui.js';
 import { type Cfg, DEFAULTS, KIND_META, type Kind, SourceFields } from './SourceFields.js';
 
 const KINDS: Kind[] = ['mcp', 'openapi', 'http', 'imap', 'sql', 'ga'];
@@ -38,6 +38,7 @@ export function SourcesTab() {
   const [err, setErr] = useState('');
   const [ed, setEd] = useState<Editing | null>(null);
   const [busy, setBusy] = useState('');
+  const { confirm, element: confirmEl } = useConfirm();
 
   const load = () =>
     api
@@ -215,7 +216,7 @@ export function SourcesTab() {
 
   const del = async () => {
     if (!ed || ed.id === 'new') return;
-    if (!confirm(`Delete source “${ed.name}”?`)) return;
+    if (!(await confirm(`Delete source “${ed.name}”?`, 'Delete connection'))) return;
     await api.del(`/sources/${ed.id}`).catch((e) => setErr(String(e.message)));
     await load();
     close();
@@ -465,6 +466,7 @@ export function SourcesTab() {
 
   return (
     <>
+      {confirmEl}
       <div className="intro">
         Connections are the upstream systems your tools come from. Add one, test it, then import its tools.
       </div>
