@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
-import { db, pool } from '../db/client.js';
+import { db, pool, runMigrations } from '../db/client.js';
 import { secrets, users } from '../db/schema.js';
 
 /** Integration test: group bundle export/import round-trip. Needs a reachable
@@ -57,6 +57,7 @@ describe.skipIf(!dbUp)('group bundle export/import', () => {
   let exported: Record<string, unknown>;
 
   beforeAll(async () => {
+    await runMigrations(); // CI: the pg service starts empty; workers race, so migrate here too
     tokenA = await register('a');
     tokenB = await register('b');
 
