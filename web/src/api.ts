@@ -125,6 +125,14 @@ export interface Group {
   description: string | null;
   schedulingEnabled: boolean;
 }
+/** Result of POST /groups/import (bundle v1). */
+export interface ImportReport {
+  group: 'created' | 'skipped';
+  sources: { created: string[]; skipped: string[] };
+  tools: { created: string[]; skipped: string[] };
+  secrets: { created: string[]; skipped: string[] };
+  secretsToFill: string[];
+}
 
 /** Built-in system.* introspection tools an agent can expose, with short labels
  *  and an example response so users see what each returns. */

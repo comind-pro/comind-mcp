@@ -41,6 +41,12 @@ export class HttpConnector implements Connector {
       if (path.includes(`{${k}}`)) path = path.replace(`{${k}}`, encodeURIComponent(String(v)));
       else body[k] = v;
     }
+    // Optional templated query params: drop pairs left unfilled (arg not given).
+    const [p, q] = path.split('?', 2);
+    if (q !== undefined) {
+      const kept = q.split('&').filter((pair) => !/\{[^}]+\}/.test(pair));
+      path = kept.length ? `${p}?${kept.join('&')}` : p;
+    }
 
     const method = ep.method.toUpperCase();
     const hasBody = method !== 'GET' && Object.keys(body).length > 0;

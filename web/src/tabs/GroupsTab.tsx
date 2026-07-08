@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { api, type Group, type Schedule, type Source, type Tool } from '../api.js';
+import { type ChangeEvent, useEffect, useRef, useState } from 'react';
+import { api, type Group, type ImportReport, type Schedule, type Source, type Tool } from '../api.js';
 import { Icon } from '../icons.js';
 import { CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
 import { ToolPicker } from './ToolPicker.js';
@@ -21,6 +21,8 @@ export function GroupsTab() {
   const savedResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<{ groupId: string; toolIds: string[] } | null>(null);
   const { confirm, element: confirmEl } = useConfirm();
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
 
   // cleanup fires on openId change (before the next open) and on unmount — flush any
   // debounced save still pending instead of dropping it, so the last toggle isn't lost.
@@ -126,6 +128,36 @@ export function GroupsTab() {
     setSchedules(await api.get<Schedule[]>(`/groups/${g.id}/schedules`));
   };
 
+  const exportGroup = async (g: Group) => {
+    setErr('');
+    try {
+      const bundle = await api.get<unknown>(`/groups/${g.id}/export`);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${g.slug}.bundle.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setErr(String((e as Error).message));
+    }
+  };
+
+  const importBundle = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-picking the same file
+    if (!file) return;
+    setErr('');
+    setImportReport(null);
+    try {
+      const bundle = JSON.parse(await file.text());
+      setImportReport(await api.post<ImportReport>('/groups/import', bundle));
+      await loadGroups();
+    } catch (err2) {
+      setErr(String((err2 as Error).message));
+    }
+  };
+
   const delGroup = async (g: Group) => {
     if (
       !(await confirm(
@@ -202,6 +234,10 @@ export function GroupsTab() {
       {!schedules.length && <div className="muted fs-12">No schedules.</div>}
 
       <div className="row divider-top">
+        <button className="ghost" onClick={() => exportGroup(g)}>
+          Export
+        </button>
+        <span className="ml-auto" />
         <button className="danger" onClick={() => delGroup(g)}>
           Delete workspace
         </button>
@@ -222,10 +258,38 @@ export function GroupsTab() {
         <div>
           <span className="sub">{groups.length} workspaces</span>
         </div>
-        <button className="btn-primary" onClick={() => setDraft(draft === null ? '' : null)}>
-          + New workspace
-        </button>
+        <div className="row">
+          <input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={importBundle} />
+          <button className="ghost" onClick={() => fileInput.current?.click()}>
+            Import
+          </button>
+          <button className="btn-primary" onClick={() => setDraft(draft === null ? '' : null)}>
+            + New workspace
+          </button>
+        </div>
       </div>
+
+      {importReport && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card-head-row">
+            <h2>Import {importReport.group === 'created' ? 'complete' : 'merged'}</h2>
+            <button className="ghost" onClick={() => setImportReport(null)}>
+              Dismiss
+            </button>
+          </div>
+          <div className="fs-12">
+            Sources: {importReport.sources.created.length} created, {importReport.sources.skipped.length} existing ·
+            Tools: {importReport.tools.created.length} created, {importReport.tools.skipped.length} existing · Secrets:{' '}
+            {importReport.secrets.created.length} created
+          </div>
+          {importReport.secretsToFill.length > 0 && (
+            <div className="fs-12" style={{ marginTop: 6 }}>
+              <strong>Fill these secrets on the Secrets page:</strong>{' '}
+              <span className="mono">{importReport.secretsToFill.join(', ')}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {err && !openId && draft === null && <div className="err-msg">{err}</div>}
 
