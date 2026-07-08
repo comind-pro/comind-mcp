@@ -6,6 +6,7 @@ import { pool } from './db/client.js';
 import { verifyJwt } from './lib/auth.js';
 import { agentRoutes } from './routes/agents.js';
 import { authRoutes } from './routes/auth.js';
+import { bundleRoutes } from './routes/bundles.js';
 import { compositeRoutes } from './routes/composite.js';
 import { gatewayRoutes } from './routes/gateway.js';
 import { groupRoutes } from './routes/groups.js';
@@ -86,6 +87,7 @@ export function buildApp(): FastifyInstance {
   app.register(compositeRoutes);
   app.register(virtualRoutes);
   app.register(groupRoutes);
+  app.register(bundleRoutes);
   app.register(agentRoutes);
   app.register(scheduleRoutes);
   app.register(secretRoutes);
