@@ -106,6 +106,13 @@ ingress:
       component: { name: server, preserve_path_prefix: true }
     - match: { path: { prefix: /composite-tools } }
       component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /virtual-tools } }
+      component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /python-tools } }
+      component: { name: server, preserve_path_prefix: true }
+    # per-account feature ACL the web UI reads to hide gated buttons
+    - match: { path: { prefix: /features } }
+      component: { name: server, preserve_path_prefix: true }
     - match: { path: { prefix: /schedules } }
       component: { name: server, preserve_path_prefix: true }
     - match: { path: { prefix: /secrets } }
