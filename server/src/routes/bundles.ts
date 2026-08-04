@@ -3,7 +3,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseSourceConfig, sourceKind } from '../connectors/index.js';
 import { db } from '../db/client.js';
-import { composites, groups, groupTools, secrets, sources, tools, virtuals } from '../db/schema.js';
+import { composites, groups, groupTools, scripts, secrets, sources, tools, virtuals } from '../db/schema.js';
+import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
 
@@ -16,7 +17,7 @@ import { ownerOf } from '../lib/req.js';
 
 const bundleTool = z.object({
   name: z.string().min(1),
-  kind: z.enum(['native', 'composite', 'virtual']),
+  kind: z.enum(['native', 'composite', 'virtual', 'python']),
   source: z.string().nullable().optional(),
   upstreamName: z.string().nullable().optional(),
   displayName: z.string().nullable().optional(),
@@ -34,6 +35,7 @@ const bundleTool = z.object({
     .nullable()
     .optional(),
   composite: z.record(z.unknown()).nullable().optional(),
+  python: z.object({ code: z.string() }).nullable().optional(),
 });
 
 const bundleSchema = z.object({
@@ -86,6 +88,12 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
       : [];
     const compositeByTool = new Map(compositeRows.map((c) => [c.toolId, c]));
 
+    const scriptIds = toolRows.filter((t) => t.kind === 'python').map((t) => t.id);
+    const scriptRows = scriptIds.length
+      ? await db.select().from(scripts).where(inArray(scripts.toolId, scriptIds))
+      : [];
+    const scriptByTool = new Map(scriptRows.map((s) => [s.toolId, s]));
+
     // secret names: ${secret.X} refs in configs/requests + scoped secrets of bundled sources
     const refs = new Set<string>();
     for (const s of sourceRows) secretRefs(s.config, refs);
@@ -135,6 +143,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
             }
           : null,
         composite: (compositeByTool.get(t.id)?.definition as Record<string, unknown> | undefined) ?? null,
+        python: scriptByTool.has(t.id) ? { code: scriptByTool.get(t.id)?.code ?? '' } : null,
       })),
       secrets: secretEntries,
     };
@@ -157,6 +166,11 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
       if (t.kind === 'virtual' && !t.virtual) return reply.code(400).send({ error: 'missing_virtual', tool: t.name });
       if (t.kind === 'composite' && !t.composite)
         return reply.code(400).send({ error: 'missing_composite', tool: t.name });
+      if (t.kind === 'python' && !t.python) return reply.code(400).send({ error: 'missing_python', tool: t.name });
+    }
+    // Import is another way to author a python tool — same gate as POST /python-tools.
+    if (bundle.tools.some((t) => t.kind === 'python') && !(await hasFeature(owner, PYTHON_TOOLS))) {
+      return reply.code(403).send({ error: 'feature_disabled', feature: PYTHON_TOOLS });
     }
 
     const report = {
@@ -284,6 +298,9 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         }
         if (t.kind === 'composite' && t.composite) {
           await tx.insert(composites).values({ id: newId(), toolId: id, definition: t.composite });
+        }
+        if (t.kind === 'python' && t.python) {
+          await tx.insert(scripts).values({ id: newId(), toolId: id, code: t.python.code });
         }
         linkIds.push(id);
         report.tools.created.push(t.name);

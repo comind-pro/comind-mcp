@@ -4,6 +4,8 @@ import { ZodError } from 'zod';
 import { config } from './config.js';
 import { pool } from './db/client.js';
 import { verifyJwt } from './lib/auth.js';
+import { hasFeature, PYTHON_TOOLS } from './lib/features.js';
+import { ownerOf } from './lib/req.js';
 import { agentRoutes } from './routes/agents.js';
 import { authRoutes } from './routes/auth.js';
 import { bundleRoutes } from './routes/bundles.js';
@@ -13,6 +15,7 @@ import { groupRoutes } from './routes/groups.js';
 import { oauthRoutes } from './routes/oauth.js';
 import { oauthProviderRoutes } from './routes/oauth-provider.js';
 import { observabilityRoutes } from './routes/observability.js';
+import { pythonRoutes } from './routes/python.js';
 import { scheduleRoutes } from './routes/schedules.js';
 import { secretRoutes } from './routes/secrets.js';
 import { sourceRoutes } from './routes/sources.js';
@@ -86,6 +89,7 @@ export function buildApp(): FastifyInstance {
   app.register(toolRoutes);
   app.register(compositeRoutes);
   app.register(virtualRoutes);
+  app.register(pythonRoutes);
   app.register(groupRoutes);
   app.register(bundleRoutes);
   app.register(agentRoutes);
@@ -95,6 +99,10 @@ export function buildApp(): FastifyInstance {
   app.register(oauthRoutes);
   app.register(oauthProviderRoutes);
   app.register(gatewayRoutes);
+
+  // What this account may use — lets the UI hide gated features instead of
+  // offering a button that 403s.
+  app.get('/features', async (req) => ({ python_tools: await hasFeature(ownerOf(req), PYTHON_TOOLS) }));
 
   app.get('/healthz', async () => {
     let dbOk = false;

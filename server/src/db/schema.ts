@@ -56,7 +56,7 @@ export const tools = pgTable(
     id: id(),
     ownerId: ownerId(),
     sourceId: text('source_id').references(() => sources.id, { onDelete: 'cascade' }),
-    kind: text('kind', { enum: ['native', 'composite', 'virtual'] }).notNull(),
+    kind: text('kind', { enum: ['native', 'composite', 'virtual', 'python'] }).notNull(),
     // `name` = curated registry key, unique per owner (e.g. "gmail.send").
     name: text('name').notNull(),
     // `upstreamName` = raw tool/operation name to call on the source connector.
@@ -92,6 +92,35 @@ export const composites = pgTable('composites', {
     .references(() => tools.id, { onDelete: 'cascade' }),
   definition: jsonb('definition').notNull().$type<Record<string, unknown>>(),
 });
+
+/** Python source for tools with kind = 'python'. Runs sandboxed (Pyodide/WASM,
+ *  no network, no host FS); reaches the outside world only via `call(...)`. */
+export const scripts = pgTable('scripts', {
+  id: id(),
+  toolId: text('tool_id')
+    .notNull()
+    .references(() => tools.id, { onDelete: 'cascade' }),
+  code: text('code').notNull(),
+  // Reserved for pyodide packages (numpy/pandas); unused today, always [].
+  packages: jsonb('packages').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+});
+
+/** Per-user feature ACL. A missing row means OFF — new accounts get nothing.
+ *  Rows are granted by hand (SQL); there is no admin API yet. */
+export const userFeatures = pgTable(
+  'user_features',
+  {
+    id: id(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    feature: text('feature').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+  },
+  (t) => ({
+    userFeatureIdx: uniqueIndex('user_features_unique').on(t.userId, t.feature),
+  }),
+);
 
 /** Fixed-window rate-limit counter, shared across instances (one row per
  *  key+minute-bucket). Atomic upsert increments `count`; old buckets are pruned. */
@@ -385,6 +414,8 @@ export const schema = {
   sources,
   tools,
   composites,
+  scripts,
+  userFeatures,
   groups,
   groupTools,
   agents,

@@ -16,7 +16,8 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   const [err, setErr] = useState('');
 
   const [search, setSearch] = useState('');
-  const [fType, setFType] = useState<'all' | 'native' | 'composite' | 'virtual'>('all');
+  const [fType, setFType] = useState<'all' | 'native' | 'composite' | 'virtual' | 'python'>('all');
+  const [pyEnabled, setPyEnabled] = useState(false);
   const [fSource, setFSource] = useState('');
   const [ed, setEd] = useState<Editing | null>(null);
   const [view, setView] = useState<Tool | null>(null);
@@ -32,6 +33,11 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   useEffect(() => {
     void load();
     void api.get<Source[]>('/sources').then(setSources);
+    // gated feature: hide the button rather than offer one that 403s
+    void api
+      .get<{ python_tools: boolean }>('/features')
+      .then((f) => setPyEnabled(f.python_tools))
+      .catch(() => setPyEnabled(false));
   }, []);
 
   const srcName = (id: string | null) => sources.find((s) => s.id === id)?.name ?? 'Unknown source';
@@ -151,6 +157,34 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
       stepTest: {},
     });
 
+  const openNewPython = () =>
+    setEd({
+      id: 'new',
+      kind: 'python',
+      name: slugName('New python tool'),
+      displayName: 'New python tool',
+      description: '',
+      code: '',
+      meta: emptyMeta(),
+      params: [],
+      required: [],
+      outParams: [],
+      outRequired: [],
+      steps: [],
+      output: undefined,
+      outMode: 'text',
+      right: 'test',
+      jsonRaw: null,
+      jsonError: null,
+      testVals: {},
+      testOut: null,
+      testing: false,
+      pickerStep: null,
+      pickerQuery: '',
+      stepSchemaOpen: {},
+      stepTest: {},
+    });
+
   const open = async (t: Tool) => {
     if (ed?.id === t.id) return close();
     setErr('');
@@ -218,6 +252,10 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
             }
           : e,
       );
+    }
+    if (t.kind === 'python') {
+      const full = await api.get<{ code?: string }>(`/python-tools/${t.id}`);
+      setEd((e) => (e && e.id === t.id ? { ...e, code: full.code ?? '' } : e));
     }
     if (t.kind === 'composite') {
       const full = await api.get<Tool & { definition: Cfg }>(`/composite-tools/${t.id}`);
@@ -415,6 +453,48 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
     }
   };
 
+  const savePython = async (e: Editing) => {
+    setErr('');
+    const code = (e.code ?? '').trim();
+    if (!code) return setErr('Code is required');
+    const inputSchema = buildInput(e.params, e.required);
+    const outputSchema = e.outParams.length ? buildInput(e.outParams, e.outRequired) : null;
+    const mb = metaBody(e);
+    if (mb === 'error') return;
+    try {
+      if (e.id === 'new') {
+        const created = await api.post<{ id: string }>('/python-tools', {
+          name: e.name,
+          displayName: e.displayName || undefined,
+          description: e.description || undefined,
+          code,
+          inputSchema,
+          outputSchema,
+        });
+        if (Object.keys(mb).length) await api.patch(`/tools/${created.id}`, mb);
+        await load();
+        // stay in the editor, now bound to the saved tool
+        setEd((prev) => (prev && prev.id === 'new' ? { ...prev, id: created.id } : prev));
+        return;
+      }
+      await api.patch(`/python-tools/${e.id}`, { code });
+      const idBody: Cfg = {
+        displayName: e.displayName || null,
+        description: e.description || null,
+        inputSchema,
+        outputSchema,
+        ...mb,
+      };
+      const orig = tools.find((t) => t.id === e.id);
+      if (e.name && e.name !== orig?.name) idBody.name = e.name;
+      await api.patch(`/tools/${e.id}`, idBody);
+      await load();
+      close();
+    } catch (err) {
+      setErr(String((err as Error).message));
+    }
+  };
+
   const del = async (id: string) => {
     if (!(await confirm('Delete this tool?', 'Delete tool'))) return;
     await api.del(`/tools/${id}`).catch((e) => setErr(String(e.message)));
@@ -429,14 +509,8 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
 
   const visibleTotal = tools.filter((t) => t.visible).length;
 
-  const onSave = () =>
-    ed
-      ? ed.kind === 'composite'
-        ? saveComposite(ed)
-        : ed.kind === 'virtual'
-          ? saveVirtual(ed)
-          : saveNative(ed)
-      : Promise.resolve();
+  const savers = { composite: saveComposite, virtual: saveVirtual, python: savePython, native: saveNative };
+  const onSave = () => (ed ? savers[ed.kind](ed) : Promise.resolve());
   const onDelete = () => (ed ? del(ed.id) : Promise.resolve());
 
   const editor = (e: Editing) => (
@@ -470,6 +544,11 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
           </span>
         </div>
         <div className="row" style={{ gap: 8 }}>
+          {pyEnabled && (
+            <button className="btn-primary" onClick={openNewPython}>
+              + New python tool
+            </button>
+          )}
           <button className="btn-primary" onClick={openNewVirtual}>
             + New virtual tool
           </button>
@@ -528,11 +607,21 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
           />
         </span>
         <span className="seg">
-          {(['all', 'native', 'composite', 'virtual'] as const).map((v) => (
-            <span key={v} className={fType === v ? 'on' : ''} onClick={() => setFType(v)}>
-              {v === 'all' ? 'All' : v === 'native' ? 'Native' : v === 'composite' ? 'Recipes' : 'Virtual'}
-            </span>
-          ))}
+          {(['all', 'native', 'composite', 'virtual', ...(pyEnabled ? (['python'] as const) : [])] as const).map(
+            (v) => (
+              <span key={v} className={fType === v ? 'on' : ''} onClick={() => setFType(v)}>
+                {v === 'all'
+                  ? 'All'
+                  : v === 'native'
+                    ? 'Native'
+                    : v === 'composite'
+                      ? 'Recipes'
+                      : v === 'virtual'
+                        ? 'Virtual'
+                        : 'Python'}
+              </span>
+            ),
+          )}
         </span>
         <select value={fSource} onChange={(e) => setFSource(e.target.value)}>
           <option value="">All sources</option>

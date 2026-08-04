@@ -1,9 +1,10 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { compositeDefinitionSchema, runCompositeTrace } from '../composite/engine.js';
+import { compositeDefinitionSchema, hasPythonStep, runCompositeTrace } from '../composite/engine.js';
 import { db } from '../db/client.js';
 import { composites, tools } from '../db/schema.js';
+import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
 import { invokeTool } from '../runtime/invoker.js';
@@ -23,9 +24,10 @@ async function ownedComposite(id: string, owner: string) {
   return tool && tool.kind === 'composite' ? tool : null;
 }
 
-/** Referenced step tools must belong to the owner. */
-async function missingRefs(steps: { tool: string }[], owner: string) {
-  const refNames = [...new Set(steps.map((s) => s.tool))];
+/** Referenced step tools must belong to the owner. Python steps reference none. */
+async function missingRefs(steps: { tool?: string }[], owner: string) {
+  const refNames = [...new Set(steps.map((s) => s.tool).filter((n): n is string => Boolean(n)))];
+  if (!refNames.length) return [];
   const found = await db
     .select()
     .from(tools)
@@ -40,6 +42,9 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
 
     const missing = await missingRefs(body.definition.steps, owner);
     if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
+    if (hasPythonStep(body.definition) && !(await hasFeature(owner, PYTHON_TOOLS))) {
+      return reply.code(403).send({ error: 'feature_disabled', feature: PYTHON_TOOLS });
+    }
 
     const [clash] = await db
       .select()
@@ -103,6 +108,9 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
     if (body.definition) {
       const missing = await missingRefs(body.definition.steps, owner);
       if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
+      if (hasPythonStep(body.definition) && !(await hasFeature(owner, PYTHON_TOOLS))) {
+        return reply.code(403).send({ error: 'feature_disabled', feature: PYTHON_TOOLS });
+      }
       await db.update(composites).set({ definition: body.definition }).where(eq(composites.toolId, id));
       await db
         .update(tools)
@@ -135,6 +143,10 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const [comp] = await db.select().from(composites).where(eq(composites.toolId, id));
     if (!comp) return reply.code(404).send({ error: 'definition_missing' });
+    // This endpoint runs the engine directly, so it needs the same gate as dispatch().
+    if (hasPythonStep(comp.definition) && !(await hasFeature(owner, PYTHON_TOOLS))) {
+      return reply.code(403).send({ error: 'feature_disabled', feature: PYTHON_TOOLS });
+    }
 
     const args = ((req.body as { args?: Record<string, unknown> })?.args ?? {}) as Record<string, unknown>;
     const { result, steps } = await runCompositeTrace(

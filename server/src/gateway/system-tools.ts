@@ -421,7 +421,7 @@ async function dispatch(ctx: SystemCtx, name: string, args: Record<string, unkno
           description: t.displayName
             ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
             : (t.description ?? null),
-          category: src ? categoryOf(src.kind) : t.kind === 'virtual' ? 'virtual' : 'custom',
+          category: src ? categoryOf(src.kind) : t.kind === 'virtual' || t.kind === 'python' ? t.kind : 'custom',
           source: src?.name ?? null,
           read_only: t.readOnly ?? null,
           dangerous: t.dangerous ?? null,

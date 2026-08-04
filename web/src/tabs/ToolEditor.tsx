@@ -15,6 +15,8 @@ export interface RunResult {
   content: { text?: string }[];
   isError?: boolean;
   steps?: StepTrace[];
+  /** python tools: whatever the script printed */
+  stdout?: string;
 }
 export type Cfg = Record<string, any>;
 export interface Step {
@@ -43,10 +45,25 @@ export interface VReq {
   body: string; // JSON text
 }
 
+export const PY_PLACEHOLDER = `# args        — this tool's input (dict)
+# await call(name, args) — run another tool: {"text", "structured", "is_error"}
+# output      — assign your result here (or define def main(args))
+# NOTE: a top-level 'return' is a SyntaxError — assign to output, or use def main(args).
+
+rows = []
+for tok in args["tokens"]:
+    book = await call("market.get_order_book", {"token_id": tok})
+    if book["is_error"]:
+        continue
+    rows.append(book["structured"])
+
+output = {"count": len(rows), "rows": rows}`;
+
 export interface Editing {
   id: string;
-  kind: 'native' | 'composite' | 'virtual';
+  kind: 'native' | 'composite' | 'virtual' | 'python';
   name: string;
+  code?: string; // python body
   meta?: MetaForm; // discovery metadata
   req?: VReq; // virtual request template
   executable?: boolean; // virtual: HTTP-proxied (true) vs descriptive catalog-only (false)
@@ -123,7 +140,7 @@ export function ToolEditor({
             displayName: v,
             jsonRaw: null,
             jsonError: null,
-            ...(x.id === 'new' && (x.kind === 'composite' || x.kind === 'virtual') ? { name: slugName(v) } : {}),
+            ...(x.id === 'new' && x.kind !== 'native' ? { name: slugName(v) } : {}),
           }
         : x,
     );
@@ -146,7 +163,10 @@ export function ToolEditor({
         if (v !== undefined && v !== '') args[p.name] = v;
       }
       let r: RunResult;
-      if (e.kind === 'virtual' && e.id === 'new' && e.req) {
+      if (e.kind === 'python') {
+        // always run what's in the editor, saved or not — the authoring loop
+        r = await api.post<RunResult>('/python-tools/test', { code: e.code ?? '', args });
+      } else if (e.kind === 'virtual' && e.id === 'new' && e.req) {
         // unsaved draft: run statelessly (descriptive → returns the catalog entry)
         const rq = e.req;
         if (e.executable === false) {
@@ -320,6 +340,7 @@ export function ToolEditor({
   // ----- editor pane -----
   const isComp = e.kind === 'composite';
   const isVirt = e.kind === 'virtual';
+  const isPy = e.kind === 'python';
   const setReq = (p: Partial<VReq>) => setEd((x) => (x?.req ? { ...x, req: { ...x.req, ...p } } : x));
   const pool = tools.filter((t) => t.name !== e.name);
   const pq = e.pickerQuery.toLowerCase();
@@ -353,14 +374,16 @@ export function ToolEditor({
         <div className="editor-section">Definition</div>
         <div className="row" style={{ gap: 12, marginBottom: 12 }}>
           <div className="flex-1">
-            <div className="field-label">Name · unique · {isComp ? 'from display name' : 'from source'} · locked</div>
+            <div className="field-label">
+              Name · unique · {isComp || isPy ? 'from display name' : 'from source'} · locked
+            </div>
             <input
               className="mono"
               style={{ width: '100%', opacity: 0.6, cursor: 'not-allowed' }}
               value={e.name}
               readOnly
               title={
-                isComp
+                isComp || isPy
                   ? 'Auto-generated from the display name. Can not be set by hand.'
                   : 'Native tool key is tied to the source — relabel via Display name.'
               }
@@ -383,6 +406,27 @@ export function ToolEditor({
           onChange={(ev) => patch({ description: ev.target.value, jsonRaw: null, jsonError: null })}
           placeholder="what the tool does"
         />
+
+        {isPy && (
+          <>
+            <div className="editor-section" style={{ marginTop: 6 }}>
+              Python
+            </div>
+            <div className="hint">
+              Runs sandboxed: no network, no filesystem. Reach other tools with <code>await call(name, args)</code>.
+              Assign the result to <code>output</code> (or define <code>def main(args)</code>). A top-level{' '}
+              <code>return</code> is a SyntaxError — use <code>if/else</code>.
+            </div>
+            <textarea
+              className="mono"
+              style={{ minHeight: 320, marginBottom: 14, whiteSpace: 'pre', overflowWrap: 'normal', overflowX: 'auto' }}
+              spellCheck={false}
+              value={e.code ?? ''}
+              onChange={(ev) => patch({ code: ev.target.value, testOut: null })}
+              placeholder={PY_PLACEHOLDER}
+            />
+          </>
+        )}
 
         {isVirt && e.req && (
           <>
@@ -845,11 +889,16 @@ export function ToolEditor({
         ))}
         {!e.params.length && <div className="hint">Tool takes no input parameters.</div>}
         <div className="spacer" />
-        <button className="btn-primary" onClick={() => runTest(e)} disabled={e.testing || (e.id === 'new' && !isVirt)}>
+        <button
+          className="btn-primary"
+          onClick={() => runTest(e)}
+          disabled={e.testing || (e.id === 'new' && !isVirt && !isPy)}
+        >
           {e.testing ? <span className="spin" /> : '▶'} {isComp ? 'Run full tool' : 'Run test'}
         </button>
-        {e.id === 'new' && !isVirt && <div className="hint mt-6">Create the tool first to test it.</div>}
+        {e.id === 'new' && !isVirt && !isPy && <div className="hint mt-6">Create the tool first to test it.</div>}
         {e.id === 'new' && isVirt && <div className="hint mt-6">Runs the request without saving.</div>}
+        {isPy && <div className="hint mt-6">Runs the code in the editor, saved or not.</div>}
         {err && <div className="err-msg">{err}</div>}
 
         {e.testOut && (
@@ -872,6 +921,12 @@ export function ToolEditor({
                     <pre className="code-block">{s.text || '(empty)'}</pre>
                   </div>
                 ))}
+              </>
+            )}
+            {e.testOut.stdout && (
+              <>
+                <div className="editor-section">Printed</div>
+                <pre className="code-block">{e.testOut.stdout}</pre>
               </>
             )}
             <div className="editor-section">Output{e.testOut.isError ? ' · error' : ''}</div>

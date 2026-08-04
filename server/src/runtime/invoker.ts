@@ -1,14 +1,16 @@
 import { and, eq } from 'drizzle-orm';
 import { applyAuth } from '../auth/apply.js';
 import { buildMcpOAuthProvider } from '../auth/mcp-oauth.js';
-import { runComposite } from '../composite/engine.js';
+import { hasPythonStep, runComposite } from '../composite/engine.js';
 import { createConnector } from '../connectors/index.js';
 import type { CallResult } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
 import { db } from '../db/client.js';
-import { callLogs, composites, sources, tools, virtuals } from '../db/schema.js';
+import { callLogs, composites, scripts, sources, tools, virtuals } from '../db/schema.js';
+import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
+import { runPython } from './python.js';
 import { runVirtual, staticResult } from './virtual.js';
 
 export interface InvokeContext {
@@ -95,7 +97,26 @@ async function dispatch(
   if (tool.kind === 'composite') {
     const [comp] = await db.select().from(composites).where(eq(composites.toolId, tool.id));
     if (!comp) return textResult(`Composite definition missing for ${toolName}`, true);
+    if (hasPythonStep(comp.definition) && !(await hasFeature(ctx.ownerId, PYTHON_TOOLS))) {
+      return textResult(`Python steps are not enabled for this account (${toolName})`, true);
+    }
     return runComposite(comp.definition, args, (name, a, d) => invokeTool(name, a, ctx, d), depth);
+  }
+
+  if (tool.kind === 'python') {
+    // Re-checked on every call, not just at authoring time: revoking the feature
+    // must also stop schedules and composites that already reference this tool.
+    if (!(await hasFeature(ctx.ownerId, PYTHON_TOOLS))) {
+      return textResult(`Python tools are not enabled for this account (${toolName})`, true);
+    }
+    const [script] = await db.select().from(scripts).where(eq(scripts.toolId, tool.id));
+    if (!script) return textResult(`Python source missing for ${toolName}`, true);
+    try {
+      const { result } = await runPython(script.code, { args }, (name, a, d) => invokeTool(name, a, ctx, d), depth);
+      return result;
+    } catch (err) {
+      return textResult(err instanceof Error ? err.message : String(err), true);
+    }
   }
 
   if (tool.kind === 'virtual') {

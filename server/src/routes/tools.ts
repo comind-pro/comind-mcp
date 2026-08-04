@@ -41,7 +41,9 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
     const q = req.query as { sourceId?: string; kind?: string; visible?: string };
     const filters: SQL[] = [eq(tools.ownerId, ownerOf(req))];
     if (q.sourceId) filters.push(eq(tools.sourceId, q.sourceId));
-    if (q.kind === 'native' || q.kind === 'composite') filters.push(eq(tools.kind, q.kind));
+    if (q.kind === 'native' || q.kind === 'composite' || q.kind === 'virtual' || q.kind === 'python') {
+      filters.push(eq(tools.kind, q.kind));
+    }
     if (q.visible === 'true' || q.visible === 'false') filters.push(eq(tools.visible, q.visible === 'true'));
     return db
       .select()

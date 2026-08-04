@@ -71,8 +71,9 @@ DATABASE_URL=file:/data/comind SERVER_ENV=dev pnpm --filter comind-server start
 | Term | What it is |
 |---|---|
 | **Source** | Upstream: another MCP server (proxy), a REST API (OpenAPI 3.x → tools), or an HTTP service with explicit endpoints |
-| **Tool** | A single call. `native` (proxied from a source) or `composite` (a saved multi-step intent) |
+| **Tool** | A single call. `native` (proxied from a source), `composite` (a saved multi-step intent), `virtual` (an HTTP request template) or `python` (a sandboxed script) |
 | **Composite** | Deterministically runs several calls and assembles a single result (output template, `$.input.*`/`$.steps.ID.*`) |
+| **Python tool** | A body of Python run in a WASM sandbox — no network, no filesystem. Reaches other tools via `await call(...)`. Off by default (see below) |
 | **Group** | A virtual MCP server: a curated set of tools, exposed as a single endpoint `/g/:groupId/mcp` |
 | **Agent** | A consumer bound to a group via an API key. Sees only the group's toolset |
 | **Self-cron** | MCP tools `schedule_task` / `list_schedules` / `cancel_schedule` inside a group — the agent schedules itself |
@@ -91,6 +92,10 @@ POST /sources/:id/test     POST /sources/:id/import
 GET /tools  (?sourceId&kind&visible)   GET/PATCH/DELETE /tools/:id
 # composites
 POST/GET /composite-tools  GET/DELETE /composite-tools/:id   POST /composite-tools/:id/run
+# python tools (gated — see "Python tools")
+POST /python-tools         GET/PATCH/DELETE /python-tools/:id
+POST /python-tools/test    POST /python-tools/:id/run
+GET  /features
 # groups
 POST/GET /groups           GET/PATCH/DELETE /groups/:id
 GET/PUT /groups/:id/tools
@@ -118,6 +123,54 @@ SSE transport — planned.
 
 ---
 
+## Python tools
+
+A tool whose body is Python. Useful where the composite engine runs out of road:
+loops, arithmetic, parsing, folding many calls into one table.
+
+```python
+rows = []
+for tok in args["tokens"]:
+    book = await call("market.get_order_book", {"token_id": tok})   # any tool you own
+    if book["is_error"]:
+        continue
+    rows.append(book["structured"])
+
+output = {"count": len(rows), "rows": rows}
+```
+
+- In scope: `args` (the tool's input), `await call(name, args)` → `{"text", "structured", "is_error"}`,
+  and `steps` when the code is a step inside a composite (`{"id": "x", "python": "..."}`).
+- The result is whatever you assign to **`output`**. If the script defines `main`, `main(args)`
+  is called instead (sync or async). Neither one → an explicit error, never a silent empty result.
+- A top-level `return` is a Python `SyntaxError` and kills the whole script — assign to `output`,
+  or wrap the logic in `def main(args)`.
+- `print()` is captured and shown in the tool editor.
+
+**Sandbox.** Pyodide (CPython → WASM) in a worker thread: no network, no filesystem, no `process`.
+Node's network modules are blocked in the worker before Pyodide loads, so Python sockets fail too —
+the only way out of a script is `call(...)`, which goes through the normal tool runtime (auth, SSRF
+guard, call log). A runaway script is killed by terminating the worker.
+
+**Cost.** One worker per nesting level, booted lazily and kept warm: first run after start ≈ 1s,
+subsequent runs ≈ 10ms. Runs at the same level are serialised, so a long script delays other python
+tools (native/virtual tools are unaffected). A python tool calling a python tool calling a python
+tool is the limit — deeper nesting is refused.
+
+**Off by default.** Either set `PYTHON_TOOLS=1` (opens the feature to every account on the
+instance — local dev / single-user self-host), or grant it per user:
+
+```sql
+INSERT INTO user_features (id, user_id, feature, enabled)
+VALUES (gen_random_uuid()::text, '<user-id>', 'python_tools', true);
+```
+
+Revoking the row stops existing tools too — the ACL is re-checked on every call, not just at
+authoring time. Tuning: `PYTHON_TOOL_TIMEOUT_MS` (30000), `PYTHON_TOOL_MAX_CALLS` (100),
+`PYTHON_TOOL_MAX_CODE_BYTES` (65536).
+
+---
+
 ## Structure
 
 | Path | Purpose |
@@ -125,7 +178,7 @@ SSE transport — planned.
 | `server/` | Node service (Fastify + MCP SDK + Drizzle/Postgres) — control API + gateway |
 | `server/src/connectors/` | MCP proxy · OpenAPI→tools · HTTP connectors |
 | `server/src/composite/` | Composite engine (intent tools) |
-| `server/src/runtime/` | `invokeTool` — shared runtime (gateway / composite / scheduler) |
+| `server/src/runtime/` | `invokeTool` — shared runtime (gateway / composite / scheduler) + the Pyodide sandbox |
 | `server/src/gateway/` | Group's virtual MCP server + agent auth |
 | `server/src/scheduler/` | node-cron registry + JobRun + self-cron |
 | `server/src/secrets/` | Vault (AES-256-GCM) + `${secret.X}` injection |

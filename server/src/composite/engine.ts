@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { CallResult } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
+import { runPython } from '../runtime/python.js';
 
 /**
  * Composite definition: an intent tool that deterministically runs several
@@ -17,12 +18,19 @@ import { textResult } from '../connectors/types.js';
  *  - inside ${...} in a string → substituted as text
  * `when: "$.input.flag"` (optionally negated "!$.input.flag") gates a step.
  */
-export const stepSchema = z.object({
-  id: z.string().min(1),
-  tool: z.string().min(1),
-  args: z.record(z.unknown()).optional(),
-  when: z.string().optional(),
-});
+export const stepSchema = z
+  .object({
+    id: z.string().min(1),
+    tool: z.string().min(1).optional(),
+    // Alternative to `tool`: a python body run in the sandbox, with `args`
+    // (the composite's input) and `steps` (prior results) in scope.
+    python: z.string().min(1).optional(),
+    args: z.record(z.unknown()).optional(),
+    when: z.string().optional(),
+  })
+  .refine((s) => Boolean(s.tool) !== Boolean(s.python), {
+    message: 'step needs exactly one of "tool" or "python"',
+  });
 
 export const compositeDefinitionSchema = z.object({
   inputSchema: z.record(z.unknown()).optional(),
@@ -92,6 +100,14 @@ export interface StepTrace {
   text: string;
   isError: boolean;
   skipped?: boolean;
+  /** Python steps only: whatever the body printed. */
+  stdout?: string;
+}
+
+/** True when a definition contains a python step — the caller has to feature-gate it. */
+export function hasPythonStep(rawDef: unknown): boolean {
+  const parsed = compositeDefinitionSchema.safeParse(rawDef);
+  return parsed.success && parsed.data.steps.some((s) => Boolean(s.python));
 }
 
 /** Run a composite, returning both the final result and a per-step trace
@@ -107,16 +123,29 @@ export async function runCompositeTrace(
   const trace: StepTrace[] = [];
 
   for (const step of def.steps) {
+    const label = step.tool ?? 'python';
     if (step.when && !isTruthy(step.when, ctx)) {
-      trace.push({ id: step.id, tool: step.tool, args: {}, text: '', isError: false, skipped: true });
+      trace.push({ id: step.id, tool: label, args: {}, text: '', isError: false, skipped: true });
       continue;
     }
 
     const args = (resolveValue(step.args ?? {}, ctx) ?? {}) as Record<string, unknown>;
-    const res = await invoke(step.tool, args, depth + 1);
+    let res: CallResult;
+    let stdout: string | undefined;
+    if (step.python) {
+      try {
+        const run = await runPython(step.python, { args: ctx.input, steps: ctx.steps }, invoke, depth);
+        res = run.result;
+        stdout = run.stdout;
+      } catch (err) {
+        res = textResult(err instanceof Error ? err.message : String(err), true);
+      }
+    } else {
+      res = await invoke(step.tool as string, args, depth + 1);
+    }
     const text = contentText(res.content);
     ctx.steps[step.id] = { text, content: res.content, isError: Boolean(res.isError) };
-    trace.push({ id: step.id, tool: step.tool, args, text, isError: Boolean(res.isError) });
+    trace.push({ id: step.id, tool: label, args, text, isError: Boolean(res.isError), ...(stdout ? { stdout } : {}) });
 
     if (res.isError) return { result: textResult(`Step "${step.id}" failed: ${text}`, true), steps: trace };
   }

@@ -69,6 +69,17 @@ export const config = {
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
+  // Python tools run user-authored code. Off by default: without this flag a
+  // user needs an explicit `python_tools` row in user_features. Setting it to 1
+  // opens the feature to everyone on this instance (local dev / single-user).
+  pythonToolsOpen: env('PYTHON_TOOLS', '0') === '1',
+  // Wall-clock budget for one python tool run (a script looping over network
+  // `call()`s legitimately outlives a single virtual-tool fetch).
+  pythonTimeoutMs: Number(env('PYTHON_TOOL_TIMEOUT_MS', '30000')),
+  // Max `call()` invocations a single script may make.
+  pythonMaxCalls: Number(env('PYTHON_TOOL_MAX_CALLS', '100')),
+  // Max source size accepted for a python tool.
+  pythonMaxCodeBytes: Number(env('PYTHON_TOOL_MAX_CODE_BYTES', '65536')),
 };
 
 // Fail-fast: never silently run in a non-dev environment on the insecure dev

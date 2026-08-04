@@ -105,7 +105,7 @@ export interface RecommendedUse {
 export interface Tool {
   id: string;
   sourceId: string | null;
-  kind: 'native' | 'composite' | 'virtual';
+  kind: 'native' | 'composite' | 'virtual' | 'python';
   name: string;
   displayName: string | null;
   description: string | null;

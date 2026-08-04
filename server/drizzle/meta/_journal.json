@@ -92,6 +92,13 @@
       "when": 1782744804421,
       "tag": "0012_abandoned_marten_broadcloak",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1785862682645,
+      "tag": "0013_lowly_talos",
+      "breakpoints": true
     }
   ]
 }
