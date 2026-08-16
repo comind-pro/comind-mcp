@@ -76,7 +76,7 @@ DATABASE_URL=file:/data/comind SERVER_ENV=dev pnpm --filter comind-server start
 | **Python tool** | A body of Python run in a WASM sandbox — no network, no filesystem. Reaches other tools via `await call(...)`. Off by default (see below) |
 | **Group** | A virtual MCP server: a curated set of tools, exposed as a single endpoint `/g/:groupId/mcp` |
 | **Agent** | A consumer bound to a group via an API key. Sees only the group's toolset |
-| **Self-cron** | MCP tools `schedule_task` / `list_schedules` / `cancel_schedule` inside a group — the agent schedules itself |
+| **Self-cron** | MCP tools `schedule_task` / `list_schedules` / `cancel_schedule` inside a group — the agent schedules itself. Switch it off per workspace (Workspaces → Schedules): the tools disappear from the agent's `tools/list`, calls are refused, and the crons it already created are **paused** until it is back on. Your own schedules in that workspace keep running |
 | **Secret** | An encrypted credential (AES-256-GCM) or an env reference. Substituted at runtime via `${secret.NAME}`; the agent never sees it |
 
 ---

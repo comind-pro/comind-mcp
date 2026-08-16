@@ -2,7 +2,7 @@ import { and, eq, lt } from 'drizzle-orm';
 import cron, { type ScheduledTask } from 'node-cron';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { callLogs, groupTools, jobRuns, rateLimits, schedules, tools } from '../db/schema.js';
+import { callLogs, groups, groupTools, jobRuns, rateLimits, schedules, tools } from '../db/schema.js';
 import { newId } from '../lib/id.js';
 import { invokeTool } from '../runtime/invoker.js';
 
@@ -83,10 +83,26 @@ export async function listRuns(scheduleId: string) {
   return db.select().from(jobRuns).where(eq(jobRuns.scheduleId, scheduleId));
 }
 
+/**
+ * Is this schedule frozen by its group's self-scheduling switch?
+ * Turning the switch off hides the self-cron tools from the agent, but the crons
+ * it already created keep their rows — they simply stop firing until it is back
+ * on. Only agent-authored schedules are affected; the owner's own UI schedules in
+ * the same group keep running.
+ */
+export async function isFrozen(sch: { groupId: string; createdBy: 'agent' | 'ui' }): Promise<boolean> {
+  if (sch.createdBy !== 'agent') return false;
+  const [grp] = await db.select().from(groups).where(eq(groups.id, sch.groupId));
+  return grp ? !grp.schedulingEnabled : false;
+}
+
 /** Run a schedule once, recording a JobRun. Used by cron, run-now and tests. */
 export async function execute(scheduleId: string) {
   const [sch] = await db.select().from(schedules).where(eq(schedules.id, scheduleId));
   if (!sch) return;
+  // Checked here rather than at register time: the switch can flip while the cron
+  // is already in the registry, and this is the one path cron/run-now/tests share.
+  if (await isFrozen(sch)) return;
 
   const runId = newId();
   const startedAt = new Date();

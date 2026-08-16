@@ -9,6 +9,7 @@ import {
   deleteSchedule,
   execute,
   getSchedule,
+  isFrozen,
   isValidCron,
   listByGroup,
   listRuns,
@@ -67,6 +68,9 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
     const { sid } = req.params as { sid: string };
     const sch = await getSchedule(sid);
     if (!sch || sch.ownerId !== ownerOf(req)) return reply.code(404).send({ error: 'not_found' });
+    // execute() would silently skip a frozen schedule; say so instead of
+    // returning a runId-less success that reads as "ran fine".
+    if (await isFrozen(sch)) return reply.code(409).send({ error: 'scheduling_disabled' });
     const runId = await execute(sid);
     return { runId };
   });

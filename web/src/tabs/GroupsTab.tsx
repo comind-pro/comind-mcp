@@ -178,6 +178,19 @@ export function GroupsTab() {
 
   const assignedNames = tools.filter((t) => assigned.has(t.id)).map((t) => t.name);
 
+  /** Self-scheduling switch. Off = the agent loses the self-cron tools AND the
+   *  crons it already created stop firing (they resume when switched back on). */
+  const setScheduling = async (g: Group, enabled: boolean) => {
+    setErr('');
+    setGroups((gs) => (gs ?? []).map((x) => (x.id === g.id ? { ...x, schedulingEnabled: enabled } : x)));
+    try {
+      await api.patch(`/groups/${g.id}`, { schedulingEnabled: enabled });
+    } catch (e) {
+      setErr(String((e as Error).message));
+      void loadGroups(); // put the toggle back where the server says it is
+    }
+  };
+
   const body = (g: Group) => (
     <div className="editor-left no-border-r">
       <CopyRow label="MCP endpoint" text={`${api.base}/g/${g.slug}/mcp`} />
@@ -190,12 +203,28 @@ export function GroupsTab() {
       <div className="hint">Changes save automatically.</div>
       <ToolPicker tools={tools} sources={sources} selected={assigned} onChange={(next) => onToolsChange(next, g.id)} />
 
-      <div className="editor-section" style={{ marginTop: 22 }}>
-        Schedules
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 22 }}>
+        <span className="editor-section m0">Schedules</span>
+        <span className="seg">
+          <span className={g.schedulingEnabled ? 'on' : ''} onClick={() => setScheduling(g, true)}>
+            Agent may schedule
+          </span>
+          <span className={!g.schedulingEnabled ? 'on' : ''} onClick={() => setScheduling(g, false)}>
+            Off
+          </span>
+        </span>
       </div>
       <div className="hint">
-        Run a tool automatically on a cron schedule. Connected agents can also schedule themselves.
+        {g.schedulingEnabled
+          ? 'Run a tool automatically on a cron schedule. Connected agents can also schedule themselves.'
+          : 'Agents cannot see or call the self-cron tools here, and the crons they already created are paused. Your own schedules below keep running.'}
       </div>
+      {!g.schedulingEnabled && schedules.some((s) => s.createdBy === 'agent') && (
+        <div className="hint">
+          {schedules.filter((s) => s.createdBy === 'agent').length} agent schedule(s) paused — switch back on to resume,
+          or delete them below.
+        </div>
+      )}
       <div className="row">
         <input className="mono w-160" placeholder="0 9 * * *" value={cron} onChange={(e) => setCron(e.target.value)} />
         <select className="grow" value={schTool} onChange={(e) => setSchTool(e.target.value)}>
@@ -220,6 +249,7 @@ export function GroupsTab() {
           <span className="mono w-120">{s.cron}</span>
           <span className="mono grow">{s.toolName}</span>
           <span className="tbadge">{s.createdBy}</span>
+          {!g.schedulingEnabled && s.createdBy === 'agent' && <span className="tbadge">paused</span>}
           <span className="muted" style={{ fontSize: 12, width: 150, textAlign: 'right' }}>
             {s.lastRun ? new Date(s.lastRun).toLocaleString() : '—'}
           </span>
@@ -330,6 +360,7 @@ export function GroupsTab() {
               <span className="muted" style={{ fontSize: 12.5 }}>
                 {counts[g.id] ?? '…'} tools
               </span>
+              {!g.schedulingEnabled && <span className="tbadge">self-scheduling off</span>}
               <span className="ml-auto" />
               <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Configure'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
