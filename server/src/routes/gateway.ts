@@ -1,7 +1,13 @@
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { config } from '../config.js';
-import { authenticateAgent, authenticateAgentAll, buildAgentServer, buildGroupServer } from '../gateway/server.js';
+import {
+  authenticateAgent,
+  authenticateAgentAll,
+  buildAgentServer,
+  buildGroupServer,
+  resolveBearer,
+} from '../gateway/server.js';
 
 /**
  * Point OAuth-capable clients (ChatGPT, Claude.ai) at our protected-resource
@@ -13,7 +19,7 @@ import { authenticateAgent, authenticateAgentAll, buildAgentServer, buildGroupSe
 // `metaSuffix` is appended to the protected-resource metadata path: '' points at
 // the root document (what Claude.ai's connection probe fetches — mirrors
 // known-good servers), '/g/<id>/mcp' at the per-group document.
-function challenge(reply: FastifyReply, metaSuffix: string): FastifyReply {
+function challenge(reply: FastifyReply, metaSuffix: string, detail = 'missing bearer token'): FastifyReply {
   // Plain-text body (not a JSON-RPC error): a connection probe that parses the
   // 401 body as an MCP message must fall back to the WWW-Authenticate challenge,
   // not mistake it for an application-level error. Mirrors known-good servers.
@@ -25,7 +31,20 @@ function challenge(reply: FastifyReply, metaSuffix: string): FastifyReply {
     )
     .header('content-type', 'text/plain; charset=utf-8')
     .header('x-content-type-options', 'nosniff')
-    .send('missing bearer token');
+    .send(detail);
+}
+
+/**
+ * Why did a group request fail to authenticate? The status stays 401 with the
+ * same challenge (clients drive the OAuth flow off it), but the body should not
+ * say "missing bearer token" when the token was fine and the workspace was not —
+ * that sends whoever is wiring up an agent hunting the wrong problem.
+ * Only runs on the failure path, so the extra lookup costs nothing in normal use.
+ */
+async function groupAuthDetail(authHeader: string | undefined, ref: string): Promise<string> {
+  const r = await resolveBearer(authHeader);
+  if (!r) return 'missing or invalid bearer token';
+  return `bearer is valid, but this agent has no access to workspace "${ref}" (wrong workspace in the URL, or the agent was never granted it)`;
 }
 
 /** Stateless transport: no server-initiated streams / session teardown. */
@@ -43,7 +62,9 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
   app.post('/g/:groupId/mcp', async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
     const auth = await authenticateAgent(groupId, req.headers.authorization);
-    if (!auth) return challenge(reply, `/g/${groupId}/mcp`);
+    if (!auth) {
+      return challenge(reply, `/g/${groupId}/mcp`, await groupAuthDetail(req.headers.authorization, groupId));
+    }
 
     const server = await buildGroupServer(auth);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
@@ -85,7 +106,8 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
   const groupNoStream = async (req: { params: unknown; headers: { authorization?: string } }, reply: FastifyReply) => {
     const { groupId } = req.params as { groupId: string };
     const auth = await authenticateAgent(groupId, req.headers.authorization);
-    return auth ? methodNotAllowed(reply) : challenge(reply, `/g/${groupId}/mcp`);
+    if (auth) return methodNotAllowed(reply);
+    return challenge(reply, `/g/${groupId}/mcp`, await groupAuthDetail(req.headers.authorization, groupId));
   };
   app.get('/g/:groupId/mcp', groupNoStream);
   app.delete('/g/:groupId/mcp', groupNoStream);

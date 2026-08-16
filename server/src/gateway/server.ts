@@ -1,6 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, sources, tools } from '../db/schema.js';
@@ -39,7 +39,7 @@ interface Resolved {
 }
 
 /** Resolve a Bearer (raw agent key OR inbound-OAuth access token) to an agent. */
-async function resolveBearer(authHeader: string | undefined): Promise<Resolved | null> {
+export async function resolveBearer(authHeader: string | undefined): Promise<Resolved | null> {
   if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.slice('Bearer '.length).trim();
   if (!token) return null;
@@ -64,22 +64,29 @@ async function resolveBearer(authHeader: string | undefined): Promise<Resolved |
   return { agentId: ag.id, ownerId: ag.ownerId, systemTools: ag.systemTools ?? [], restrictGroupId: tok.groupId };
 }
 
-/** Resolve a Bearer token to an agent and verify it belongs to group `groupId`. */
-export async function authenticateAgent(groupId: string, authHeader: string | undefined): Promise<AgentAuth | null> {
+/** Resolve a Bearer token to an agent and verify it belongs to group `ref`.
+ *  `ref` is the id or the slug from the URL — the web UI hands out the slug form
+ *  (`/g/<slug>/mcp`), older connectors use the id, and both must work. Slugs are
+ *  unique per owner, so the token's owner disambiguates. */
+export async function authenticateAgent(ref: string, authHeader: string | undefined): Promise<AgentAuth | null> {
   const r = await resolveBearer(authHeader);
   if (!r) return null;
+
+  const [grp] = await db
+    .select()
+    .from(groups)
+    .where(or(eq(groups.id, ref), and(eq(groups.slug, ref), eq(groups.ownerId, r.ownerId))));
+  if (!grp) return null;
+
   // Group-scoped OAuth token only works on its own group.
-  if (r.restrictGroupId && r.restrictGroupId !== groupId) return null;
+  if (r.restrictGroupId && r.restrictGroupId !== grp.id) return null;
 
   // Agent must be granted access to this group.
   const [grant] = await db
     .select()
     .from(agentGroups)
-    .where(and(eq(agentGroups.agentId, r.agentId), eq(agentGroups.groupId, groupId)));
+    .where(and(eq(agentGroups.agentId, r.agentId), eq(agentGroups.groupId, grp.id)));
   if (!grant) return null;
-
-  const [grp] = await db.select().from(groups).where(eq(groups.id, groupId));
-  if (!grp) return null;
 
   return {
     agentId: r.agentId,
