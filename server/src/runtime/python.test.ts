@@ -1,12 +1,20 @@
 import net from 'node:net';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { config } from '../config.js';
 import type { CallResult } from '../connectors/types.js';
-
-// Shorter budget than prod: the runaway-script test has to actually wait it out.
-process.env.PYTHON_TOOL_TIMEOUT_MS = '5000';
-const { runPython, shutdownPython } = await import('./python.js');
+import { runPython, shutdownPython } from './python.js';
 
 const noInvoke = async (): Promise<CallResult> => ({ content: [{ type: 'text', text: 'unused' }] });
+
+// Boot Pyodide under the prod budget first. The boot is lazy and counts against
+// the run's budget: on a CI runner it takes 3–5s, so under the 5s budget below the
+// first test raced both its own timeout and the runtime's, and flaked.
+// Level 1 too — the nested-call test boots that worker inside the outer run's budget.
+beforeAll(async () => {
+  await Promise.all([0, 1].map((depth) => runPython('output = 1', { args: {} }, noInvoke, depth)));
+  // Shorter budget than prod: the runaway-script test has to actually wait it out.
+  config.pythonTimeoutMs = 5000;
+}, 60_000);
 
 afterAll(() => shutdownPython());
 
