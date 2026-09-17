@@ -18,7 +18,11 @@ const hasInteractiveOAuth = (cfg: Cfg) =>
   ['oauth2_authorization_code', 'mcp_oauth'].includes((cfg?.auth as { type?: string })?.type ?? '');
 
 type PendingSecret = { name: string; mode: 'value' | 'envRef'; value: string };
-type ImportChange = { name: string; status: 'created' | 'updated' | 'unchanged' | 'outdated'; fields: string[] };
+type ImportChange = {
+  name: string;
+  status: 'created' | 'updated' | 'unchanged' | 'outdated' | 'removed' | 'missing' | 'restored';
+  fields: string[];
+};
 type ImportReport = { mode: 'force' | 'new'; changes: ImportChange[] };
 
 interface Editing {
@@ -230,6 +234,7 @@ export function SourcesTab() {
   const importReportView = (r: ImportReport) => {
     const by = (st: ImportChange['status']) => r.changes.filter((c) => c.status === st);
     const [created, updated, outdated, unchanged] = [by('created'), by('updated'), by('outdated'), by('unchanged')];
+    const [removed, missing, restored] = [by('removed'), by('missing'), by('restored')];
     const rows = (list: ImportChange[], label: string, color: string) =>
       list.map((c) => (
         <div key={c.name} className="row" style={{ gap: 8, padding: '3px 0' }}>
@@ -244,15 +249,28 @@ export function SourcesTab() {
       <div style={{ margin: '12px 0' }}>
         <div className="status-line" style={{ marginBottom: 6 }}>
           {r.mode === 'force' ? 'Force re-import' : 'Import'}: {created.length} new
-          {r.mode === 'force' ? ` · ${updated.length} replaced` : ` · ${outdated.length} differ from source`} ·{' '}
-          {unchanged.length} unchanged
+          {restored.length > 0 && ` · ${restored.length} restored`}
+          {r.mode === 'force'
+            ? ` · ${updated.length} replaced · ${removed.length} removed`
+            : ` · ${outdated.length} differ from source · ${missing.length} gone from source`}{' '}
+          · {unchanged.length} unchanged
         </div>
         {rows(created, 'new', 'var(--ok)')}
+        {rows(restored, 'restored', 'var(--ok)')}
         {rows(updated, 'replaced', 'var(--warn)')}
+        {rows(removed, 'removed', 'var(--err)')}
         {rows(outdated, 'differs', 'var(--text-muted)')}
-        {outdated.length > 0 && (
+        {rows(missing, 'gone', 'var(--text-muted)')}
+        {removed.length > 0 && (
           <div className="hint">
-            “differs” = source has a newer version; left untouched. Force re-import to replace.
+            “removed” = no longer in the source, so gone from your tools and from agents. It comes back, with its edits,
+            if a later import finds it in the source again.
+          </div>
+        )}
+        {outdated.length + missing.length > 0 && (
+          <div className="hint">
+            “differs” = source has a newer version, “gone” = source no longer has it; both left untouched. Force
+            re-import replaces the first and removes the second.
           </div>
         )}
         {unchanged.length > 0 && (
@@ -448,7 +466,7 @@ export function SourcesTab() {
                   className="ghost"
                   onClick={() => importTools(true)}
                   disabled={!!busy}
-                  title="Overwrite existing tools too — refreshes schemas & metadata from the source (discards manual edits)"
+                  title="Overwrite existing tools too — refreshes schemas & metadata from the source (discards manual edits) and removes tools the source no longer has"
                 >
                   {busy === 'import-force' ? 'Refreshing…' : 'Force re-import'}
                 </button>

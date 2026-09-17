@@ -2,7 +2,7 @@ import { and, eq, lt } from 'drizzle-orm';
 import cron, { type ScheduledTask } from 'node-cron';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { callLogs, groups, groupTools, jobRuns, rateLimits, schedules, tools } from '../db/schema.js';
+import { callLogs, groups, groupTools, jobRuns, liveTool, rateLimits, schedules, tools } from '../db/schema.js';
 import { newId } from '../lib/id.js';
 import { invokeTool } from '../runtime/invoker.js';
 
@@ -19,7 +19,7 @@ export async function toolInGroup(groupId: string, toolName: string, owner: stri
   const rows = await db
     .select()
     .from(tools)
-    .where(and(eq(tools.name, toolName), eq(tools.ownerId, owner)));
+    .where(and(eq(tools.name, toolName), eq(tools.ownerId, owner), liveTool()));
   return rows.some((t) => links.some((l) => l.toolId === t.id));
 }
 

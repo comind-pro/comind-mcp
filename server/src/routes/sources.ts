@@ -1,10 +1,10 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { applyAuth } from '../auth/apply.js';
 import { createConnector, parseSourceConfig, sourceKind } from '../connectors/index.js';
 import { db } from '../db/client.js';
-import { sources, tools } from '../db/schema.js';
+import { liveTool, sources, tools } from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
 import { changedFields } from '../lib/tool-diff.js';
@@ -164,7 +164,8 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     const upstream = await connector.listTools();
     const prefix = slugify(row.name);
 
-    // Snapshot the rows we may touch, so the response can say what actually changed.
+    // Snapshot the rows we may touch (soft-deleted ones too — they still own their
+    // name), so the response can say what actually changed.
     const before = new Map(
       upstream.length
         ? (
@@ -184,10 +185,12 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
         : [],
     );
 
-    // Per-tool outcome. `outdated` = differs from the source but left alone (non-force).
+    // Per-tool outcome. `outdated` = differs from the source but left alone (non-force);
+    // `removed` / `missing` = gone from the source: soft-deleted by force, otherwise kept;
+    // `restored` = was soft-deleted and the source offers it again.
     const changes: Array<{
       name: string;
-      status: 'created' | 'updated' | 'unchanged' | 'outdated';
+      status: 'created' | 'updated' | 'unchanged' | 'outdated' | 'removed' | 'missing' | 'restored';
       fields: string[];
     }> = [];
     for (const t of upstream) {
@@ -228,17 +231,23 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
         createdAt: new Date(),
       };
       const old = before.get(name);
-      const fields = old ? changedFields(old, refreshed) : [];
+      // The user can't see a soft-deleted tool, so its return is a fresh import in
+      // either mode: refresh it from the source and bring it back.
+      const restore = !!old?.deletedAt;
+      const fields = old && !restore ? changedFields(old, refreshed) : [];
       changes.push({
         name,
-        status: !old ? 'created' : !fields.length ? 'unchanged' : force ? 'updated' : 'outdated',
+        status: !old ? 'created' : restore ? 'restored' : !fields.length ? 'unchanged' : force ? 'updated' : 'outdated',
         fields,
       });
-      if (force) {
+      if (force || restore) {
         await db
           .insert(tools)
           .values(values)
-          .onConflictDoUpdate({ target: [tools.ownerId, tools.name], set: { sourceId: row.id, ...refreshed } });
+          .onConflictDoUpdate({
+            target: [tools.ownerId, tools.name],
+            set: { sourceId: row.id, ...refreshed, deletedAt: null },
+          });
       } else {
         // create-only: existing tools are left untouched.
         await db
@@ -249,17 +258,53 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     }
     const created = changes.filter((c) => c.status === 'created').length;
 
+    // Live tools the source no longer offers. Matched on upstreamName, not the
+    // prefixed name, so renaming a source never makes its tools look gone.
+    // ponytail: an empty upstream list is treated as a connector glitch, not "remove
+    // everything" — delete the source itself to drop all of its tools.
+    const gone = upstream.length
+      ? await db
+          .select({ id: tools.id, name: tools.name })
+          .from(tools)
+          .where(
+            and(
+              eq(tools.sourceId, row.id),
+              eq(tools.kind, 'native'),
+              liveTool(),
+              notInArray(
+                tools.upstreamName,
+                upstream.map((t) => t.name),
+              ),
+            ),
+          )
+      : [];
+    // Soft delete (see `tools.deletedAt`): gone for users and agents alike, restored
+    // by the next import that sees the tool again.
+    if (force && gone.length)
+      await db
+        .update(tools)
+        .set({ deletedAt: new Date() })
+        .where(
+          inArray(
+            tools.id,
+            gone.map((g) => g.id),
+          ),
+        );
+    for (const g of gone) changes.push({ name: g.name, status: force ? 'removed' : 'missing', fields: [] });
+
     await db.update(sources).set({ status: 'ok', statusMessage: null }).where(eq(sources.id, id));
     const imported = await db
       .select()
       .from(tools)
-      .where(and(eq(tools.sourceId, row.id), eq(tools.kind, 'native')));
+      .where(and(eq(tools.sourceId, row.id), eq(tools.kind, 'native'), liveTool()));
     return {
       mode: force ? 'force' : 'new',
       total: upstream.length,
       created,
       updated: changes.filter((c) => c.status === 'updated').length,
-      skipped: upstream.length - created - changes.filter((c) => c.status === 'updated').length,
+      removed: force ? gone.length : 0,
+      restored: changes.filter((c) => c.status === 'restored').length,
+      skipped: changes.filter((c) => c.status === 'unchanged' || c.status === 'outdated').length,
       imported: imported.length,
       changes,
       tools: imported,

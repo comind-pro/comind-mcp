@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { isNull, sql } from 'drizzle-orm';
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 const id = () => text('id').primaryKey();
@@ -77,12 +77,22 @@ export const tools = pgTable(
     examples: jsonb('examples').$type<Array<Record<string, unknown>>>().notNull().default(sql`'[]'::jsonb`),
     // { daily_report?, safe_for_automation?, requires_user_confirmation? } — automation hints.
     recommendedUse: jsonb('recommended_use').$type<Record<string, unknown>>(),
+    // Soft delete: set when a force re-import finds the tool gone from its source.
+    // The row stays out of every read path (see `liveTool`) but still owns its name,
+    // so an import that sees the tool again restores it with edits and groups intact.
+    // ponytail: saving a group's tool list drops its links to deleted tools — they
+    // are not in the list the UI sends back. Preserve them in PUT /groups/:id/tools
+    // if restored tools losing their groups becomes a problem.
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => ({
     nameIdx: uniqueIndex('tools_name_unique').on(t.ownerId, t.name),
   }),
 );
+
+/** Filter for every read of `tools` that a user or agent can see or call. */
+export const liveTool = () => isNull(tools.deletedAt);
 
 /** Composite definition (steps) for tools with kind = 'composite'. */
 export const composites = pgTable('composites', {

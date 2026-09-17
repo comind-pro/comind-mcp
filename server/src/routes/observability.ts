@@ -2,7 +2,7 @@ import { and, desc, eq, gte, inArray, lte, type SQL, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentGroups, agents, callLogs, groups, groupTools, tools } from '../db/schema.js';
+import { agentGroups, agents, callLogs, groups, groupTools, liveTool, tools } from '../db/schema.js';
 import { ownerOf } from '../lib/req.js';
 import { invokeTool } from '../runtime/invoker.js';
 
@@ -12,7 +12,10 @@ async function groupVisibleTools(groupId: string) {
   const links = await db.select().from(groupTools).where(eq(groupTools.groupId, groupId));
   const ids = links.map((l) => l.toolId);
   if (!ids.length) return [];
-  const rows = await db.select().from(tools).where(inArray(tools.id, ids));
+  const rows = await db
+    .select()
+    .from(tools)
+    .where(and(inArray(tools.id, ids), liveTool()));
   return rows.filter((t) => t.visible);
 }
 

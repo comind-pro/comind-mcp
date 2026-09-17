@@ -2,7 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { groups, groupTools, tools } from '../db/schema.js';
+import { groups, groupTools, liveTool, tools } from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
 
@@ -97,7 +97,10 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
     const links = await db.select().from(groupTools).where(eq(groupTools.groupId, id));
     const ids = links.map((l) => l.toolId);
     if (!ids.length) return [];
-    return db.select().from(tools).where(inArray(tools.id, ids));
+    return db
+      .select()
+      .from(tools)
+      .where(and(inArray(tools.id, ids), liveTool()));
   });
 
   app.put('/groups/:id/tools', async (req, reply) => {
@@ -112,7 +115,7 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
       const found = await db
         .select()
         .from(tools)
-        .where(and(inArray(tools.id, toolIds), eq(tools.ownerId, owner)));
+        .where(and(inArray(tools.id, toolIds), eq(tools.ownerId, owner), liveTool()));
       const missing = toolIds.filter((t) => !found.some((f) => f.id === t));
       if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
     }

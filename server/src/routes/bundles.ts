@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseSourceConfig, sourceKind } from '../connectors/index.js';
 import { db } from '../db/client.js';
-import { composites, groups, groupTools, scripts, secrets, sources, tools, virtuals } from '../db/schema.js';
+import { composites, groups, groupTools, liveTool, scripts, secrets, sources, tools, virtuals } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
@@ -70,7 +70,12 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
 
     const links = await db.select().from(groupTools).where(eq(groupTools.groupId, id));
     const toolIds = links.map((l) => l.toolId);
-    const toolRows = toolIds.length ? await db.select().from(tools).where(inArray(tools.id, toolIds)) : [];
+    const toolRows = toolIds.length
+      ? await db
+          .select()
+          .from(tools)
+          .where(and(inArray(tools.id, toolIds), liveTool()))
+      : [];
 
     const sourceIds = [...new Set(toolRows.map((t) => t.sourceId).filter((s): s is string => s != null))];
     const sourceRows = sourceIds.length ? await db.select().from(sources).where(inArray(sources.id, sourceIds)) : [];
@@ -263,6 +268,8 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
           .from(tools)
           .where(and(eq(tools.name, t.name), eq(tools.ownerId, owner)));
         if (existing) {
+          // a soft-deleted tool still owns the name: bring it back rather than link a ghost
+          if (existing.deletedAt) await tx.update(tools).set({ deletedAt: null }).where(eq(tools.id, existing.id));
           linkIds.push(existing.id);
           report.tools.skipped.push(t.name);
           continue;

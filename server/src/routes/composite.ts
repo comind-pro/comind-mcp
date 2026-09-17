@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { compositeDefinitionSchema, hasPythonStep, runCompositeTrace } from '../composite/engine.js';
 import { db } from '../db/client.js';
-import { composites, tools } from '../db/schema.js';
+import { composites, liveTool, tools } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
@@ -31,7 +31,7 @@ async function missingRefs(steps: { tool?: string }[], owner: string) {
   const found = await db
     .select()
     .from(tools)
-    .where(and(inArray(tools.name, refNames), eq(tools.ownerId, owner)));
+    .where(and(inArray(tools.name, refNames), eq(tools.ownerId, owner), liveTool()));
   return refNames.filter((n) => !found.some((t) => t.name === n));
 }
 

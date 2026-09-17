@@ -2,7 +2,7 @@ import { and, eq, type SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { tools } from '../db/schema.js';
+import { liveTool, tools } from '../db/schema.js';
 import { ownerOf } from '../lib/req.js';
 import { invokeTool } from '../runtime/invoker.js';
 
@@ -32,14 +32,14 @@ async function ownedTool(id: string, owner: string) {
   const [row] = await db
     .select()
     .from(tools)
-    .where(and(eq(tools.id, id), eq(tools.ownerId, owner)));
+    .where(and(eq(tools.id, id), eq(tools.ownerId, owner), liveTool()));
   return row ?? null;
 }
 
 export async function toolRoutes(app: FastifyInstance): Promise<void> {
   app.get('/tools', async (req) => {
     const q = req.query as { sourceId?: string; kind?: string; visible?: string };
-    const filters: SQL[] = [eq(tools.ownerId, ownerOf(req))];
+    const filters: SQL[] = [eq(tools.ownerId, ownerOf(req)), liveTool()];
     if (q.sourceId) filters.push(eq(tools.sourceId, q.sourceId));
     if (q.kind === 'native' || q.kind === 'composite' || q.kind === 'virtual' || q.kind === 'python') {
       filters.push(eq(tools.kind, q.kind));

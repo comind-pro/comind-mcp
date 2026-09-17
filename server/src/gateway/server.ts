@@ -3,7 +3,17 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { agentGroups, agentKeys, agents, groups, groupTools, oauthAccessTokens, sources, tools } from '../db/schema.js';
+import {
+  agentGroups,
+  agentKeys,
+  agents,
+  groups,
+  groupTools,
+  liveTool,
+  oauthAccessTokens,
+  sources,
+  tools,
+} from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
 import { mcpToolName, mcpToolTitle } from '../lib/tool-name.js';
 import { invokeTool } from '../runtime/invoker.js';
@@ -202,7 +212,10 @@ async function groupVisibleTools(groupId: string) {
   const links = await db.select().from(groupTools).where(eq(groupTools.groupId, groupId));
   const ids = links.map((l) => l.toolId);
   if (!ids.length) return [];
-  const rows = await db.select().from(tools).where(inArray(tools.id, ids));
+  const rows = await db
+    .select()
+    .from(tools)
+    .where(and(inArray(tools.id, ids), liveTool()));
   return rows.filter((t) => t.visible);
 }
 

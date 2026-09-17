@@ -6,7 +6,7 @@ import { createConnector } from '../connectors/index.js';
 import type { CallResult } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
 import { db } from '../db/client.js';
-import { callLogs, composites, scripts, sources, tools, virtuals } from '../db/schema.js';
+import { callLogs, composites, liveTool, scripts, sources, tools, virtuals } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
@@ -91,7 +91,7 @@ async function dispatch(
   const [tool] = await db
     .select()
     .from(tools)
-    .where(and(eq(tools.name, toolName), eq(tools.ownerId, ctx.ownerId)));
+    .where(and(eq(tools.name, toolName), eq(tools.ownerId, ctx.ownerId), liveTool()));
   if (!tool) return textResult(`Unknown tool: ${toolName}`, true);
 
   if (tool.kind === 'composite') {

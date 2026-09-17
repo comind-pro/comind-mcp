@@ -5,7 +5,7 @@ import { createConnector } from '../connectors/index.js';
 import type { CallResult, ToolDef } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
 import { db, pool } from '../db/client.js';
-import { callLogs, groupTools, sources, tools } from '../db/schema.js';
+import { callLogs, groupTools, liveTool, sources, tools } from '../db/schema.js';
 import { mcpToolName } from '../lib/tool-name.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
 
@@ -265,7 +265,10 @@ async function visibleToolsForGroups(groupIds: string[]) {
   const links = await db.select().from(groupTools).where(inArray(groupTools.groupId, groupIds));
   const ids = [...new Set(links.map((l) => l.toolId))];
   if (!ids.length) return [];
-  const rows = await db.select().from(tools).where(inArray(tools.id, ids));
+  const rows = await db
+    .select()
+    .from(tools)
+    .where(and(inArray(tools.id, ids), liveTool()));
   return rows.filter((t) => t.visible);
 }
 
