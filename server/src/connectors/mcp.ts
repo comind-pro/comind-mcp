@@ -10,6 +10,25 @@ export interface McpConfig {
   headers?: Record<string, string>;
 }
 
+/** Every page of `tools/list`. A force re-import soft-deletes tools missing from
+ *  this list, so stopping at the first page would wipe the rest of a paginating server. */
+export async function listAllTools(c: Pick<Client, 'listTools'>): Promise<ToolDef[]> {
+  const out: ToolDef[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await c.listTools(cursor ? { cursor } : undefined);
+    for (const t of res.tools) {
+      out.push({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema as Record<string, unknown> | undefined,
+      });
+    }
+    cursor = res.nextCursor;
+  } while (cursor);
+  return out;
+}
+
 /**
  * Proxies an existing MCP server. Stateless: opens a short-lived client per
  * operation so we never hold upstream sessions in the gateway. An optional
@@ -43,14 +62,7 @@ export class McpConnector implements Connector {
   }
 
   async listTools(): Promise<ToolDef[]> {
-    return this.withClient(async (c) => {
-      const res = await c.listTools();
-      return res.tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        inputSchema: t.inputSchema as Record<string, unknown> | undefined,
-      }));
-    });
+    return this.withClient(listAllTools);
   }
 
   async callTool(name: string, args: Record<string, unknown>): Promise<CallResult> {
