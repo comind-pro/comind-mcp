@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { applyAuth } from '../auth/apply.js';
@@ -7,6 +7,7 @@ import { db } from '../db/client.js';
 import { sources, tools } from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
+import { changedFields } from '../lib/tool-diff.js';
 import { injectSecrets, loadSecretMap, resolveSourceConfig } from '../secrets/loader.js';
 
 const createBody = z.object({
@@ -163,11 +164,50 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     const upstream = await connector.listTools();
     const prefix = slugify(row.name);
 
-    let created = 0;
+    // Snapshot the rows we may touch, so the response can say what actually changed.
+    const before = new Map(
+      upstream.length
+        ? (
+            await db
+              .select()
+              .from(tools)
+              .where(
+                and(
+                  eq(tools.ownerId, owner),
+                  inArray(
+                    tools.name,
+                    upstream.map((t) => `${prefix}.${t.name}`),
+                  ),
+                ),
+              )
+          ).map((r) => [r.name, r] as const)
+        : [],
+    );
+
+    // Per-tool outcome. `outdated` = differs from the source but left alone (non-force).
+    const changes: Array<{
+      name: string;
+      status: 'created' | 'updated' | 'unchanged' | 'outdated';
+      fields: string[];
+    }> = [];
     for (const t of upstream) {
       // NB: dots are fine here — the MCP gateway maps names onto the MCP-safe
       // charset at the boundary (see lib/tool-name.ts); stored names stay stable.
       const name = `${prefix}.${t.name}`;
+      // What a force refresh overwrites. undefined is omitted by drizzle,
+      // preserving a manual value on refresh.
+      const refreshed = {
+        upstreamName: t.name,
+        description: t.description ?? null,
+        inputSchema: t.inputSchema ?? null,
+        outputSchema: t.outputSchema,
+        // curated discovery metadata from the connector (when provided)
+        readOnly: t.readOnly,
+        dangerous: t.dangerous,
+        permissions: t.permissions,
+        examples: t.examples,
+        recommendedUse: t.recommendedUse,
+      };
       const values = {
         id: newId(),
         ownerId: owner,
@@ -179,7 +219,6 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
         description: t.description ?? null,
         inputSchema: t.inputSchema ?? null,
         outputSchema: t.outputSchema ?? null,
-        // curated discovery metadata from the connector (when provided)
         readOnly: t.readOnly ?? null,
         dangerous: t.dangerous ?? null,
         permissions: t.permissions ?? [],
@@ -188,36 +227,27 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
         visible: true,
         createdAt: new Date(),
       };
+      const old = before.get(name);
+      const fields = old ? changedFields(old, refreshed) : [];
+      changes.push({
+        name,
+        status: !old ? 'created' : !fields.length ? 'unchanged' : force ? 'updated' : 'outdated',
+        fields,
+      });
       if (force) {
         await db
           .insert(tools)
           .values(values)
-          .onConflictDoUpdate({
-            target: [tools.ownerId, tools.name],
-            set: {
-              sourceId: row.id,
-              upstreamName: t.name,
-              description: t.description ?? null,
-              inputSchema: t.inputSchema ?? null,
-              // undefined is omitted by drizzle, preserving a manual value on refresh.
-              outputSchema: t.outputSchema,
-              readOnly: t.readOnly,
-              dangerous: t.dangerous,
-              permissions: t.permissions,
-              examples: t.examples,
-              recommendedUse: t.recommendedUse,
-            },
-          });
+          .onConflictDoUpdate({ target: [tools.ownerId, tools.name], set: { sourceId: row.id, ...refreshed } });
       } else {
         // create-only: existing tools are left untouched.
-        const ins = await db
+        await db
           .insert(tools)
           .values(values)
-          .onConflictDoNothing({ target: [tools.ownerId, tools.name] })
-          .returning({ id: tools.id });
-        if (ins.length) created++;
+          .onConflictDoNothing({ target: [tools.ownerId, tools.name] });
       }
     }
+    const created = changes.filter((c) => c.status === 'created').length;
 
     await db.update(sources).set({ status: 'ok', statusMessage: null }).where(eq(sources.id, id));
     const imported = await db
@@ -227,9 +257,11 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     return {
       mode: force ? 'force' : 'new',
       total: upstream.length,
-      created: force ? upstream.length : created,
-      skipped: force ? 0 : upstream.length - created,
+      created,
+      updated: changes.filter((c) => c.status === 'updated').length,
+      skipped: upstream.length - created - changes.filter((c) => c.status === 'updated').length,
       imported: imported.length,
+      changes,
       tools: imported,
     };
   });

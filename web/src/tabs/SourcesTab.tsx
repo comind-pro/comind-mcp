@@ -18,6 +18,8 @@ const hasInteractiveOAuth = (cfg: Cfg) =>
   ['oauth2_authorization_code', 'mcp_oauth'].includes((cfg?.auth as { type?: string })?.type ?? '');
 
 type PendingSecret = { name: string; mode: 'value' | 'envRef'; value: string };
+type ImportChange = { name: string; status: 'created' | 'updated' | 'unchanged' | 'outdated'; fields: string[] };
+type ImportReport = { mode: 'force' | 'new'; changes: ImportChange[] };
 
 interface Editing {
   id: string; // 'new' for a draft
@@ -30,6 +32,7 @@ interface Editing {
   testMsg: string;
   created: boolean;
   importedTools: Tool[] | null;
+  importReport: ImportReport | null;
   secrets: PendingSecret[];
 }
 
@@ -67,6 +70,7 @@ export function SourcesTab() {
       testMsg: '',
       created: false,
       importedTools: null,
+      importReport: null,
       secrets: [],
     });
 
@@ -84,6 +88,7 @@ export function SourcesTab() {
       testMsg: '',
       created: false,
       importedTools: null,
+      importReport: null,
       secrets: [],
     });
   };
@@ -185,11 +190,8 @@ export function SourcesTab() {
     setErr('');
     setBusy(force ? 'import-force' : 'import');
     try {
-      const r = await api.post<{ imported: number; created: number; skipped: number; tools: Tool[] }>(
-        `/sources/${ed.id}/import`,
-        { force },
-      );
-      patch({ importedTools: r.tools });
+      const r = await api.post<ImportReport & { tools: Tool[] }>(`/sources/${ed.id}/import`, { force });
+      patch({ importedTools: r.tools, importReport: { mode: r.mode, changes: r.changes } });
       await load();
     } catch (e) {
       setErr(String((e as Error).message));
@@ -224,6 +226,45 @@ export function SourcesTab() {
 
   const dotColor = (status: string) =>
     status === 'ok' ? 'var(--ok)' : status === 'error' ? 'var(--err)' : 'var(--text-muted)';
+
+  const importReportView = (r: ImportReport) => {
+    const by = (st: ImportChange['status']) => r.changes.filter((c) => c.status === st);
+    const [created, updated, outdated, unchanged] = [by('created'), by('updated'), by('outdated'), by('unchanged')];
+    const rows = (list: ImportChange[], label: string, color: string) =>
+      list.map((c) => (
+        <div key={c.name} className="row" style={{ gap: 8, padding: '3px 0' }}>
+          <span className="badge" style={{ color, borderColor: color }}>
+            {label}
+          </span>
+          <span className="mono">{c.name}</span>
+          {c.fields.length > 0 && <span className="muted fs-12">{c.fields.join(', ')}</span>}
+        </div>
+      ));
+    return (
+      <div style={{ margin: '12px 0' }}>
+        <div className="status-line" style={{ marginBottom: 6 }}>
+          {r.mode === 'force' ? 'Force re-import' : 'Import'}: {created.length} new
+          {r.mode === 'force' ? ` · ${updated.length} replaced` : ` · ${outdated.length} differ from source`} ·{' '}
+          {unchanged.length} unchanged
+        </div>
+        {rows(created, 'new', 'var(--ok)')}
+        {rows(updated, 'replaced', 'var(--warn)')}
+        {rows(outdated, 'differs', 'var(--text-muted)')}
+        {outdated.length > 0 && (
+          <div className="hint">
+            “differs” = source has a newer version; left untouched. Force re-import to replace.
+          </div>
+        )}
+        {unchanged.length > 0 && (
+          <Advanced summary={`${unchanged.length} unchanged`}>
+            <div className="mono" style={{ whiteSpace: 'pre-line' }}>
+              {unchanged.map((c) => c.name).join('\n')}
+            </div>
+          </Advanced>
+        )}
+      </div>
+    );
+  };
 
   const editor = (e: Editing, isNew: boolean) => {
     const jsonText = e.jsonRaw != null ? e.jsonRaw : JSON.stringify(e.cfg, null, 2);
@@ -439,6 +480,7 @@ export function SourcesTab() {
             </div>
           )}
           {err && <div className="err-msg">{err}</div>}
+          {e.importReport && importReportView(e.importReport)}
 
           <Advanced summary="Raw JSON config">
             <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
