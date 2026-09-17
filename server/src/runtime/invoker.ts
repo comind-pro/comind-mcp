@@ -41,6 +41,29 @@ function withStructured(result: CallResult, outputSchema: unknown): CallResult {
   }
 }
 
+// ponytail: fixed caps, no config — enough for an upstream error body and typical
+// args without letting one bad call bloat the log table.
+const ERROR_LOG_CHARS = 2000;
+const ARGS_LOG_CHARS = 2000;
+
+/** A thrown error as text. Node's `fetch failed` keeps the actual reason (ECONNREFUSED,
+ *  ENOTFOUND, an expired certificate…) in `cause`, so append it. */
+export function errorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = err.cause as { message?: string; code?: string } | undefined;
+  const why = cause?.message || cause?.code || '';
+  return why && !err.message.includes(why) ? `${err.message}: ${why}` : err.message;
+}
+
+/** What went wrong, for the call log: the text parts, else whatever the body was. */
+export function errorText(result: CallResult): string {
+  const text = result.content
+    .map((c) => c.text)
+    .filter(Boolean)
+    .join('\n');
+  return (text || JSON.stringify(result.structuredContent ?? result.content)).slice(0, ERROR_LOG_CHARS);
+}
+
 /**
  * Central tool runtime shared by the gateway, composites and the scheduler.
  * Resolves a tool by registry name and dispatches: native → connector,
@@ -67,12 +90,8 @@ export async function invokeTool(
       status: result.isError ? 'error' : 'success',
       durationMs: Date.now() - startedAt,
       tokensEst: estimateTokens(result),
-      error: result.isError
-        ? result.content
-            .map((c) => c.text)
-            .join('\n')
-            .slice(0, 500)
-        : null,
+      error: result.isError ? errorText(result) : null,
+      args: result.isError ? JSON.stringify(args).slice(0, ARGS_LOG_CHARS) : null,
       ts: new Date(),
     })
     .catch(() => {});
@@ -115,7 +134,7 @@ async function dispatch(
       const { result } = await runPython(script.code, { args }, (name, a, d) => invokeTool(name, a, ctx, d), depth);
       return result;
     } catch (err) {
-      return textResult(err instanceof Error ? err.message : String(err), true);
+      return textResult(errorMessage(err), true);
     }
   }
 
@@ -165,6 +184,6 @@ async function dispatch(
     return withStructured(await connector.callTool(tool.upstreamName ?? tool.name, args), tool.outputSchema);
   } catch (err) {
     // Fault isolation: one bad upstream must not crash the caller.
-    return textResult(err instanceof Error ? err.message : String(err), true);
+    return textResult(errorMessage(err), true);
   }
 }

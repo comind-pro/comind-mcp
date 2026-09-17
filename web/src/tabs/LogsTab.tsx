@@ -283,6 +283,16 @@ export function LogsTab() {
                           <span>at: {new Date(l.ts).toISOString()}</span>
                           <span>duration: {l.durationMs}ms</span>
                         </div>
+                        <div className="field-label" style={{ marginTop: 10 }}>
+                          Error
+                        </div>
+                        <pre className="mono log-detail">{l.error || 'No error text was returned by the tool.'}</pre>
+                        {l.args && (
+                          <>
+                            <div className="field-label">Called with</div>
+                            <pre className="mono log-detail">{l.args}</pre>
+                          </>
+                        )}
                       </td>
                     </tr>
                   )}

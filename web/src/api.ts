@@ -240,5 +240,9 @@ export interface CallLog {
   durationMs: number;
   tokensEst: number | null;
   agentId: string | null;
+  /** failed calls only */
+  error: string | null;
+  /** failed calls only: JSON of the call arguments (may be truncated) */
+  args: string | null;
   ts: number;
 }

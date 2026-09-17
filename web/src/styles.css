@@ -1302,6 +1302,14 @@ tr.detail-row td {
   color: var(--text-muted);
   font-size: 12px;
 }
+.log-detail {
+  margin: 0 0 10px;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+}
 .tools-table tr.active {
   background: var(--surface-inset);
 }

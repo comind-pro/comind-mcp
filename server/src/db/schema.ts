@@ -412,6 +412,9 @@ export const callLogs = pgTable(
     durationMs: integer('duration_ms').notNull(),
     tokensEst: integer('tokens_est'),
     error: text('error'),
+    // Failed calls only: the arguments the tool was called with (JSON, truncated),
+    // so the log says what was attempted and not just that it failed.
+    args: text('args'),
     ts: createdAt(),
   },
   (t) => ({
