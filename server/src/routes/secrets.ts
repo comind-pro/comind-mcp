@@ -6,6 +6,7 @@ import { secrets, sources } from '../db/schema.js';
 import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
 import { encrypt } from '../secrets/vault.js';
+import { ensureDefaultNodes } from '../services/projects.js';
 
 const createBody = z
   .object({
@@ -44,6 +45,8 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
     const row = {
       id: newId(),
       ownerId: owner,
+      projectId: (await ensureDefaultNodes(owner)).projectId, // task4: scope.createIn
+      createdByAgentId: null,
       name: body.name,
       sourceId: body.sourceId ?? null,
       encryptedValue: body.value ? encrypt(body.value) : null,

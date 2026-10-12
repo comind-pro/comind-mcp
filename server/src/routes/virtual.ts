@@ -7,6 +7,7 @@ import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { runVirtual, staticResult } from '../runtime/virtual.js';
+import { ensureDefaultNodes } from '../services/projects.js';
 
 const requestSchema = z.object({
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
@@ -81,10 +82,13 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
     if (clash) return reply.code(409).send({ error: 'name_taken' });
 
     const toolId = newId();
+    const { projectId } = await ensureDefaultNodes(owner); // task4: scope.createIn
     await db.transaction(async (tx) => {
       await tx.insert(tools).values({
         id: toolId,
         ownerId: owner,
+        projectId, // task4: scope.createIn
+        createdByAgentId: null,
         sourceId: null,
         kind: 'virtual',
         name: body.name,

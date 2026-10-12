@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { groups, groupTools, liveTool, tools } from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
+import { ensureDefaultNodes } from '../services/projects.js';
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -44,6 +45,8 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
     const row = {
       id: newId(),
       ownerId: owner,
+      projectId: (await ensureDefaultNodes(owner)).projectId, // task4: scope.createIn
+      createdByAgentId: null,
       slug: await uniqueSlug(body.slug ?? body.name, owner),
       name: body.name,
       description: body.description ?? null,

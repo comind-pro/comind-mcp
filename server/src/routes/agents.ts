@@ -8,6 +8,7 @@ import { SYSTEM_TOOL_NAMES } from '../gateway/system-tools.js';
 import { hashKey } from '../lib/crypto.js';
 import { newApiKey, newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
+import { ensureDefaultNodes } from '../services/projects.js';
 
 const createBody = z.object({ name: z.string().min(1) });
 // Only known system.* tool names may be enabled on an agent.
@@ -59,6 +60,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const row = {
       id: newId(),
       ownerId: owner,
+      projectId: (await ensureDefaultNodes(owner)).projectId, // task4: scope.createIn
+      createdByAgentId: null,
+      role: 'lead' as const,
       name: body.name,
       apiKeyHash: null,
       apiKeyPrefix: null,

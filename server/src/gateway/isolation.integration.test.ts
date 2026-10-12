@@ -7,6 +7,7 @@ import { signJwt } from '../lib/auth.js';
 import { hashKey } from '../lib/crypto.js';
 import { newId } from '../lib/id.js';
 import { mcpToolName } from '../lib/tool-name.js';
+import { ensureDefaultNodes } from '../services/projects.js';
 import { authenticateAgent, authenticateAgentAll } from './server.js';
 import { handleSystemTool, type SystemCtx } from './system-tools.js';
 
@@ -36,11 +37,13 @@ async function seedOwner(suffix: string): Promise<Seed> {
   await db
     .insert(users)
     .values({ id: ownerId, email: `iso_${tag}_${suffix}@t.local`, passwordHash: 'x', createdAt: new Date() });
+  const { projectId } = await ensureDefaultNodes(ownerId);
 
   const sourceId = newId();
   await db.insert(sources).values({
     id: sourceId,
     ownerId,
+    projectId,
     name: `src-${suffix}`,
     kind: 'ga',
     config: {},
@@ -54,6 +57,7 @@ async function seedOwner(suffix: string): Promise<Seed> {
   await db.insert(tools).values({
     id: toolId,
     ownerId,
+    projectId,
     sourceId,
     kind: 'native',
     name: toolName,
@@ -73,6 +77,7 @@ async function seedOwner(suffix: string): Promise<Seed> {
   await db.insert(groups).values({
     id: groupId,
     ownerId,
+    projectId,
     slug: groupSlug,
     name: `grp-${suffix}`,
     schedulingEnabled: true,
@@ -84,6 +89,7 @@ async function seedOwner(suffix: string): Promise<Seed> {
   await db.insert(agents).values({
     id: agentId,
     ownerId,
+    projectId,
     name: `agent-${suffix}`,
     apiKeyHash: null,
     apiKeyPrefix: null,

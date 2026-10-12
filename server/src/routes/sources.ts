@@ -9,6 +9,7 @@ import { newId, slugify } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
 import { changedFields } from '../lib/tool-diff.js';
 import { injectSecrets, loadSecretMap, resolveSourceConfig } from '../secrets/loader.js';
+import { ensureDefaultNodes } from '../services/projects.js';
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -45,6 +46,8 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     const row = {
       id: newId(),
       ownerId: owner,
+      projectId: (await ensureDefaultNodes(owner)).projectId, // task4: scope.createIn
+      createdByAgentId: null,
       name: body.name,
       kind: body.kind,
       config,
@@ -214,6 +217,8 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
       const values = {
         id: newId(),
         ownerId: owner,
+        projectId: row.projectId, // task4: native tools live with their source
+        createdByAgentId: null,
         sourceId: row.id,
         kind: 'native' as const,
         name,

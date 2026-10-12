@@ -8,6 +8,7 @@ import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
 import { invokeTool } from '../runtime/invoker.js';
+import { ensureDefaultNodes } from '../services/projects.js';
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -54,10 +55,13 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
 
     const toolId = newId();
     const compId = newId();
+    const { projectId } = await ensureDefaultNodes(owner); // task4: scope.createIn
     await db.transaction(async (tx) => {
       await tx.insert(tools).values({
         id: toolId,
         ownerId: owner,
+        projectId, // task4: scope.createIn
+        createdByAgentId: null,
         sourceId: null,
         kind: 'composite',
         name: body.name,

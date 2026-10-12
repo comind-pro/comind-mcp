@@ -24,6 +24,54 @@ const ownerId = () =>
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' });
 
+/** Project tree. kind is organisation only; visibility rules do not depend on it.
+ *  path = '/<id>/<id>/…/' from the top-level team down, so a subtree is
+ *  `path LIKE '<path>%'`. Every owner has a default team with a default project
+ *  (slug 'team' / 'default'); nothing lives outside the tree. */
+export const projects = pgTable(
+  'projects',
+  {
+    id: id(),
+    ownerId: ownerId(),
+    parentId: text('parent_id'),
+    kind: text('kind', { enum: ['team', 'project'] }).notNull(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    path: text('path').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex('projects_slug_unique').on(t.ownerId, t.slug),
+    pathIdx: index('projects_path_idx').on(t.path),
+  }),
+);
+
+const projectId = () =>
+  text('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' });
+
+/** Who created a row when it was an agent (COO) — the "by <agent>" badge. */
+const createdByAgentId = () => text('created_by_agent_id');
+
+/** Sharing: node `projectId` may USE resource (rule 1 in the spec). A grant on a
+ *  source also exposes its native tools. Never grants edit rights. */
+export const projectAccess = pgTable(
+  'project_access',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    resourceType: text('resource_type', { enum: ['source', 'tool', 'secret'] }).notNull(),
+    resourceId: text('resource_id').notNull(),
+    grantedBy: text('granted_by'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    pk: uniqueIndex('project_access_pk').on(t.projectId, t.resourceType, t.resourceId),
+  }),
+);
+
 /**
  * Source = an upstream the gateway aggregates: another MCP server, a REST API
  * (via OpenAPI), or a plain HTTP endpoint. Connectors turn these into tools.
@@ -31,6 +79,8 @@ const ownerId = () =>
 export const sources = pgTable('sources', {
   id: id(),
   ownerId: ownerId(),
+  projectId: projectId(),
+  createdByAgentId: createdByAgentId(),
   name: text('name').notNull(),
   kind: text('kind', { enum: ['mcp', 'openapi', 'http', 'imap', 'sql', 'ga'] }).notNull(),
   config: jsonb('config').notNull().$type<Record<string, unknown>>(),
@@ -55,6 +105,8 @@ export const tools = pgTable(
   {
     id: id(),
     ownerId: ownerId(),
+    projectId: projectId(),
+    createdByAgentId: createdByAgentId(),
     sourceId: text('source_id').references(() => sources.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: ['native', 'composite', 'virtual', 'python'] }).notNull(),
     // `name` = curated registry key, unique per owner (e.g. "gmail.send").
@@ -165,6 +217,8 @@ export const groups = pgTable(
   {
     id: id(),
     ownerId: ownerId(),
+    projectId: projectId(),
+    createdByAgentId: createdByAgentId(),
     slug: text('slug').notNull(),
     name: text('name').notNull(),
     description: text('description'),
@@ -199,7 +253,12 @@ export const groupTools = pgTable(
 export const agents = pgTable('agents', {
   id: id(),
   ownerId: ownerId(),
+  projectId: projectId(),
+  createdByAgentId: createdByAgentId(),
   name: text('name').notNull(),
+  role: text('role', { enum: ['lead', 'coo'] })
+    .notNull()
+    .default('lead'),
   apiKeyHash: text('api_key_hash'),
   apiKeyPrefix: text('api_key_prefix'),
   // names of built-in system.* introspection tools this agent exposes (subset of
@@ -250,6 +309,7 @@ export const agentGroups = pgTable(
 export const schedules = pgTable('schedules', {
   id: id(),
   ownerId: ownerId(),
+  projectId: projectId(),
   groupId: text('group_id')
     .notNull()
     .references(() => groups.id, { onDelete: 'cascade' }),
@@ -284,6 +344,8 @@ export const secrets = pgTable(
   {
     id: id(),
     ownerId: ownerId(),
+    projectId: projectId(),
+    createdByAgentId: createdByAgentId(),
     name: text('name').notNull(),
     // null = global secret; otherwise scoped to a source (overrides global for it).
     sourceId: text('source_id').references(() => sources.id, { onDelete: 'cascade' }),
@@ -400,6 +462,7 @@ export const callLogs = pgTable(
   {
     id: id(),
     ownerId: text('owner_id').notNull(),
+    projectId: text('project_id'),
     groupId: text('group_id'),
     agentId: text('agent_id'),
     toolName: text('tool_name').notNull(),
@@ -424,6 +487,8 @@ export const callLogs = pgTable(
 
 export const schema = {
   users,
+  projects,
+  projectAccess,
   sources,
   tools,
   composites,

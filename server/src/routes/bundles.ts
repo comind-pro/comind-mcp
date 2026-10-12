@@ -7,6 +7,7 @@ import { composites, groups, groupTools, liveTool, scripts, secrets, sources, to
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
+import { ensureDefaultNodes } from '../services/projects.js';
 
 /**
  * Group bundle v1: a workspace serialized for transfer between instances.
@@ -186,6 +187,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
       secretsToFill: [] as string[],
     };
 
+    const { projectId } = await ensureDefaultNodes(owner); // task4: scope.createIn
     await db.transaction(async (tx) => {
       // group by slug — existing is reused as-is (its name/description win)
       let [grp] = await tx
@@ -197,6 +199,8 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         grp = {
           id: newId(),
           ownerId: owner,
+          projectId, // task4: scope.createIn
+          createdByAgentId: null,
           slug: bundle.group.slug,
           name: bundle.group.name,
           description: bundle.group.description ?? null,
@@ -222,6 +226,8 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(sources).values({
           id,
           ownerId: owner,
+          projectId, // task4: scope.createIn
+          createdByAgentId: null,
           name: s.name,
           kind: s.kind,
           config: parseSourceConfig(s.kind, s.config),
@@ -247,6 +253,8 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(secrets).values({
           id: newId(),
           ownerId: owner,
+          projectId, // task4: scope.createIn
+          createdByAgentId: null,
           name: s.name,
           sourceId: scopeId,
           encryptedValue: null,
@@ -278,6 +286,8 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(tools).values({
           id,
           ownerId: owner,
+          projectId, // task4: scope.createIn
+          createdByAgentId: null,
           sourceId: t.source ? (sourceId.get(t.source) ?? null) : null,
           kind: t.kind,
           name: t.name,
