@@ -15,6 +15,7 @@ import { groupRoutes } from './routes/groups.js';
 import { oauthRoutes } from './routes/oauth.js';
 import { oauthProviderRoutes } from './routes/oauth-provider.js';
 import { observabilityRoutes } from './routes/observability.js';
+import { projectRoutes } from './routes/projects.js';
 import { pythonRoutes } from './routes/python.js';
 import { scheduleRoutes } from './routes/schedules.js';
 import { secretRoutes } from './routes/secrets.js';
@@ -91,6 +92,7 @@ export function buildApp(): FastifyInstance {
   app.register(virtualRoutes);
   app.register(pythonRoutes);
   app.register(groupRoutes);
+  app.register(projectRoutes);
   app.register(bundleRoutes);
   app.register(agentRoutes);
   app.register(scheduleRoutes);
