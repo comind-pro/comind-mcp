@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { type Agent, api, type CallLog, type Group } from '../api.js';
+import { RowBadges } from '../ProjectSelector.js';
 import { EmptyState, Loading, Th, useSort } from '../ui.js';
 
 interface ToolRow {
@@ -261,7 +262,10 @@ export function LogsTab() {
                     onClick={isError ? () => setExpanded(isOpen ? null : l.id) : undefined}
                   >
                     <td className="muted">{new Date(l.ts).toLocaleString()}</td>
-                    <td className="mono">{l.toolName}</td>
+                    <td className="mono">
+                      {l.toolName}
+                      {l.projectId && <RowBadges row={{ projectId: l.projectId, createdByAgentId: null }} />}
+                    </td>
                     <td>
                       <span className={`badge ${l.source === 'live' ? 'ok' : 'muted'}`}>{l.source}</span>
                     </td>

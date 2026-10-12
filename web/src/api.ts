@@ -30,7 +30,29 @@ function formatApiError(data: any, status: number): string {
   return base;
 }
 
-async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+const PROJECT_KEY = 'project';
+export const projectStore = {
+  get: () => new URLSearchParams(window.location.search).get(PROJECT_KEY),
+  set: (id: string | null) => {
+    const u = new URL(window.location.href);
+    if (id) u.searchParams.set(PROJECT_KEY, id);
+    else u.searchParams.delete(PROJECT_KEY);
+    window.history.replaceState(null, '', u.toString());
+  },
+};
+
+export interface Project {
+  id: string;
+  ownerId?: string;
+  parentId: string | null;
+  kind: 'team' | 'project';
+  name: string;
+  slug: string;
+  path: string;
+  createdAt?: number | string;
+}
+
+async function req<T>(method: string, path: string, body?: unknown, unscoped = false): Promise<T> {
   const headers: Record<string, string> = {};
   const token = tokenStore.get();
   if (token) headers.authorization = `Bearer ${token}`;
@@ -39,7 +61,9 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     headers['content-type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(BASE + path, opts);
+  const p = unscoped ? null : projectStore.get();
+  const url = p ? `${path}${path.includes('?') ? '&' : '?'}project=${encodeURIComponent(p)}` : path;
+  const res = await fetch(BASE + url, opts);
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (res.status === 401) {
@@ -58,6 +82,8 @@ export interface AuthUser {
 
 export const api = {
   get: <T>(p: string) => req<T>('GET', p),
+  /** Not narrowed by the selected project (project list, agent names). */
+  getUnscoped: <T>(p: string) => req<T>('GET', p, undefined, true),
   post: <T>(p: string, b?: unknown) => req<T>('POST', p, b),
   patch: <T>(p: string, b?: unknown) => req<T>('PATCH', p, b),
   put: <T>(p: string, b?: unknown) => req<T>('PUT', p, b),
@@ -92,6 +118,8 @@ export interface Source {
   statusMessage: string | null;
   objects?: SourceObject[];
   objectsCheckedAt?: string | null;
+  projectId: string;
+  createdByAgentId: string | null;
 }
 export interface ToolExample {
   description?: string;
@@ -117,6 +145,8 @@ export interface Tool {
   permissions?: string[];
   examples?: ToolExample[];
   recommendedUse?: RecommendedUse | null;
+  projectId: string;
+  createdByAgentId: string | null;
 }
 export interface Group {
   id: string;
@@ -124,6 +154,8 @@ export interface Group {
   name: string;
   description: string | null;
   schedulingEnabled: boolean;
+  projectId: string;
+  createdByAgentId: string | null;
 }
 /** Result of POST /groups/import (bundle v1). */
 export interface ImportReport {
@@ -207,6 +239,9 @@ export interface Agent {
   keyCount?: number;
   groups?: AgentGroupGrant[];
   systemTools?: string[];
+  projectId: string;
+  createdByAgentId: string | null;
+  role: 'lead' | 'coo';
 }
 export interface AgentKey {
   id: string;
@@ -231,6 +266,9 @@ export interface Secret {
   displayName: string;
   kind: 'env' | 'encrypted';
   envRef: string | null;
+  projectId: string;
+  createdByAgentId: string | null;
+  pending: boolean;
 }
 export interface CallLog {
   id: string;
@@ -245,4 +283,5 @@ export interface CallLog {
   /** failed calls only: JSON of the call arguments (may be truncated) */
   args: string | null;
   ts: number;
+  projectId: string | null;
 }

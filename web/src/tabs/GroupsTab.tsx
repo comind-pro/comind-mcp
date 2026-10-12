@@ -1,6 +1,7 @@
 import { type ChangeEvent, useEffect, useRef, useState } from 'react';
 import { api, type Group, type ImportReport, type Schedule, type Source, type Tool } from '../api.js';
 import { Icon } from '../icons.js';
+import { RowBadges } from '../ProjectSelector.js';
 import { CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
 import { ToolPicker } from './ToolPicker.js';
 
@@ -354,6 +355,7 @@ export function GroupsTab() {
           <div key={g.id} className={`scard ${open ? 'open' : ''}`}>
             <div className="scard-head" onClick={() => select(g)}>
               <span className="name src-name">{g.name}</span>
+              <RowBadges row={g} />
               <span className="mono muted" style={{ fontSize: 12, width: 120 }}>
                 /{g.slug}
               </span>

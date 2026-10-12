@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type Agent, type AgentKey, api, type Group, SYSTEM_TOOLS } from '../api.js';
 import { Icon } from '../icons.js';
+import { RowBadges } from '../ProjectSelector.js';
 import { Advanced, CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
 
 interface InspectGroup {
@@ -486,6 +487,7 @@ export function AgentsTab() {
           <div key={a.id} className={`scard ${open ? 'open' : ''}`}>
             <div className="scard-head" onClick={() => openAgent(a)}>
               <span className="name src-name">{a.name}</span>
+              <RowBadges row={a} />
               <span className="muted" style={{ fontSize: 12, width: 70 }}>
                 {a.keyCount ?? 0} key{(a.keyCount ?? 0) === 1 ? '' : 's'}
               </span>

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { AuthPage } from './AuthPage.js';
-import { type AuthUser, api, tokenStore } from './api.js';
+import { type Agent, type AuthUser, api, type Project, projectStore, tokenStore } from './api.js';
 import { Home } from './Home.js';
 import { Icon, type IconName } from './icons.js';
+import { ProjectSelector, ProjectsContext } from './ProjectSelector.js';
 import { AgentsTab } from './tabs/AgentsTab.js';
 import { GroupsTab } from './tabs/GroupsTab.js';
 import { LogsTab } from './tabs/LogsTab.js';
@@ -28,6 +29,9 @@ export function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState(getTheme());
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selected, setSelected] = useState<string | null>(projectStore.get());
+  const [agentNames, setAgentNames] = useState<Map<string, string>>(new Map());
   const [navOpen, setNavOpen] = useState(false);
   const [rail, setRail] = useState(() => localStorage.getItem('comind_nav') === 'rail');
 
@@ -54,6 +58,18 @@ export function App() {
     }
     return () => window.removeEventListener('comind-unauthorized', drop);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    api
+      .getUnscoped<Project[]>('/projects')
+      .then(setProjects)
+      .catch(() => {});
+    api
+      .getUnscoped<Agent[]>('/agents')
+      .then((a) => setAgentNames(new Map(a.map((x) => [x.id, x.name]))))
+      .catch(() => {});
+  }, [user]);
 
   const logout = () => {
     api.logout();
@@ -120,14 +136,20 @@ export function App() {
         <header className="page-head-shell">
           <h1 className="page-title">{current.label}</h1>
           {current.hint && <span className="page-hint">{current.hint}</span>}
+          <span className="ml-auto" />
+          <ProjectSelector projects={projects} value={selected} onChange={setSelected} />
         </header>
-        {page === 'home' && <Home onNavigate={setPage} />}
-        {page === 'connections' && <SourcesTab />}
-        {page === 'tools' && <ToolsTab onNavigate={setPage} />}
-        {page === 'workspaces' && <GroupsTab />}
-        {page === 'agents' && <AgentsTab />}
-        {page === 'secrets' && <SecretsTab />}
-        {page === 'activity' && <LogsTab />}
+        <ProjectsContext.Provider value={{ projects, selected, agentNames }}>
+          <Fragment key={selected ?? 'all'}>
+            {page === 'home' && <Home onNavigate={setPage} />}
+            {page === 'connections' && <SourcesTab />}
+            {page === 'tools' && <ToolsTab onNavigate={setPage} />}
+            {page === 'workspaces' && <GroupsTab />}
+            {page === 'agents' && <AgentsTab />}
+            {page === 'secrets' && <SecretsTab />}
+            {page === 'activity' && <LogsTab />}
+          </Fragment>
+        </ProjectsContext.Provider>
       </main>
     </div>
   );

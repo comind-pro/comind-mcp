@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { PageId } from '../App.js';
 import { api, type Source, type Tool } from '../api.js';
 import { Icon } from '../icons.js';
+import { RowBadges } from '../ProjectSelector.js';
 import { EmptyState, Loading, Th, useConfirm, useSort } from '../ui.js';
 import { buildInput, parseInput } from './SchemaBuilder.js';
 import { type Cfg, type Editing, type MetaForm, type Step, ToolEditor } from './ToolEditor.js';
@@ -680,6 +681,7 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
                         {t.displayName || t.name}
                       </div>
                       {t.displayName && <div className="mono tool-subname">{t.name}</div>}
+                      <RowBadges row={t} />
                     </td>
                     <td>
                       <span className="tbadge">{t.sourceId ? srcName(t.sourceId) : '—'}</span>

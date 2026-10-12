@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Source, type Tool } from '../api.js';
 import { Icon, type IconName } from '../icons.js';
+import { RowBadges } from '../ProjectSelector.js';
 import { Advanced, EmptyState, Loading, useConfirm } from '../ui.js';
 import { type Cfg, DEFAULTS, KIND_META, type Kind, SourceFields } from './SourceFields.js';
 
@@ -560,6 +561,7 @@ export function SourcesTab() {
           <div key={s.id} className={`scard ${open ? 'open' : ''}`}>
             <div className="scard-head" onClick={() => openEdit(s)}>
               <span className="name src-name">{s.name}</span>
+              <RowBadges row={s} />
               <span className="tbadge src-kind">{s.kind}</span>
               <span className="status-line src-status" style={{ color: dotColor(s.status) }}>
                 <span className="status-dot" style={{ background: dotColor(s.status) }} /> {s.status}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Secret } from '../api.js';
+import { RowBadges } from '../ProjectSelector.js';
 import { EmptyState, Loading, useConfirm } from '../ui.js';
 
 export function SecretsTab() {
@@ -146,7 +147,10 @@ export function SecretsTab() {
           <tbody>
             {secrets.map((s) => (
               <tr key={s.id}>
-                <td className="mono">{s.displayName}</td>
+                <td className="mono">
+                  {s.displayName}
+                  <RowBadges row={s} />
+                </td>
                 <td>
                   {s.sourceName ? (
                     <span className="tbadge">{s.sourceName}</span>
