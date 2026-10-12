@@ -20,6 +20,7 @@ const dbUp = await pool
 
 interface Seed {
   ownerId: string;
+  projectId: string;
   token: string;
   sourceId: string;
   toolName: string;
@@ -120,7 +121,7 @@ async function seedOwner(suffix: string): Promise<Seed> {
     ts: new Date(),
   });
 
-  return { ownerId, token, sourceId, toolName, groupId, groupSlug, agentId };
+  return { ownerId, projectId, token, sourceId, toolName, groupId, groupSlug, agentId };
 }
 
 const d = dbUp ? describe : describe.skip;
@@ -160,6 +161,8 @@ d('cross-owner isolation', () => {
     const ids = all?.groups.map((g) => g.id) ?? [];
     expect(ids).toContain(A.groupId);
     expect(ids).not.toContain(B.groupId);
+    expect(all?.projectId).toBe(A.projectId);
+    expect(all?.role).toBe('lead');
   });
 
   // ---- system.context scoping ----

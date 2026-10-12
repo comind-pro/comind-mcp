@@ -23,6 +23,8 @@ import { canonicalSystemToolName, handleSystemTool, pickSystemTools, systemInstr
 export interface AgentAuth {
   agentId: string;
   ownerId: string;
+  projectId: string;
+  role: 'lead' | 'coo';
   groupId: string;
   groupSlug: string;
   schedulingEnabled: boolean;
@@ -34,6 +36,8 @@ export interface AgentAuth {
 export interface AgentAuthAll {
   agentId: string;
   ownerId: string;
+  projectId: string;
+  role: 'lead' | 'coo';
   /** Built-in system.* tools this agent exposes (subset of SYSTEM_TOOL_NAMES). */
   systemTools: string[];
   groups: { id: string; slug: string; schedulingEnabled: boolean }[];
@@ -42,6 +46,8 @@ export interface AgentAuthAll {
 interface Resolved {
   agentId: string;
   ownerId: string;
+  projectId: string;
+  role: 'lead' | 'coo';
   /** Built-in system.* tools this agent exposes (subset of SYSTEM_TOOL_NAMES). */
   systemTools: string[];
   /** If set, the Bearer is restricted to this single group (group-scoped OAuth token). */
@@ -61,7 +67,14 @@ export async function resolveBearer(authHeader: string | undefined): Promise<Res
   if (key) {
     const [agent] = await db.select().from(agents).where(eq(agents.id, key.agentId));
     if (agent)
-      return { agentId: agent.id, ownerId: agent.ownerId, systemTools: agent.systemTools ?? [], restrictGroupId: null };
+      return {
+        agentId: agent.id,
+        ownerId: agent.ownerId,
+        projectId: agent.projectId,
+        role: agent.role,
+        systemTools: agent.systemTools ?? [],
+        restrictGroupId: null,
+      };
   }
 
   const [tok] = await db
@@ -71,7 +84,14 @@ export async function resolveBearer(authHeader: string | undefined): Promise<Res
   if (!tok || tok.expiresAt.getTime() <= Date.now()) return null;
   const [ag] = await db.select().from(agents).where(eq(agents.id, tok.agentId));
   if (!ag) return null;
-  return { agentId: ag.id, ownerId: ag.ownerId, systemTools: ag.systemTools ?? [], restrictGroupId: tok.groupId };
+  return {
+    agentId: ag.id,
+    ownerId: ag.ownerId,
+    projectId: ag.projectId,
+    role: ag.role,
+    systemTools: ag.systemTools ?? [],
+    restrictGroupId: tok.groupId,
+  };
 }
 
 /** Resolve a Bearer token to an agent and verify it belongs to group `ref`.
@@ -101,6 +121,8 @@ export async function authenticateAgent(ref: string, authHeader: string | undefi
   return {
     agentId: r.agentId,
     ownerId: r.ownerId,
+    projectId: r.projectId,
+    role: r.role,
     groupId: grp.id,
     groupSlug: grp.slug,
     schedulingEnabled: grp.schedulingEnabled,
@@ -117,12 +139,22 @@ export async function authenticateAgentAll(authHeader: string | undefined): Prom
   const grants = await db.select().from(agentGroups).where(eq(agentGroups.agentId, r.agentId));
   let groupIds = grants.map((g) => g.groupId);
   if (r.restrictGroupId) groupIds = groupIds.filter((id) => id === r.restrictGroupId);
-  if (!groupIds.length) return { agentId: r.agentId, ownerId: r.ownerId, systemTools: r.systemTools, groups: [] };
+  if (!groupIds.length)
+    return {
+      agentId: r.agentId,
+      ownerId: r.ownerId,
+      projectId: r.projectId,
+      role: r.role,
+      systemTools: r.systemTools,
+      groups: [],
+    };
 
   const grps = await db.select().from(groups).where(inArray(groups.id, groupIds));
   return {
     agentId: r.agentId,
     ownerId: r.ownerId,
+    projectId: r.projectId,
+    role: r.role,
     systemTools: r.systemTools,
     groups: grps.map((g) => ({
       id: g.id,
