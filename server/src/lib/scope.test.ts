@@ -77,6 +77,41 @@ describe('scope helpers', () => {
     expect(await names(usableBy(sources.projectId, sources.id, 'source', defaultId))).toEqual([srcDefault]);
   });
 
+  it('subtree match uses starts_with, not LIKE (nanoid _ wildcard)', async () => {
+    const tag = newId();
+    // Two sibling IDs: one with _, one with X in the same position to trigger LIKE wildcard bug
+    const id1 = `ab_cd_${tag}`;
+    const id2 = `abXcd_${tag}`;
+    const [team] = await db.select().from(projects).where(eq(projects.id, teamId));
+    await db.insert(projects).values({
+      id: id1,
+      ownerId: owner,
+      parentId: teamId,
+      kind: 'project',
+      name: id1,
+      slug: id1,
+      path: nodePath(team.path, id1),
+      createdAt: new Date(),
+    });
+    await db.insert(projects).values({
+      id: id2,
+      ownerId: owner,
+      parentId: teamId,
+      kind: 'project',
+      name: id2,
+      slug: id2,
+      path: nodePath(team.path, id2),
+      createdAt: new Date(),
+    });
+    const src1 = newId();
+    const src2 = newId();
+    await mkSource(src1, id1);
+    await mkSource(src2, id2);
+    // Scope for id1 should see only src1, not src2 (LIKE would incorrectly match)
+    const scope1 = (await scopeForOwner(owner, id1))!;
+    expect(await names(inSubtree(sources.projectId, scope1))).toEqual([src1]);
+  });
+
   it("another owner's node id is unknown", async () => {
     const other = newId();
     await db.insert(users).values({ id: other, email: `${other}@t.local`, passwordHash: 'x', createdAt: new Date() });

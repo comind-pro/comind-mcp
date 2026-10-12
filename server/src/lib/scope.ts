@@ -1,4 +1,4 @@
-import { and, eq, inArray, like, or, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, or, type SQL, sql } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { FastifyRequest } from 'fastify';
 import { db } from '../db/client.js';
@@ -36,11 +36,12 @@ export async function scopeFor(req: FastifyRequest): Promise<Scope> {
   return s;
 }
 
+/** `col` starts with `path` — the subtree test. starts_with() is a literal
+ *  prefix match (LIKE would treat the `_` in nanoid ids as a wildcard). */
+export const underPath = (col: PgColumn, path: string): SQL => sql`starts_with(${col}, ${path})`;
+
 const subtreeIds = (scope: Scope) =>
-  db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(like(projects.path, `${scope.nodePath}%`));
+  db.select({ id: projects.id }).from(projects).where(underPath(projects.path, scope.nodePath));
 
 /** Rule 2: the row's project is the node or a descendant. */
 export function inSubtree(projectCol: PgColumn, scope: Scope): SQL {
