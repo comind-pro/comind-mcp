@@ -78,6 +78,7 @@ DATABASE_URL=file:/data/comind SERVER_ENV=dev pnpm --filter comind-server start
 | **Agent** | A consumer bound to a group via an API key. Sees only the group's toolset |
 | **Self-cron** | MCP tools `schedule_task` / `list_schedules` / `cancel_schedule` inside a group — the agent schedules itself. Switch it off per workspace (Workspaces → Schedules): the tools disappear from the agent's `tools/list`, calls are refused, and the crons it already created are **paused** until it is back on. Your own schedules in that workspace keep running |
 | **Secret** | An encrypted credential (AES-256-GCM) or an env reference. Substituted at runtime via `${secret.NAME}`; the agent never sees it |
+| **Project / Team** | Nodes of a per-account tree. Every resource lives in one node; a node sees its own subtree plus what was shared with it (`project_access`). Pass `?project=<id>` to any control-plane call to act as that node; omit it to see everything. Each account starts with a default team and a default project. |
 
 ---
 
@@ -99,6 +100,11 @@ GET  /features
 # groups
 POST/GET /groups           GET/PATCH/DELETE /groups/:id
 GET/PUT /groups/:id/tools
+# projects (tree + sharing)  — every route above accepts ?project=<nodeId>
+GET /projects              POST /projects {kind:'team'|'project', name, parentId}
+DELETE /projects/:id       (409 default_node for the default team/project)
+GET/POST /projects/:id/access {resourceType:'source'|'tool'|'secret', resourceId}
+DELETE /projects/:id/access/:type/:resourceId
 # agents
 POST/GET /agents           GET/DELETE /agents/:id            POST /agents/:id/rotate-key
 # schedules

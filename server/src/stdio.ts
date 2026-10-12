@@ -252,7 +252,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         },
         result:
           'Tool `petstore.get_user` (etc.) — input schema derived from parameters/requestBody; secrets injected via ${secret.NAME}.',
-        note: 'Run these against your self-hosted gateway (see comind.self_host). Auth: a control-plane user JWT.',
+        note:
+          'Run these against your self-hosted gateway (see comind.self_host). Auth: a control-plane user JWT. ' +
+          "Every control-plane call accepts ?project=<nodeId> to act as one project of the account's tree; GET /projects lists the tree.",
       });
     case 'comind.mcp_proxy_example':
       return json({
