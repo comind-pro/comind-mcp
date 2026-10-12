@@ -37,10 +37,10 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
       if (!src) return reply.code(400).send({ error: 'unknown_source' });
     }
 
-    const scope = body.sourceId
+    const where = body.sourceId
       ? and(eq(secrets.ownerId, owner), eq(secrets.name, body.name), eq(secrets.sourceId, body.sourceId))
       : and(eq(secrets.ownerId, owner), eq(secrets.name, body.name), isNull(secrets.sourceId));
-    const [clash] = await db.select().from(secrets).where(scope);
+    const [clash] = await db.select().from(secrets).where(where);
     if (clash) return reply.code(409).send({ error: 'name_taken' });
 
     const row = {
@@ -99,9 +99,10 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/secrets/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const sc = await scopeFor(req);
-    await db
-      .delete(secrets)
-      .where(and(eq(secrets.id, id), eq(secrets.ownerId, sc.ownerId), inSubtree(secrets.projectId, sc)));
+    const administered = and(eq(secrets.id, id), eq(secrets.ownerId, sc.ownerId), inSubtree(secrets.projectId, sc));
+    const [row] = await db.select({ id: secrets.id }).from(secrets).where(administered);
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(secrets).where(administered);
     return reply.code(204).send();
   });
 }
