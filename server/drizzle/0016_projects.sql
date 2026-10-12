@@ -1,5 +1,5 @@
 CREATE TABLE "project_access" (
-	"project_id" text,
+	"project_id" text NOT NULL,
 	"resource_type" text NOT NULL,
 	"resource_id" text NOT NULL,
 	"granted_by" text,
