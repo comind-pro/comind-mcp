@@ -4,9 +4,8 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { secrets, sources } from '../db/schema.js';
 import { newId } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
+import { inScope, inSubtree, scopeFor } from '../lib/scope.js';
 import { encrypt } from '../secrets/vault.js';
-import { ensureDefaultNodes } from '../services/projects.js';
 
 const createBody = z
   .object({
@@ -14,8 +13,9 @@ const createBody = z
     value: z.string().optional(),
     envRef: z.string().optional(),
     sourceId: z.string().optional(),
+    pending: z.boolean().optional(),
   })
-  .refine((b) => b.value || b.envRef, { message: 'Provide value or envRef' });
+  .refine((b) => b.value || b.envRef || b.pending, { message: 'Provide value, envRef or pending' });
 
 const updateBody = z
   .object({ value: z.string().optional(), envRef: z.string().optional() })
@@ -25,14 +25,15 @@ const updateBody = z
 
 export async function secretRoutes(app: FastifyInstance): Promise<void> {
   app.post('/secrets', async (req, reply) => {
-    const owner = ownerOf(req);
+    const sc = await scopeFor(req);
+    const owner = sc.ownerId;
     const body = createBody.parse(req.body);
 
     if (body.sourceId) {
       const [src] = await db
         .select()
         .from(sources)
-        .where(and(eq(sources.id, body.sourceId), eq(sources.ownerId, owner)));
+        .where(and(eq(sources.id, body.sourceId), eq(sources.ownerId, owner), inSubtree(sources.projectId, sc)));
       if (!src) return reply.code(400).send({ error: 'unknown_source' });
     }
 
@@ -45,7 +46,7 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
     const row = {
       id: newId(),
       ownerId: owner,
-      projectId: (await ensureDefaultNodes(owner)).projectId, // task4: scope.createIn
+      projectId: sc.createIn,
       createdByAgentId: null,
       name: body.name,
       sourceId: body.sourceId ?? null,
@@ -58,21 +59,23 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/secrets', async (req) => {
+    const sc = await scopeFor(req);
     const rows = await db
       .select()
       .from(secrets)
-      .where(eq(secrets.ownerId, ownerOf(req)));
+      .where(and(eq(secrets.ownerId, sc.ownerId), inScope(secrets.projectId, secrets.id, 'secret', sc)));
     return Promise.all(rows.map(publicSecret));
   });
 
   app.patch('/secrets/:id', async (req, reply) => {
-    const owner = ownerOf(req);
+    const sc = await scopeFor(req);
+    const owner = sc.ownerId;
     const { id } = req.params as { id: string };
     const body = updateBody.parse(req.body);
     const [existing] = await db
       .select()
       .from(secrets)
-      .where(and(eq(secrets.id, id), eq(secrets.ownerId, owner)));
+      .where(and(eq(secrets.id, id), eq(secrets.ownerId, owner), inSubtree(secrets.projectId, sc)));
     if (!existing) return reply.code(404).send({ error: 'not_found' });
 
     // value → re-encrypt (blind: old plaintext is never read). envRef → store the
@@ -95,7 +98,10 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/secrets/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    await db.delete(secrets).where(and(eq(secrets.id, id), eq(secrets.ownerId, ownerOf(req))));
+    const sc = await scopeFor(req);
+    await db
+      .delete(secrets)
+      .where(and(eq(secrets.id, id), eq(secrets.ownerId, sc.ownerId), inSubtree(secrets.projectId, sc)));
     return reply.code(204).send();
   });
 }
@@ -113,6 +119,9 @@ async function publicSecret(s: typeof secrets.$inferSelect) {
     sourceName,
     displayName: sourceName ? `${sourceName}.${s.name}` : s.name,
     kind: s.envRef ? 'env' : 'encrypted',
+    pending: !s.encryptedValue && !s.envRef,
+    projectId: s.projectId,
+    createdByAgentId: s.createdByAgentId,
     envRef: s.envRef,
     createdAt: s.createdAt,
   };

@@ -6,10 +6,9 @@ import { createConnector, parseSourceConfig, sourceKind } from '../connectors/in
 import { db } from '../db/client.js';
 import { liveTool, sources, tools } from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
+import { inScope, inSubtree, type Scope, scopeFor } from '../lib/scope.js';
 import { changedFields } from '../lib/tool-diff.js';
 import { injectSecrets, loadSecretMap, resolveSourceConfig } from '../secrets/loader.js';
-import { ensureDefaultNodes } from '../services/projects.js';
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -29,24 +28,39 @@ const testBody = z.object({
   secrets: z.record(z.string()).optional(),
 });
 
-/** Load a source owned by the requester, or null. */
-async function owned(_req: { url: string }, id: string, owner: string) {
+/** Read: in the scope's subtree or granted to it. */
+async function visible(scope: Scope, id: string) {
   const [row] = await db
     .select()
     .from(sources)
-    .where(and(eq(sources.id, id), eq(sources.ownerId, owner)));
+    .where(
+      and(
+        eq(sources.id, id),
+        eq(sources.ownerId, scope.ownerId),
+        inScope(sources.projectId, sources.id, 'source', scope),
+      ),
+    );
+  return row ?? null;
+}
+
+/** Write: subtree only (a grant gives read, not edit). */
+async function administered(scope: Scope, id: string) {
+  const [row] = await db
+    .select()
+    .from(sources)
+    .where(and(eq(sources.id, id), eq(sources.ownerId, scope.ownerId), inSubtree(sources.projectId, scope)));
   return row ?? null;
 }
 
 export async function sourceRoutes(app: FastifyInstance): Promise<void> {
   app.post('/sources', async (req, reply) => {
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
     const body = createBody.parse(req.body);
     const config = parseSourceConfig(body.kind, body.config);
     const row = {
       id: newId(),
-      ownerId: owner,
-      projectId: (await ensureDefaultNodes(owner)).projectId, // task4: scope.createIn
+      ownerId: scope.ownerId,
+      projectId: scope.createIn,
       createdByAgentId: null,
       name: body.name,
       kind: body.kind,
@@ -59,16 +73,17 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(row);
   });
 
-  app.get('/sources', async (req) =>
-    db
+  app.get('/sources', async (req) => {
+    const scope = await scopeFor(req);
+    return db
       .select()
       .from(sources)
-      .where(eq(sources.ownerId, ownerOf(req))),
-  );
+      .where(and(eq(sources.ownerId, scope.ownerId), inScope(sources.projectId, sources.id, 'source', scope)));
+  });
 
   app.get('/sources/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await owned(req, id, ownerOf(req));
+    const row = await visible(await scopeFor(req), id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
     return row;
   });
@@ -76,7 +91,7 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
   app.patch('/sources/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = patchBody.parse(req.body);
-    const existing = await owned(req, id, ownerOf(req));
+    const existing = await administered(await scopeFor(req), id);
     if (!existing) return reply.code(404).send({ error: 'not_found' });
 
     const patch: Record<string, unknown> = {};
@@ -90,7 +105,8 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/sources/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    await db.delete(sources).where(and(eq(sources.id, id), eq(sources.ownerId, ownerOf(req))));
+    if (!(await administered(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(sources).where(eq(sources.id, id));
     return reply.code(204).send();
   });
 
@@ -98,10 +114,10 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
   // Resolves the owner's GLOBAL secrets plus any pending (not-yet-saved) secret
   // values passed inline by the wizard. Skips applyAuth (no stored OAuth tokens).
   app.post('/sources/test', async (req, reply) => {
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
     const body = testBody.parse(req.body);
     try {
-      const map = { ...(await loadSecretMap(owner)), ...(body.secrets ?? {}) };
+      const map = { ...(await loadSecretMap(scope.ownerId, undefined, scope.createIn)), ...(body.secrets ?? {}) };
       const config = parseSourceConfig(body.kind, injectSecrets(body.config, map));
       const connector = createConnector(body.kind, config);
       return await connector.health();
@@ -116,14 +132,19 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/sources/:id/test', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await owned(req, id, ownerOf(req));
+    const row = await visible(await scopeFor(req), id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
 
-    const connector = createConnector(
-      row.kind,
-      await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)),
-    );
-    const result = await connector.health();
+    let result: { ok: boolean; message?: string };
+    try {
+      const connector = createConnector(
+        row.kind,
+        await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)),
+      );
+      result = await connector.health();
+    } catch (e) {
+      result = { ok: false, message: (e as Error).message }; // e.g. a pending secret
+    }
     await db
       .update(sources)
       .set({ status: result.ok ? 'ok' : 'error', statusMessage: result.message ?? null, statusCheckedAt: new Date() })
@@ -134,7 +155,7 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
   // Refresh the cached queryable objects (GA properties, DB schemas, mailboxes…).
   app.post('/sources/:id/objects', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await owned(req, id, ownerOf(req));
+    const row = await administered(await scopeFor(req), id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
     const connector = createConnector(
       row.kind,
@@ -151,8 +172,9 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/sources/:id/import', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
-    const row = await owned(req, id, owner);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
+    const row = await administered(scope, id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
 
     // `force`: overwrite existing tools too (refresh metadata/schemas). Default:
@@ -217,7 +239,7 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
       const values = {
         id: newId(),
         ownerId: owner,
-        projectId: row.projectId, // task4: native tools live with their source
+        projectId: row.projectId, // native tools live with their source
         createdByAgentId: null,
         sourceId: row.id,
         kind: 'native' as const,

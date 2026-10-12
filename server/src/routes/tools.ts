@@ -1,9 +1,9 @@
-import { and, eq, type SQL } from 'drizzle-orm';
+import { and, eq, or, type SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { liveTool, tools } from '../db/schema.js';
-import { ownerOf } from '../lib/req.js';
+import { granted, inScope, inSubtree, type Scope, scopeFor, usableBy } from '../lib/scope.js';
 import { invokeTool } from '../runtime/invoker.js';
 
 const patchBody = z.object({
@@ -28,18 +28,35 @@ const patchBody = z.object({
     .optional(),
 });
 
-async function ownedTool(id: string, owner: string) {
+/** Tools a scope may read: its subtree, grants on the tool, or grants on its source. */
+export const toolVisibleCond = (scope: Scope) =>
+  or(inScope(tools.projectId, tools.id, 'tool', scope), granted(tools.sourceId, 'source', scope.nodeId)) as SQL;
+
+/** Tools a single node may put into its workspaces (rule 1). */
+export const toolUsableCond = (nodeId: string) =>
+  or(usableBy(tools.projectId, tools.id, 'tool', nodeId), granted(tools.sourceId, 'source', nodeId)) as SQL;
+
+async function visibleTool(scope: Scope, id: string) {
   const [row] = await db
     .select()
     .from(tools)
-    .where(and(eq(tools.id, id), eq(tools.ownerId, owner), liveTool()));
+    .where(and(eq(tools.id, id), eq(tools.ownerId, scope.ownerId), liveTool(), toolVisibleCond(scope)));
+  return row ?? null;
+}
+
+async function administeredTool(scope: Scope, id: string) {
+  const [row] = await db
+    .select()
+    .from(tools)
+    .where(and(eq(tools.id, id), eq(tools.ownerId, scope.ownerId), liveTool(), inSubtree(tools.projectId, scope)));
   return row ?? null;
 }
 
 export async function toolRoutes(app: FastifyInstance): Promise<void> {
   app.get('/tools', async (req) => {
     const q = req.query as { sourceId?: string; kind?: string; visible?: string };
-    const filters: SQL[] = [eq(tools.ownerId, ownerOf(req)), liveTool()];
+    const scope = await scopeFor(req);
+    const filters: SQL[] = [eq(tools.ownerId, scope.ownerId), liveTool(), toolVisibleCond(scope)];
     if (q.sourceId) filters.push(eq(tools.sourceId, q.sourceId));
     if (q.kind === 'native' || q.kind === 'composite' || q.kind === 'virtual' || q.kind === 'python') {
       filters.push(eq(tools.kind, q.kind));
@@ -53,16 +70,17 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await ownedTool(id, ownerOf(req));
+    const row = await visibleTool(await scopeFor(req), id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
     return row;
   });
 
   app.patch('/tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
     const body = patchBody.parse(req.body);
-    const existing = await ownedTool(id, owner);
+    const existing = await administeredTool(scope, id);
     if (!existing) return reply.code(404).send({ error: 'not_found' });
 
     if (body.name && body.name !== existing.name) {
@@ -93,14 +111,16 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    await db.delete(tools).where(and(eq(tools.id, id), eq(tools.ownerId, ownerOf(req))));
+    if (!(await administeredTool(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(tools).where(eq(tools.id, id));
     return reply.code(204).send();
   });
 
   app.post('/tools/:id/test', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
-    const tool = await ownedTool(id, owner);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
+    const tool = await visibleTool(scope, id);
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const args = ((req.body as { args?: Record<string, unknown> })?.args ?? {}) as Record<string, unknown>;
     const result = await invokeTool(tool.name, args, { ownerId: owner, groupId: null, agentId: null, source: 'test' });
