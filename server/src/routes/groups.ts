@@ -41,8 +41,8 @@ async function ownedGroup(scope: Scope, id: string) {
 
 export async function groupRoutes(app: FastifyInstance): Promise<void> {
   app.post('/groups', async (req, reply) => {
-    const owner = ownerOf(req);
     const scope = await scopeFor(req);
+    const owner = scope.ownerId;
     const body = createBody.parse(req.body);
     const row = {
       id: newId(),
@@ -92,10 +92,8 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/groups/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const scope = await scopeFor(req);
-    await db
-      .delete(groups)
-      .where(and(eq(groups.id, id), eq(groups.ownerId, scope.ownerId), inSubtree(groups.projectId, scope)));
+    if (!(await ownedGroup(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(groups).where(eq(groups.id, id));
     return reply.code(204).send();
   });
 

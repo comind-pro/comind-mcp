@@ -110,10 +110,8 @@ export async function pythonRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/python-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const scope = await scopeFor(req);
-    await db
-      .delete(tools)
-      .where(and(eq(tools.id, id), eq(tools.ownerId, scope.ownerId), inSubtree(tools.projectId, scope))); // cascades scripts
+    if (!(await ownedPython(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(tools).where(eq(tools.id, id)); // cascades scripts
     return reply.code(204).send();
   });
 

@@ -147,6 +147,8 @@ describe.skipIf(!dbUp)('project isolation: sources, tools, secrets', () => {
     expect((await list('/groups')).map((g) => g.id)).toContain(gB);
     expect((await list('/agents', A)).map((g) => g.id)).not.toContain(aB);
     expect((await call('GET', `/groups/${gB}?project=${A}`)).statusCode).toBe(404);
+    expect((await call('DELETE', `/groups/${gB}?project=${A}`)).statusCode).toBe(404);
+    expect((await list('/groups')).map((g) => g.id)).toContain(gB);
     expect((await call('GET', `/agents/${aB}?project=${A}`)).statusCode).toBe(404);
     expect(
       (await call('POST', `/groups/${gB}/schedules?project=${A}`, { cron: '* * * * *', toolName: 'x' })).statusCode,
@@ -164,10 +166,47 @@ describe.skipIf(!dbUp)('project isolation: sources, tools, secrets', () => {
   it('call logs carry the tool project and filter by it', async () => {
     const tA = (await list('/tools', A)).find((t) => t.name === 'src-akey.ping') as Row;
     await call('POST', `/tools/${tA.id}/test?project=${A}`, {});
-    await new Promise((r) => setTimeout(r, 300));
     const logs = async (p: string) =>
       ((await call('GET', `/logs?project=${p}`)).json() as { toolName: string }[]).map((l) => l.toolName);
+    for (let i = 0; i < 40 && !(await logs(A)).includes('src-akey.ping'); i++)
+      await new Promise((r) => setTimeout(r, 50));
     expect(await logs(A)).toContain('src-akey.ping');
     expect(await logs(B)).not.toContain('src-akey.ping');
+  });
+
+  it('bundle import cannot reuse invisible rows; works after a grant', async () => {
+    const sB = ((await call('POST', `/sources?project=${B}`, httpSource('bundle-src'))).json() as Row).id;
+    await call('POST', `/sources/${sB}/import?project=${B}`, {});
+    const gB = await mkGroup(B, 'bundle-grp');
+    const bt = (await list('/tools', B)).find((t) => t.name === 'bundle-src.ping') as Row;
+    await call('PUT', `/groups/${gB}/tools?project=${B}`, { toolIds: [bt.id] });
+    const bundle = (await call('GET', `/groups/${gB}/export?project=${B}`)).json();
+    const imp = () =>
+      app.inject({
+        method: 'POST',
+        url: `/groups/import?project=${A}`,
+        payload: bundle,
+        headers: { authorization: `Bearer ${token}` },
+      });
+    const r1 = await imp();
+    expect(r1.statusCode).toBe(409);
+    expect((r1.json() as { error: string }).error).toBe('name_taken');
+    await call('POST', `/projects/${A}/access`, { resourceType: 'source', resourceId: sB });
+    // group slug still taken by B's invisible group -> remove it from the bundle
+    const b2 = {
+      ...(bundle as { group: { slug: string } }),
+      group: { ...(bundle as { group: object }).group, slug: 'bundle-grp-a' },
+    };
+    const r2 = await app.inject({
+      method: 'POST',
+      url: `/groups/import?project=${A}`,
+      payload: b2,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(r2.statusCode).toBe(201);
+    const rep = r2.json() as { sources: { skipped: string[] } };
+    expect(rep.sources.skipped).toContain('bundle-src');
+    const g = (await list('/groups', A)).find((x) => x.name === 'bundle-grp');
+    expect(g?.projectId).toBe(A);
   });
 });

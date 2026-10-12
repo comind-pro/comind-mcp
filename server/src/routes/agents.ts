@@ -167,10 +167,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/agents/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const scope = await scopeFor(req);
-    await db
-      .delete(agents)
-      .where(and(eq(agents.id, id), eq(agents.ownerId, scope.ownerId), inSubtree(agents.projectId, scope)));
+    if (!(await ownedAgent(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(agents).where(eq(agents.id, id));
     return reply.code(204).send();
   });
 

@@ -7,7 +7,8 @@ import { composites, groups, groupTools, liveTool, scripts, secrets, sources, to
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
-import { inSubtree, scopeFor } from '../lib/scope.js';
+import { inScope, inSubtree, scopeFor } from '../lib/scope.js';
+import { toolVisibleCond } from './tools.js';
 
 /**
  * Group bundle v1: a workspace serialized for transfer between instances.
@@ -189,12 +190,60 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
       secretsToFill: [] as string[],
     };
 
+    // Pre-pass: names that exist for the owner but are invisible to this scope can't be
+    // reused (that would leak across projects) nor recreated — refuse before writing.
+    const taken: string[] = [];
+    const [slugVisible] = await db
+      .select()
+      .from(groups)
+      .where(and(eq(groups.slug, bundle.group.slug), eq(groups.ownerId, owner), inSubtree(groups.projectId, scope)));
+    if (!slugVisible) {
+      const [any] = await db
+        .select()
+        .from(groups)
+        .where(and(eq(groups.slug, bundle.group.slug), eq(groups.ownerId, owner)));
+      if (any) taken.push(bundle.group.slug);
+    }
+    const visibleSrc = new Map<string, string>();
+    for (const sd of bundle.sources) {
+      const byName = and(eq(sources.name, sd.name), eq(sources.ownerId, owner));
+      const [vis] = await db
+        .select()
+        .from(sources)
+        .where(and(byName, inScope(sources.projectId, sources.id, 'source', scope)));
+      if (vis) visibleSrc.set(sd.name, vis.id);
+      else if ((await db.select().from(sources).where(byName)).length) taken.push(sd.name);
+    }
+    for (const t of bundle.tools) {
+      const byName = and(eq(tools.name, t.name), eq(tools.ownerId, owner));
+      const [vis] = await db
+        .select()
+        .from(tools)
+        .where(and(byName, toolVisibleCond(scope)));
+      if (!vis && (await db.select().from(tools).where(byName)).length) taken.push(t.name);
+    }
+    for (const sc of bundle.secrets) {
+      const scopeId = sc.source ? (visibleSrc.get(sc.source) ?? null) : null;
+      if (sc.source && !scopeId) continue; // new source → new secret
+      const byName = and(
+        eq(secrets.ownerId, owner),
+        eq(secrets.name, sc.name),
+        scopeId ? eq(secrets.sourceId, scopeId) : isNull(secrets.sourceId),
+      );
+      const [vis] = await db
+        .select()
+        .from(secrets)
+        .where(and(byName, inScope(secrets.projectId, secrets.id, 'secret', scope)));
+      if (!vis && (await db.select().from(secrets).where(byName)).length) taken.push(sc.name);
+    }
+    if (taken.length) return reply.code(409).send({ error: 'name_taken', names: [...new Set(taken)] });
+
     await db.transaction(async (tx) => {
       // group by slug — existing is reused as-is (its name/description win)
       let [grp] = await tx
         .select()
         .from(groups)
-        .where(and(eq(groups.slug, bundle.group.slug), eq(groups.ownerId, owner)));
+        .where(and(eq(groups.slug, bundle.group.slug), eq(groups.ownerId, owner), inSubtree(groups.projectId, scope)));
       if (grp) report.group = 'skipped';
       else {
         grp = {
@@ -217,7 +266,13 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         const [existing] = await tx
           .select()
           .from(sources)
-          .where(and(eq(sources.name, s.name), eq(sources.ownerId, owner)));
+          .where(
+            and(
+              eq(sources.name, s.name),
+              eq(sources.ownerId, owner),
+              inScope(sources.projectId, sources.id, 'source', scope),
+            ),
+          );
         if (existing) {
           sourceId.set(s.name, existing.id);
           report.sources.skipped.push(s.name);
@@ -245,6 +300,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         const existingCond = scopeId
           ? and(eq(secrets.ownerId, owner), eq(secrets.name, s.name), eq(secrets.sourceId, scopeId))
           : and(eq(secrets.ownerId, owner), eq(secrets.name, s.name), isNull(secrets.sourceId));
+        // pre-pass guaranteed any existing row is visible
         const [existing] = await tx.select().from(secrets).where(existingCond);
         if (existing) {
           report.secrets.skipped.push(s.name);
@@ -275,7 +331,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         const [existing] = await tx
           .select()
           .from(tools)
-          .where(and(eq(tools.name, t.name), eq(tools.ownerId, owner)));
+          .where(and(eq(tools.name, t.name), eq(tools.ownerId, owner), toolVisibleCond(scope)));
         if (existing) {
           // a soft-deleted tool still owns the name: bring it back rather than link a ghost
           if (existing.deletedAt) await tx.update(tools).set({ deletedAt: null }).where(eq(tools.id, existing.id));

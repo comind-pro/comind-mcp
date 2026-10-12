@@ -141,10 +141,8 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/composite-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const scope = await scopeFor(req);
-    await db
-      .delete(tools)
-      .where(and(eq(tools.id, id), eq(tools.ownerId, scope.ownerId), inSubtree(tools.projectId, scope)));
+    if (!(await ownedComposite(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(tools).where(eq(tools.id, id));
     return reply.code(204).send();
   });
 
