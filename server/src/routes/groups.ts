@@ -5,7 +5,8 @@ import { db } from '../db/client.js';
 import { groups, groupTools, liveTool, tools } from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
-import { ensureDefaultNodes } from '../services/projects.js';
+import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
+import { toolUsableCond } from './tools.js';
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -30,22 +31,23 @@ async function uniqueSlug(base: string, owner: string): Promise<string> {
   return `${slug}-${newId().slice(0, 4).toLowerCase()}`;
 }
 
-async function ownedGroup(id: string, owner: string) {
+async function ownedGroup(scope: Scope, id: string) {
   const [row] = await db
     .select()
     .from(groups)
-    .where(and(eq(groups.id, id), eq(groups.ownerId, owner)));
+    .where(and(eq(groups.id, id), eq(groups.ownerId, scope.ownerId), inSubtree(groups.projectId, scope)));
   return row ?? null;
 }
 
 export async function groupRoutes(app: FastifyInstance): Promise<void> {
   app.post('/groups', async (req, reply) => {
     const owner = ownerOf(req);
+    const scope = await scopeFor(req);
     const body = createBody.parse(req.body);
     const row = {
       id: newId(),
       ownerId: owner,
-      projectId: (await ensureDefaultNodes(owner)).projectId, // task4: scope.createIn
+      projectId: scope.createIn,
       createdByAgentId: null,
       slug: await uniqueSlug(body.slug ?? body.name, owner),
       name: body.name,
@@ -57,16 +59,17 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(row);
   });
 
-  app.get('/groups', async (req) =>
-    db
+  app.get('/groups', async (req) => {
+    const scope = await scopeFor(req);
+    return db
       .select()
       .from(groups)
-      .where(eq(groups.ownerId, ownerOf(req))),
-  );
+      .where(and(eq(groups.ownerId, scope.ownerId), inSubtree(groups.projectId, scope)));
+  });
 
   app.get('/groups/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await ownedGroup(id, ownerOf(req));
+    const row = await ownedGroup(await scopeFor(req), id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
     return row;
   });
@@ -74,7 +77,7 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
   app.patch('/groups/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = patchBody.parse(req.body);
-    const existing = await ownedGroup(id, ownerOf(req));
+    const existing = await ownedGroup(await scopeFor(req), id);
     if (!existing) return reply.code(404).send({ error: 'not_found' });
 
     const patch: Record<string, unknown> = {};
@@ -89,13 +92,16 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/groups/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    await db.delete(groups).where(and(eq(groups.id, id), eq(groups.ownerId, ownerOf(req))));
+    const scope = await scopeFor(req);
+    await db
+      .delete(groups)
+      .where(and(eq(groups.id, id), eq(groups.ownerId, scope.ownerId), inSubtree(groups.projectId, scope)));
     return reply.code(204).send();
   });
 
   app.get('/groups/:id/tools', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const grp = await ownedGroup(id, ownerOf(req));
+    const grp = await ownedGroup(await scopeFor(req), id);
     if (!grp) return reply.code(404).send({ error: 'not_found' });
     const links = await db.select().from(groupTools).where(eq(groupTools.groupId, id));
     const ids = links.map((l) => l.toolId);
@@ -108,17 +114,19 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
 
   app.put('/groups/:id/tools', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
     const { toolIds } = z.object({ toolIds: z.array(z.string()) }).parse(req.body);
-    const grp = await ownedGroup(id, owner);
+    const grp = await ownedGroup(scope, id);
     if (!grp) return reply.code(404).send({ error: 'not_found' });
 
     if (toolIds.length) {
-      // tools must belong to the same owner
+      // tools must be usable by the group's own project (rule 1)
       const found = await db
         .select()
         .from(tools)
-        .where(and(inArray(tools.id, toolIds), eq(tools.ownerId, owner), liveTool()));
+        .where(
+          and(inArray(tools.id, toolIds), eq(tools.ownerId, scope.ownerId), liveTool(), toolUsableCond(grp.projectId)),
+        );
       const missing = toolIds.filter((t) => !found.some((f) => f.id === t));
       if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
     }

@@ -7,7 +7,7 @@ import { composites, groups, groupTools, liveTool, scripts, secrets, sources, to
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
-import { ensureDefaultNodes } from '../services/projects.js';
+import { inSubtree, scopeFor } from '../lib/scope.js';
 
 /**
  * Group bundle v1: a workspace serialized for transfer between instances.
@@ -61,12 +61,13 @@ function secretRefs(value: unknown, into: Set<string>): void {
 
 export async function bundleRoutes(app: FastifyInstance): Promise<void> {
   app.get('/groups/:id/export', async (req, reply) => {
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
     const { id } = req.params as { id: string };
     const [grp] = await db
       .select()
       .from(groups)
-      .where(and(eq(groups.id, id), eq(groups.ownerId, owner)));
+      .where(and(eq(groups.id, id), eq(groups.ownerId, owner), inSubtree(groups.projectId, scope)));
     if (!grp) return reply.code(404).send({ error: 'not_found' });
 
     const links = await db.select().from(groupTools).where(eq(groupTools.groupId, id));
@@ -158,7 +159,8 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/groups/import', async (req, reply) => {
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
     const bundle = bundleSchema.parse(req.body);
 
     // validate source configs & name refs up front (fail before writing anything)
@@ -187,7 +189,6 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
       secretsToFill: [] as string[],
     };
 
-    const { projectId } = await ensureDefaultNodes(owner); // task4: scope.createIn
     await db.transaction(async (tx) => {
       // group by slug — existing is reused as-is (its name/description win)
       let [grp] = await tx
@@ -199,7 +200,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         grp = {
           id: newId(),
           ownerId: owner,
-          projectId, // task4: scope.createIn
+          projectId: scope.createIn,
           createdByAgentId: null,
           slug: bundle.group.slug,
           name: bundle.group.name,
@@ -226,7 +227,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(sources).values({
           id,
           ownerId: owner,
-          projectId, // task4: scope.createIn
+          projectId: scope.createIn,
           createdByAgentId: null,
           name: s.name,
           kind: s.kind,
@@ -241,10 +242,10 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
       // secrets by (name, scope) — created EMPTY, never overwritten
       for (const s of bundle.secrets) {
         const scopeId = s.source ? (sourceId.get(s.source) ?? null) : null;
-        const scope = scopeId
+        const existingCond = scopeId
           ? and(eq(secrets.ownerId, owner), eq(secrets.name, s.name), eq(secrets.sourceId, scopeId))
           : and(eq(secrets.ownerId, owner), eq(secrets.name, s.name), isNull(secrets.sourceId));
-        const [existing] = await tx.select().from(secrets).where(scope);
+        const [existing] = await tx.select().from(secrets).where(existingCond);
         if (existing) {
           report.secrets.skipped.push(s.name);
           if (!existing.encryptedValue && !existing.envRef) report.secretsToFill.push(s.name);
@@ -253,7 +254,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(secrets).values({
           id: newId(),
           ownerId: owner,
-          projectId, // task4: scope.createIn
+          projectId: scope.createIn,
           createdByAgentId: null,
           name: s.name,
           sourceId: scopeId,
@@ -286,7 +287,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(tools).values({
           id,
           ownerId: owner,
-          projectId, // task4: scope.createIn
+          projectId: scope.createIn,
           createdByAgentId: null,
           sourceId: t.source ? (sourceId.get(t.source) ?? null) : null,
           kind: t.kind,

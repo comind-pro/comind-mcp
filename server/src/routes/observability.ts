@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentGroups, agents, callLogs, groups, groupTools, liveTool, tools } from '../db/schema.js';
-import { ownerOf } from '../lib/req.js';
+import { inSubtree, scopeFor } from '../lib/scope.js';
 import { invokeTool } from '../runtime/invoker.js';
 
 const SELF_CRON = ['schedule_task', 'list_schedules', 'cancel_schedule'];
@@ -32,7 +32,8 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
       to?: string;
       limit?: string;
     };
-    const filters: SQL[] = [eq(callLogs.ownerId, ownerOf(req))];
+    const scope = await scopeFor(req);
+    const filters: SQL[] = [eq(callLogs.ownerId, scope.ownerId), inSubtree(callLogs.projectId, scope)];
     if (q.groupId) filters.push(eq(callLogs.groupId, q.groupId));
     if (q.agentId) filters.push(eq(callLogs.agentId, q.agentId));
     if (q.toolName) filters.push(eq(callLogs.toolName, q.toolName));
@@ -53,9 +54,12 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
   // Aggregate usage metrics — computed in SQL (scales), with optional time window
   // and source filter. By default excludes nothing; pass ?source=live for prod-only.
   app.get('/metrics', async (req) => {
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
     const q = req.query as { from?: string; to?: string; source?: string };
-    const conds = [sql`owner_id = ${owner}`];
+    const conds = [
+      sql`owner_id = ${scope.ownerId}`,
+      sql`project_id in (select id from projects where starts_with(path, ${scope.nodePath}))`,
+    ];
     // NB: drizzle field `ts` maps to DB column `created_at`.
     if (q.from) conds.push(sql`created_at >= ${new Date(q.from).toISOString()}`);
     if (q.to) conds.push(sql`created_at <= ${new Date(q.to).toISOString()}`);
@@ -95,10 +99,11 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
   // What does this agent actually see through its endpoint?
   app.get('/agents/:id/inspect', async (req, reply) => {
     const { id } = req.params as { id: string };
+    const scope = await scopeFor(req);
     const [agent] = await db
       .select()
       .from(agents)
-      .where(and(eq(agents.id, id), eq(agents.ownerId, ownerOf(req))));
+      .where(and(eq(agents.id, id), eq(agents.ownerId, scope.ownerId), inSubtree(agents.projectId, scope)));
     if (!agent) return reply.code(404).send({ error: 'not_found' });
 
     // What the agent sees per granted group.
@@ -123,11 +128,12 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
     const body = z
       .object({ groupId: z.string(), tool: z.string(), args: z.record(z.unknown()).optional() })
       .parse(req.body);
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
     const [agent] = await db
       .select()
       .from(agents)
-      .where(and(eq(agents.id, id), eq(agents.ownerId, owner)));
+      .where(and(eq(agents.id, id), eq(agents.ownerId, owner), inSubtree(agents.projectId, scope)));
     if (!agent) return reply.code(404).send({ error: 'not_found' });
 
     const [grant] = await db

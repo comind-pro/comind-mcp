@@ -76,13 +76,19 @@ export async function invokeTool(
   depth = 0,
 ): Promise<CallResult> {
   const startedAt = Date.now();
-  const result = await dispatch(toolName, args, ctx, depth);
+  // Owner-scoped: never resolve another user's tool with the same name.
+  const [tool] = await db
+    .select()
+    .from(tools)
+    .where(and(eq(tools.name, toolName), eq(tools.ownerId, ctx.ownerId), liveTool()));
+  const result = await dispatch(tool, toolName, args, ctx, depth);
   // Observability: record each call. Never let logging break the call.
   void db
     .insert(callLogs)
     .values({
       id: newId(),
       ownerId: ctx.ownerId,
+      projectId: tool?.projectId ?? null,
       groupId: ctx.groupId ?? null,
       agentId: ctx.agentId ?? null,
       toolName,
@@ -99,6 +105,7 @@ export async function invokeTool(
 }
 
 async function dispatch(
+  tool: typeof tools.$inferSelect | undefined,
   toolName: string,
   args: Record<string, unknown>,
   ctx: InvokeContext,
@@ -106,11 +113,6 @@ async function dispatch(
 ): Promise<CallResult> {
   if (depth > MAX_DEPTH) return textResult(`Max composite depth exceeded at ${toolName}`, true);
 
-  // Owner-scoped: never resolve another user's tool with the same name.
-  const [tool] = await db
-    .select()
-    .from(tools)
-    .where(and(eq(tools.name, toolName), eq(tools.ownerId, ctx.ownerId), liveTool()));
   if (!tool) return textResult(`Unknown tool: ${toolName}`, true);
 
   if (tool.kind === 'composite') {

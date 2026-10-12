@@ -121,4 +121,53 @@ describe.skipIf(!dbUp)('project isolation: sources, tools, secrets', () => {
     const nodes = (await call('GET', '/projects')).json() as { id: string; kind: string; slug: string }[];
     expect(d.projectId).toBe(nodes.find((n) => n.kind === 'project' && n.slug === 'default')?.id);
   });
+
+  const mkGroup = async (p: string, name: string) =>
+    ((await call('POST', `/groups?project=${p}`, { name })).json() as Row).id;
+  const mkAgent = async (p: string, name: string) =>
+    ((await call('POST', `/agents?project=${p}`, { name })).json() as Row).id;
+
+  it('a workspace in A refuses an ungranted B tool and accepts it once granted', async () => {
+    const sB = ((await call('POST', `/sources?project=${B}`, httpSource('fresh-b'))).json() as Row).id;
+    await call('POST', `/sources/${sB}/import?project=${B}`, {});
+    const bTool = (await list('/tools', B)).find((t) => t.name === 'fresh-b.ping') as Row;
+    const gA = await mkGroup(A, 'gA-tools');
+    const put = () => call('PUT', `/groups/${gA}/tools?project=${A}`, { toolIds: [bTool.id] });
+    const r = await put();
+    expect(r.statusCode).toBe(400);
+    expect((r.json() as { error: string }).error).toBe('unknown_tools');
+    await call('POST', `/projects/${A}/access`, { resourceType: 'source', resourceId: sB });
+    expect((await put()).statusCode).toBe(200);
+  });
+
+  it('groups/agents in B are invisible from A', async () => {
+    const gB = await mkGroup(B, 'gB');
+    const aB = await mkAgent(B, 'aB');
+    expect((await list('/groups', A)).map((g) => g.id)).not.toContain(gB);
+    expect((await list('/groups')).map((g) => g.id)).toContain(gB);
+    expect((await list('/agents', A)).map((g) => g.id)).not.toContain(aB);
+    expect((await call('GET', `/groups/${gB}?project=${A}`)).statusCode).toBe(404);
+    expect((await call('GET', `/agents/${aB}?project=${A}`)).statusCode).toBe(404);
+    expect(
+      (await call('POST', `/groups/${gB}/schedules?project=${A}`, { cron: '* * * * *', toolName: 'x' })).statusCode,
+    ).toBe(404);
+  });
+
+  it('an agent in A cannot be granted a group in B', async () => {
+    const aA = await mkAgent(A, 'aA');
+    const gB = await mkGroup(B, 'gB2');
+    const r = await call('POST', `/agents/${aA}/groups?project=${A}`, { groupId: gB });
+    expect(r.statusCode).toBe(400);
+    expect((r.json() as { error: string }).error).toBe('unknown_group');
+  });
+
+  it('call logs carry the tool project and filter by it', async () => {
+    const tA = (await list('/tools', A)).find((t) => t.name === 'src-akey.ping') as Row;
+    await call('POST', `/tools/${tA.id}/test?project=${A}`, {});
+    await new Promise((r) => setTimeout(r, 300));
+    const logs = async (p: string) =>
+      ((await call('GET', `/logs?project=${p}`)).json() as { toolName: string }[]).map((l) => l.toolName);
+    expect(await logs(A)).toContain('src-akey.ping');
+    expect(await logs(B)).not.toContain('src-akey.ping');
+  });
 });

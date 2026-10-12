@@ -5,9 +5,9 @@ import { db } from '../db/client.js';
 import { tools, virtuals } from '../db/schema.js';
 import { newId } from '../lib/id.js';
 import { ownerOf } from '../lib/req.js';
+import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { runVirtual, staticResult } from '../runtime/virtual.js';
-import { ensureDefaultNodes } from '../services/projects.js';
 
 const requestSchema = z.object({
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
@@ -36,11 +36,11 @@ const patchBody = z.object({
   response: z.unknown().optional(),
 });
 
-async function ownedVirtual(id: string, owner: string) {
+async function ownedVirtual(scope: Scope, id: string) {
   const [tool] = await db
     .select()
     .from(tools)
-    .where(and(eq(tools.id, id), eq(tools.ownerId, owner)));
+    .where(and(eq(tools.id, id), eq(tools.ownerId, scope.ownerId), inSubtree(tools.projectId, scope)));
   return tool && tool.kind === 'virtual' ? tool : null;
 }
 
@@ -70,7 +70,8 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/virtual-tools', async (req, reply) => {
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
     const body = createBody.parse(req.body);
     const executable = body.executable ?? true;
     if (executable && !body.request) return reply.code(400).send({ error: 'request_required' });
@@ -82,12 +83,11 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
     if (clash) return reply.code(409).send({ error: 'name_taken' });
 
     const toolId = newId();
-    const { projectId } = await ensureDefaultNodes(owner); // task4: scope.createIn
     await db.transaction(async (tx) => {
       await tx.insert(tools).values({
         id: toolId,
         ownerId: owner,
-        projectId, // task4: scope.createIn
+        projectId: scope.createIn,
         createdByAgentId: null,
         sourceId: null,
         kind: 'virtual',
@@ -111,7 +111,7 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/virtual-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const tool = await ownedVirtual(id, ownerOf(req));
+    const tool = await ownedVirtual(await scopeFor(req), id);
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const [v] = await db.select().from(virtuals).where(eq(virtuals.toolId, id));
     return { ...tool, request: v?.request ?? null, executable: v?.executable ?? true, response: v?.response ?? null };
@@ -119,7 +119,7 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch('/virtual-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const tool = await ownedVirtual(id, ownerOf(req));
+    const tool = await ownedVirtual(await scopeFor(req), id);
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const body = patchBody.parse(req.body);
     const set: Record<string, unknown> = {};
@@ -133,14 +133,18 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/virtual-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    await db.delete(tools).where(and(eq(tools.id, id), eq(tools.ownerId, ownerOf(req)))); // cascades virtuals
+    const scope = await scopeFor(req);
+    await db
+      .delete(tools)
+      .where(and(eq(tools.id, id), eq(tools.ownerId, scope.ownerId), inSubtree(tools.projectId, scope))); // cascades virtuals
     return reply.code(204).send();
   });
 
   app.post('/virtual-tools/:id/run', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
-    const tool = await ownedVirtual(id, owner);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
+    const tool = await ownedVirtual(scope, id);
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const args = ((req.body as { args?: Record<string, unknown> })?.args ?? {}) as Record<string, unknown>;
     return invokeTool(tool.name, args, { ownerId: owner, groupId: null, agentId: null, source: 'test' });
