@@ -68,15 +68,16 @@ export async function listNodes(scope: Scope): Promise<ProjectRow[]> {
 export async function createNode(
   scope: Scope,
   input: { kind: 'team' | 'project'; name: string; slug?: string; parentId: string },
-): Promise<ProjectRow | 'not_found' | 'slug_taken'> {
+): Promise<ProjectRow | 'not_found'> {
   const parent = await visibleNode(scope, input.parentId);
   if (!parent) return 'not_found';
-  const slug = slugify(input.slug ?? input.name);
+  let slug = slugify(input.slug ?? input.name);
   const [clash] = await db
     .select()
     .from(projects)
     .where(and(eq(projects.ownerId, scope.ownerId), eq(projects.slug, slug)));
-  if (clash) return 'slug_taken';
+  // same as groups' uniqueSlug; also keeps 'team'/'default' unique for the default-node guard
+  if (clash) slug = `${slug}-${newId().slice(0, 4).toLowerCase()}`;
   const id = newId();
   const row = {
     id,

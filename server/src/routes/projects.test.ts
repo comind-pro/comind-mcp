@@ -44,9 +44,9 @@ describe.skipIf(!dbUp)('project routes', () => {
     const c = await mk('project', 'Child', team.id);
     expect(c.path).toBe(`${team.path}${c.id}/`);
     const gc = await mk('team', 'Sub', c.id);
-    expect((await call('POST', '/projects', { kind: 'project', name: 'Child', parentId: team.id })).statusCode).toBe(
-      409,
-    );
+    const dup = await mk('project', 'Child', team.id); // second node gets a suffixed slug
+    expect(dup.slug).toMatch(/^child-[a-z0-9_-]{4}$/);
+    expect(dup.id).not.toBe(c.id);
     expect((await call('DELETE', `/projects/${team.id}`)).statusCode).toBe(409);
     expect((await call('DELETE', `/projects/${c.id}`)).statusCode).toBe(204);
     const ids = (await nodes()).map((p) => p.id);

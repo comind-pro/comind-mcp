@@ -26,7 +26,7 @@ const ownerId = () =>
 
 /** Project tree. kind is organisation only; visibility rules do not depend on it.
  *  path = '/<id>/<id>/…/' from the top-level team down, so a subtree is
- *  `path LIKE '<path>%'`. Every owner has a default team with a default project
+ *  `starts_with(path, '<path>')`. Every owner has a default team with a default project
  *  (slug 'team' / 'default'); nothing lives outside the tree. */
 export const projects = pgTable(
   'projects',

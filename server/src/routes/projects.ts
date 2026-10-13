@@ -18,7 +18,6 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       .parse(req.body);
     const r = await createNode(await scopeFor(req), body);
     if (r === 'not_found') return reply.code(404).send({ error: 'not_found' });
-    if (r === 'slug_taken') return reply.code(409).send({ error: 'slug_taken' });
     return reply.code(201).send(r);
   });
   app.delete('/projects/:id', async (req, reply) => {
