@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { db, pool, runMigrations } from '../db/client.js';
-import { callLogs, groupTools, sources, tools, users } from '../db/schema.js';
+import { callLogs, composites, groupTools, sources, tools, users } from '../db/schema.js';
 import { newId } from '../lib/id.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { loadSecretMap } from '../secrets/loader.js';
@@ -358,5 +358,38 @@ describe.skipIf(!dbUp)('project isolation: sources, tools, secrets', () => {
   it("OAuth start is 404 for a source outside the caller's subtree", async () => {
     expect((await call('GET', `/sources/${srcB.id}/oauth/start?project=${A}`)).statusCode).toBe(404);
     expect((await call('GET', `/sources/${srcB.id}/oauth/start?project=${B}`)).statusCode).toBe(400); // no oauth
+  });
+
+  it("a composite step cannot reach a tool outside the composite's project", async () => {
+    const [toolA] = await list('/tools', A);
+    // srcB is granted to A by an earlier test, so use a fresh, ungranted source in B
+    const sb = (await call('POST', `/sources?project=${B}`, httpSource('priv-b'))).json() as Row;
+    await call('POST', `/sources/${sb.id}/import?project=${B}`, {});
+    const toolB = (await list('/tools', B)).find((t) => t.name === 'priv-b.ping') as Row;
+    const mkComposite = async (stepTool: string) => {
+      const id = newId();
+      await db.insert(tools).values({
+        id,
+        ownerId,
+        projectId: A,
+        kind: 'composite',
+        name: `comp-${id}`,
+        createdAt: new Date(),
+      } as typeof tools.$inferInsert);
+      await db
+        .insert(composites)
+        .values({ id: newId(), toolId: id, definition: { steps: [{ id: 's', tool: stepTool }] } });
+      return id;
+    };
+    const run = async (id: string) =>
+      (await call('POST', `/composite-tools/${id}/run?project=${A}`, { args: {} })).json() as {
+        isError?: boolean;
+        content: { text: string }[];
+      };
+    const bad = await run(await mkComposite(toolB.name));
+    expect(bad.isError).toBe(true);
+    expect(bad.content[0].text).toContain('Unknown tool');
+    const ok = await run(await mkComposite(toolA.name));
+    expect(JSON.stringify(ok.content)).not.toContain('Unknown tool');
   });
 });

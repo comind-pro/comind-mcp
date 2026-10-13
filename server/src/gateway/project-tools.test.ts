@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { db, pool, runMigrations } from '../db/client.js';
-import { agents, users } from '../db/schema.js';
+import { users } from '../db/schema.js';
 import { mcpToolName } from '../lib/tool-name.js';
 
 /** project.* admin tools over /a/mcp for a COO agent. */
@@ -65,7 +65,7 @@ describe.skipIf(!dbUp)('project.* tools for COO agents', () => {
   let toolA: { id: string; name: string };
   const called = new Set<string>();
 
-  const rest = (method: 'GET' | 'POST', url: string, payload?: Record<string, unknown>) =>
+  const rest = (method: 'GET' | 'POST' | 'PATCH', url: string, payload?: Record<string, unknown>) =>
     app.inject({ method, url, payload, headers: { authorization: `Bearer ${token}` } });
   const tool = async (name: string, args: Record<string, unknown> = {}): Promise<Result> => {
     called.add(name);
@@ -94,8 +94,7 @@ describe.skipIf(!dbUp)('project.* tools for COO agents', () => {
     srcB = ((await rest('POST', `/sources?project=${B}`, httpSource('src-b'))).json() as { id: string }).id;
     coo = (await rest('POST', `/agents?project=${A}`, { name: 'coo' })).json();
     lead = (await rest('POST', `/agents?project=${A}`, { name: 'lead' })).json();
-    // ponytail: Task 3 adds PATCH /agents/:id {role}; until then set it directly.
-    await db.update(agents).set({ role: 'coo' }).where(eq(agents.id, coo.id));
+    await rest('PATCH', `/agents/${coo.id}`, { role: 'coo' });
   });
 
   afterAll(async () => {
@@ -175,6 +174,50 @@ describe.skipIf(!dbUp)('project.* tools for COO agents', () => {
     expect((await tool('project.list')).content[0].text).toContain(id);
     expect((await tool('project.delete', { id, confirm: true })).isError).toBeFalsy();
     expect((await tool('project.list')).content[0].text).not.toContain(id);
+  });
+
+  it('PATCH /agents/:id sets the role; foreign or unknown is 404', async () => {
+    const r = await rest('PATCH', `/agents/${lead.id}`, { role: 'coo' });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ id: lead.id, role: 'coo' });
+    expect((await rest('PATCH', `/agents/${lead.id}`, { role: 'lead' })).json()).toMatchObject({ role: 'lead' });
+    const agentsList = (await rest('GET', '/agents')).json() as { id: string; role: string }[];
+    expect(agentsList.find((a) => a.id === coo.id)?.role).toBe('coo');
+    expect((await rest('PATCH', '/agents/nope', { role: 'coo' })).statusCode).toBe(404);
+    expect((await rest('PATCH', `/agents/${lead.id}`, { role: 'x' })).statusCode).toBe(400);
+  });
+
+  it('delete refuses an ancestor; provision refuses an ancestor project', async () => {
+    const nodes = (await rest('GET', '/projects')).json() as { id: string; kind: string; parentId: string | null }[];
+    const root = nodes.find((n) => n.kind === 'team' && !n.parentId)?.id as string;
+    expect((await tool('project.delete', { id: root, confirm: true })).content[0].text).toContain('not_allowed');
+    const r = await tool('project.agent_mcp_provision', { name: 'up', projectId: root, groupIds: [] });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('not_found');
+  });
+
+  it('revoking a share unlinks its tools from workspaces in the grantee', async () => {
+    await rest('POST', `/sources/${srcB}/import?project=${B}`, {});
+    const toolB = ((await rest('GET', `/tools?project=${B}`)).json() as { id: string; name: string }[])[0];
+    expect((await rest('POST', `/projects/${A}/access`, { resourceType: 'source', resourceId: srcB })).statusCode).toBe(
+      201,
+    );
+    const ws = await tool('project.workspace_create', { name: 'ws-b', toolIds: [toolB.id] });
+    const groupId = ws.structuredContent?.id as string;
+    await rest('POST', `/agents/${lead.id}/groups?project=${A}`, { groupId });
+    const gtools = async () => (await rest('GET', `/groups/${groupId}/tools?project=${A}`)).json() as { id: string }[];
+    expect((await gtools()).map((t) => t.id)).toContain(toolB.id);
+    expect(await listNames(lead.apiKey)).toContain(mcpToolName(toolB.name));
+    const r = await tool('project.access_revoke', {
+      projectId: A,
+      resourceType: 'source',
+      resourceId: srcB,
+      confirm: true,
+    });
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent).toMatchObject({ unlinked: 1 });
+    expect((await gtools()).map((t) => t.id)).not.toContain(toolB.id);
+    expect(await listNames(lead.apiKey)).not.toContain(mcpToolName(toolB.name));
   });
 
   it('access_create outside the subtree is not_found', async () => {

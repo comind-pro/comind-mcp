@@ -10,6 +10,7 @@ import { callLogs, composites, groups, liveTool, scripts, sources, tools, virtua
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
+import { toolUsableCond } from '../services/tools.js';
 import { runPython } from './python.js';
 import { runVirtual, staticResult } from './virtual.js';
 
@@ -19,6 +20,8 @@ export interface InvokeContext {
   groupId?: string | null;
   /** How the call was triggered (for analytics). Defaults to 'live'. */
   source?: 'live' | 'test' | 'schedule';
+  /** Set for nested calls: the tool must be usable by this project. Top-level calls leave it unset. */
+  projectId?: string;
 }
 
 const MAX_DEPTH = 5;
@@ -80,7 +83,14 @@ export async function invokeTool(
   const [tool] = await db
     .select()
     .from(tools)
-    .where(and(eq(tools.name, toolName), eq(tools.ownerId, ctx.ownerId), liveTool()));
+    .where(
+      and(
+        eq(tools.name, toolName),
+        eq(tools.ownerId, ctx.ownerId),
+        liveTool(),
+        ...(ctx.projectId ? [toolUsableCond(ctx.projectId)] : []),
+      ),
+    );
   const result = await dispatch(tool, toolName, args, ctx, depth);
   // Observability: record each call. Never let logging break (or delay) the call.
   const durationMs = Date.now() - startedAt;
@@ -126,7 +136,12 @@ async function dispatch(
     if (hasPythonStep(comp.definition) && !(await hasFeature(ctx.ownerId, PYTHON_TOOLS))) {
       return textResult(`Python steps are not enabled for this account (${toolName})`, true);
     }
-    return runComposite(comp.definition, args, (name, a, d) => invokeTool(name, a, ctx, d), depth);
+    return runComposite(
+      comp.definition,
+      args,
+      (name, a, d) => invokeTool(name, a, { ...ctx, projectId: tool.projectId }, d),
+      depth,
+    );
   }
 
   if (tool.kind === 'python') {
@@ -138,7 +153,12 @@ async function dispatch(
     const [script] = await db.select().from(scripts).where(eq(scripts.toolId, tool.id));
     if (!script) return textResult(`Python source missing for ${toolName}`, true);
     try {
-      const { result } = await runPython(script.code, { args }, (name, a, d) => invokeTool(name, a, ctx, d), depth);
+      const { result } = await runPython(
+        script.code,
+        { args },
+        (name, a, d) => invokeTool(name, a, { ...ctx, projectId: tool.projectId }, d),
+        depth,
+      );
       return result;
     } catch (err) {
       return textResult(errorMessage(err), true);

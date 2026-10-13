@@ -13,6 +13,7 @@ import {
 } from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
 import { inScope, inSubtree, type Scope, underPath } from '../lib/scope.js';
+import { toolUsableCond } from './tools.js';
 
 export const nodePath = (parentPath: string | null, id: string): string => `${parentPath ?? '/'}${id}/`;
 
@@ -168,8 +169,9 @@ export async function grantAccess(
 export async function revokeAccess(
   scope: Scope,
   g: { projectId: string; resourceType: ResType; resourceId: string },
-): Promise<'ok' | 'not_found'> {
-  if (!(await visibleNode(scope, g.projectId))) return 'not_found';
+): Promise<{ unlinked: number } | 'not_found'> {
+  const node = await visibleNode(scope, g.projectId);
+  if (!node) return 'not_found';
   await db
     .delete(projectAccess)
     .where(
@@ -179,7 +181,35 @@ export async function revokeAccess(
         eq(projectAccess.resourceId, g.resourceId),
       ),
     );
-  return 'ok';
+  if (g.resourceType === 'secret') return { unlinked: 0 };
+  // Drop workspace links (in the grantee's subtree) the tool is no longer usable for.
+  const toolCond = g.resourceType === 'source' ? eq(tools.sourceId, g.resourceId) : eq(tools.id, g.resourceId);
+  const links = await db
+    .select({ groupId: groupTools.groupId, toolId: groupTools.toolId, projectId: groups.projectId })
+    .from(groupTools)
+    .innerJoin(groups, eq(groups.id, groupTools.groupId))
+    .innerJoin(tools, eq(tools.id, groupTools.toolId))
+    .where(
+      and(
+        eq(groups.ownerId, scope.ownerId),
+        inArray(
+          groups.projectId,
+          db.select({ id: projects.id }).from(projects).where(underPath(projects.path, node.path)),
+        ),
+        toolCond,
+      ),
+    );
+  let unlinked = 0;
+  for (const l of links) {
+    const [ok] = await db
+      .select({ id: tools.id })
+      .from(tools)
+      .where(and(eq(tools.id, l.toolId), toolUsableCond(l.projectId)));
+    if (ok) continue;
+    await db.delete(groupTools).where(and(eq(groupTools.groupId, l.groupId), eq(groupTools.toolId, l.toolId)));
+    unlinked++;
+  }
+  return { unlinked };
 }
 
 export async function listAccess(scope: Scope, projectId: string) {

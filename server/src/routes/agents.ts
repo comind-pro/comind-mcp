@@ -8,7 +8,7 @@ import { hashKey } from '../lib/crypto.js';
 import { newApiKey, newId } from '../lib/id.js';
 import { sendErr } from '../lib/req.js';
 import { inSubtree, scopeFor } from '../lib/scope.js';
-import { createAgent, endpointFor, ownedAgent } from '../services/agents.js';
+import { createAgent, endpointFor, ownedAgent, setAgentRole } from '../services/agents.js';
 import { isErr } from '../services/sources.js';
 
 const createBody = z.object({ name: z.string().min(1) });
@@ -130,6 +130,14 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const row = await ownedAgent(await scopeFor(req), id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
     return { ...publicAgent(row), keyCount: await keyCount(id), groups: await agentGrants(id) };
+  });
+
+  app.patch('/agents/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { role } = z.object({ role: z.enum(['lead', 'coo']) }).parse(req.body);
+    const r = await setAgentRole(await scopeFor(req), id, role);
+    if (isErr(r)) return sendErr(reply, r);
+    return { ...publicAgent(r), keyCount: await keyCount(id), groups: await agentGrants(id) };
   });
 
   app.delete('/agents/:id', async (req, reply) => {
