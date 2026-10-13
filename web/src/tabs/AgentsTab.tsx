@@ -83,6 +83,16 @@ export function AgentsTab() {
     void loadKeys(a.id);
   };
 
+  const setRole = async (id: string, role: 'lead' | 'coo') => {
+    setErr('');
+    try {
+      const upd = await api.patch<Agent>(`/agents/${id}`, { role });
+      setAgents((as) => (as ?? []).map((x) => (x.id === id ? { ...x, role: upd.role ?? role } : x)));
+    } catch (e) {
+      setErr(String((e as Error).message));
+    }
+  };
+
   const toggleSys = (name: string, agentId: string) => {
     const next = new Set(sysTools);
     next.has(name) ? next.delete(name) : next.add(name);
@@ -327,6 +337,15 @@ export function AgentsTab() {
           </div>
         )}
 
+        <div className="field-label">Role</div>
+        <select aria-label="Role" value={a.role} onChange={(e) => void setRole(a.id, e.target.value as 'lead' | 'coo')}>
+          <option value="lead">lead</option>
+          <option value="coo">coo</option>
+        </select>
+        <div className="hint">
+          COO agents get project_* admin tools on their MCP endpoint and administer this project's subtree.
+        </div>
+
         <Advanced summary="System tools (introspection)">
           <div className="hint">
             Built-in <code className="mono">system.*</code> introspection tools this agent exposes — applied to every
@@ -488,6 +507,7 @@ export function AgentsTab() {
             <div className="scard-head" onClick={() => openAgent(a)}>
               <span className="name src-name">{a.name}</span>
               <RowBadges row={a} />
+              {a.role === 'coo' && <span className="tbadge">COO</span>}
               <span className="muted" style={{ fontSize: 12, width: 70 }}>
                 {a.keyCount ?? 0} key{(a.keyCount ?? 0) === 1 ? '' : 's'}
               </span>
