@@ -47,9 +47,12 @@ export interface CreateScheduleInput {
 }
 
 export async function createSchedule(input: CreateScheduleInput) {
+  const [grp] = await db.select({ projectId: groups.projectId }).from(groups).where(eq(groups.id, input.groupId));
+  if (!grp) throw new Error('group_not_found');
   const row = {
     id: newId(),
     ownerId: input.ownerId,
+    projectId: grp.projectId,
     groupId: input.groupId,
     agentId: input.agentId ?? null,
     cron: input.cron,

@@ -1,10 +1,12 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { groups, groupTools, liveTool, tools } from '../db/schema.js';
-import { newId, slugify } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
+import { groups } from '../db/schema.js';
+import { sendErr } from '../lib/req.js';
+import { inSubtree, scopeFor } from '../lib/scope.js';
+import { createGroup, listGroupTools, ownedGroup, setGroupTools } from '../services/groups.js';
+import { isErr } from '../services/sources.js';
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -19,51 +21,23 @@ const patchBody = z.object({
   schedulingEnabled: z.boolean().optional(),
 });
 
-async function uniqueSlug(base: string, owner: string): Promise<string> {
-  const slug = slugify(base);
-  const [clash] = await db
-    .select()
-    .from(groups)
-    .where(and(eq(groups.slug, slug), eq(groups.ownerId, owner)));
-  if (!clash) return slug;
-  return `${slug}-${newId().slice(0, 4).toLowerCase()}`;
-}
-
-async function ownedGroup(id: string, owner: string) {
-  const [row] = await db
-    .select()
-    .from(groups)
-    .where(and(eq(groups.id, id), eq(groups.ownerId, owner)));
-  return row ?? null;
-}
-
 export async function groupRoutes(app: FastifyInstance): Promise<void> {
   app.post('/groups', async (req, reply) => {
-    const owner = ownerOf(req);
-    const body = createBody.parse(req.body);
-    const row = {
-      id: newId(),
-      ownerId: owner,
-      slug: await uniqueSlug(body.slug ?? body.name, owner),
-      name: body.name,
-      description: body.description ?? null,
-      schedulingEnabled: body.schedulingEnabled ?? true,
-      createdAt: new Date(),
-    };
-    await db.insert(groups).values(row);
-    return reply.code(201).send(row);
+    const scope = await scopeFor(req);
+    return reply.code(201).send(await createGroup(scope, createBody.parse(req.body), null));
   });
 
-  app.get('/groups', async (req) =>
-    db
+  app.get('/groups', async (req) => {
+    const scope = await scopeFor(req);
+    return db
       .select()
       .from(groups)
-      .where(eq(groups.ownerId, ownerOf(req))),
-  );
+      .where(and(eq(groups.ownerId, scope.ownerId), inSubtree(groups.projectId, scope)));
+  });
 
   app.get('/groups/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await ownedGroup(id, ownerOf(req));
+    const row = await ownedGroup(await scopeFor(req), id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
     return row;
   });
@@ -71,7 +45,7 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
   app.patch('/groups/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = patchBody.parse(req.body);
-    const existing = await ownedGroup(id, ownerOf(req));
+    const existing = await ownedGroup(await scopeFor(req), id);
     if (!existing) return reply.code(404).send({ error: 'not_found' });
 
     const patch: Record<string, unknown> = {};
@@ -86,44 +60,22 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/groups/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    await db.delete(groups).where(and(eq(groups.id, id), eq(groups.ownerId, ownerOf(req))));
+    if (!(await ownedGroup(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(groups).where(eq(groups.id, id));
     return reply.code(204).send();
   });
 
   app.get('/groups/:id/tools', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const grp = await ownedGroup(id, ownerOf(req));
-    if (!grp) return reply.code(404).send({ error: 'not_found' });
-    const links = await db.select().from(groupTools).where(eq(groupTools.groupId, id));
-    const ids = links.map((l) => l.toolId);
-    if (!ids.length) return [];
-    return db
-      .select()
-      .from(tools)
-      .where(and(inArray(tools.id, ids), liveTool()));
+    const r = await listGroupTools(await scopeFor(req), id);
+    return isErr(r) ? sendErr(reply, r) : r;
   });
 
   app.put('/groups/:id/tools', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
     const { toolIds } = z.object({ toolIds: z.array(z.string()) }).parse(req.body);
-    const grp = await ownedGroup(id, owner);
-    if (!grp) return reply.code(404).send({ error: 'not_found' });
-
-    if (toolIds.length) {
-      // tools must belong to the same owner
-      const found = await db
-        .select()
-        .from(tools)
-        .where(and(inArray(tools.id, toolIds), eq(tools.ownerId, owner), liveTool()));
-      const missing = toolIds.filter((t) => !found.some((f) => f.id === t));
-      if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
-    }
-
-    await db.delete(groupTools).where(eq(groupTools.groupId, id));
-    if (toolIds.length) {
-      await db.insert(groupTools).values(toolIds.map((toolId) => ({ groupId: id, toolId })));
-    }
-    return { groupId: id, toolIds };
+    const r = await setGroupTools(scope, id, toolIds);
+    return isErr(r) ? sendErr(reply, r) : r;
   });
 }

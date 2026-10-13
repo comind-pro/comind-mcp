@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { type Agent, type AgentKey, api, type Group, SYSTEM_TOOLS } from '../api.js';
 import { Icon } from '../icons.js';
+import { ProjectsContext, RowBadges } from '../ProjectSelector.js';
 import { Advanced, CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
 
 interface InspectGroup {
@@ -34,6 +35,7 @@ function KeyModal({ agent, apiKey, onClose }: { agent: Agent; apiKey: string; on
 }
 
 export function AgentsTab() {
+  const { reload } = useContext(ProjectsContext);
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [draft, setDraft] = useState<string | null>(null); // new-agent name (null = closed)
@@ -80,6 +82,17 @@ export function AgentsTab() {
     setConnGroup(a.groups?.[0]?.id ?? '');
     setSysTools(new Set(a.systemTools ?? []));
     void loadKeys(a.id);
+  };
+
+  const setRole = async (id: string, role: 'lead' | 'coo') => {
+    setErr('');
+    try {
+      const upd = await api.patch<Agent>(`/agents/${id}`, { role });
+      setAgents((as) => (as ?? []).map((x) => (x.id === id ? { ...x, role: upd.role ?? role } : x)));
+      void reload();
+    } catch (e) {
+      setErr(String((e as Error).message));
+    }
   };
 
   const toggleSys = (name: string, agentId: string) => {
@@ -159,6 +172,7 @@ export function AgentsTab() {
       const a = await api.post<Agent & { apiKey: string }>('/agents', { name: draft });
       setDraft(null);
       await load();
+      void reload();
       // open the new agent and reveal its first key once
       setOpenId(a.id);
       setConnMode('all');
@@ -326,6 +340,15 @@ export function AgentsTab() {
           </div>
         )}
 
+        <div className="field-label">Role</div>
+        <select aria-label="Role" value={a.role} onChange={(e) => void setRole(a.id, e.target.value as 'lead' | 'coo')}>
+          <option value="lead">lead</option>
+          <option value="coo">coo</option>
+        </select>
+        <div className="hint">
+          COO agents get project_* admin tools on their MCP endpoint and administer this project's subtree.
+        </div>
+
         <Advanced summary="System tools (introspection)">
           <div className="hint">
             Built-in <code className="mono">system.*</code> introspection tools this agent exposes — applied to every
@@ -486,6 +509,8 @@ export function AgentsTab() {
           <div key={a.id} className={`scard ${open ? 'open' : ''}`}>
             <div className="scard-head" onClick={() => openAgent(a)}>
               <span className="name src-name">{a.name}</span>
+              <RowBadges row={a} />
+              {a.role === 'coo' && <span className="tbadge">COO</span>}
               <span className="muted" style={{ fontSize: 12, width: 70 }}>
                 {a.keyCount ?? 0} key{(a.keyCount ?? 0) === 1 ? '' : 's'}
               </span>

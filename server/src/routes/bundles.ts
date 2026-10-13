@@ -6,7 +6,9 @@ import { db } from '../db/client.js';
 import { composites, groups, groupTools, liveTool, scripts, secrets, sources, tools, virtuals } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
+import { inScope, inSubtree, scopeFor, usableBy } from '../lib/scope.js';
+import { slugTaken } from '../services/sources.js';
+import { toolUsableCond, toolVisibleCond } from '../services/tools.js';
 
 /**
  * Group bundle v1: a workspace serialized for transfer between instances.
@@ -60,12 +62,13 @@ function secretRefs(value: unknown, into: Set<string>): void {
 
 export async function bundleRoutes(app: FastifyInstance): Promise<void> {
   app.get('/groups/:id/export', async (req, reply) => {
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
     const { id } = req.params as { id: string };
     const [grp] = await db
       .select()
       .from(groups)
-      .where(and(eq(groups.id, id), eq(groups.ownerId, owner)));
+      .where(and(eq(groups.id, id), eq(groups.ownerId, owner), inSubtree(groups.projectId, scope)));
     if (!grp) return reply.code(404).send({ error: 'not_found' });
 
     const links = await db.select().from(groupTools).where(eq(groupTools.groupId, id));
@@ -157,7 +160,8 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/groups/import', async (req, reply) => {
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
     const bundle = bundleSchema.parse(req.body);
 
     // validate source configs & name refs up front (fail before writing anything)
@@ -186,17 +190,96 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
       secretsToFill: [] as string[],
     };
 
+    // Pre-pass: names that exist for the owner but are invisible to this scope can't be
+    // reused (that would leak across projects) nor recreated — refuse before writing.
+    const taken: string[] = [];
+    const [slugVisible] = await db
+      .select()
+      .from(groups)
+      .where(and(eq(groups.slug, bundle.group.slug), eq(groups.ownerId, owner), inSubtree(groups.projectId, scope)));
+    if (!slugVisible) {
+      const [any] = await db
+        .select()
+        .from(groups)
+        .where(and(eq(groups.slug, bundle.group.slug), eq(groups.ownerId, owner)));
+      if (any) taken.push(bundle.group.slug);
+    }
+    // Everything new lands in the target group's project (rule 1 is checked against it).
+    const target = slugVisible?.projectId ?? scope.createIn;
+    const visibleSrc = new Map<string, string>();
+    const unusableSrc: string[] = [];
+    for (const sd of bundle.sources) {
+      const [vis] = await db
+        .select()
+        .from(sources)
+        .where(
+          and(
+            eq(sources.name, sd.name),
+            eq(sources.ownerId, owner),
+            inScope(sources.projectId, sources.id, 'source', scope),
+          ),
+        );
+      if (vis) {
+        visibleSrc.set(sd.name, vis.id);
+        // A reused source backs the group's tools: it must be usable by the group's project.
+        const [ok] = await db
+          .select({ id: sources.id })
+          .from(sources)
+          .where(and(eq(sources.id, vis.id), usableBy(sources.projectId, sources.id, 'source', target)));
+        if (!ok) unusableSrc.push(sd.name);
+      } else if (await slugTaken(owner, sd.name)) taken.push(sd.name); // same rule as POST /sources
+    }
+    const unusable: string[] = [];
+    for (const t of bundle.tools) {
+      const byName = and(eq(tools.name, t.name), eq(tools.ownerId, owner));
+      const [vis] = await db
+        .select()
+        .from(tools)
+        .where(and(byName, toolVisibleCond(scope)));
+      if (!vis && (await db.select().from(tools).where(byName)).length) taken.push(t.name);
+      // A reused tool is linked into the group: it must be usable by the group's project.
+      if (
+        vis &&
+        !(
+          await db
+            .select({ id: tools.id })
+            .from(tools)
+            .where(and(eq(tools.id, vis.id), toolUsableCond(target)))
+        ).length
+      )
+        unusable.push(t.name);
+    }
+    for (const sc of bundle.secrets) {
+      const scopeId = sc.source ? (visibleSrc.get(sc.source) ?? null) : null;
+      if (sc.source && !scopeId) continue; // new source → new secret
+      const byName = and(
+        eq(secrets.ownerId, owner),
+        eq(secrets.name, sc.name),
+        scopeId ? eq(secrets.sourceId, scopeId) : isNull(secrets.sourceId),
+      );
+      const [vis] = await db
+        .select()
+        .from(secrets)
+        .where(and(byName, inScope(secrets.projectId, secrets.id, 'secret', scope)));
+      if (!vis && (await db.select().from(secrets).where(byName)).length) taken.push(sc.name);
+    }
+    if (taken.length) return reply.code(409).send({ error: 'name_taken', names: [...new Set(taken)] });
+    if (unusable.length) return reply.code(400).send({ error: 'unknown_tools', missing: unusable });
+    if (unusableSrc.length) return reply.code(400).send({ error: 'unknown_sources', missing: unusableSrc });
+
     await db.transaction(async (tx) => {
       // group by slug — existing is reused as-is (its name/description win)
       let [grp] = await tx
         .select()
         .from(groups)
-        .where(and(eq(groups.slug, bundle.group.slug), eq(groups.ownerId, owner)));
+        .where(and(eq(groups.slug, bundle.group.slug), eq(groups.ownerId, owner), inSubtree(groups.projectId, scope)));
       if (grp) report.group = 'skipped';
       else {
         grp = {
           id: newId(),
           ownerId: owner,
+          projectId: target,
+          createdByAgentId: null,
           slug: bundle.group.slug,
           name: bundle.group.name,
           description: bundle.group.description ?? null,
@@ -208,13 +291,21 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
 
       // sources by name
       const sourceId = new Map<string, string>();
+      const sourceProject = new Map<string, string>();
       for (const s of bundle.sources) {
         const [existing] = await tx
           .select()
           .from(sources)
-          .where(and(eq(sources.name, s.name), eq(sources.ownerId, owner)));
+          .where(
+            and(
+              eq(sources.name, s.name),
+              eq(sources.ownerId, owner),
+              inScope(sources.projectId, sources.id, 'source', scope),
+            ),
+          );
         if (existing) {
           sourceId.set(s.name, existing.id);
+          sourceProject.set(s.name, existing.projectId);
           report.sources.skipped.push(s.name);
           continue;
         }
@@ -222,6 +313,8 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(sources).values({
           id,
           ownerId: owner,
+          projectId: target,
+          createdByAgentId: null,
           name: s.name,
           kind: s.kind,
           config: parseSourceConfig(s.kind, s.config),
@@ -229,16 +322,18 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
           createdAt: new Date(),
         });
         sourceId.set(s.name, id);
+        sourceProject.set(s.name, target);
         report.sources.created.push(s.name);
       }
 
       // secrets by (name, scope) — created EMPTY, never overwritten
       for (const s of bundle.secrets) {
         const scopeId = s.source ? (sourceId.get(s.source) ?? null) : null;
-        const scope = scopeId
+        const existingCond = scopeId
           ? and(eq(secrets.ownerId, owner), eq(secrets.name, s.name), eq(secrets.sourceId, scopeId))
           : and(eq(secrets.ownerId, owner), eq(secrets.name, s.name), isNull(secrets.sourceId));
-        const [existing] = await tx.select().from(secrets).where(scope);
+        // pre-pass guaranteed any existing row is visible
+        const [existing] = await tx.select().from(secrets).where(existingCond);
         if (existing) {
           report.secrets.skipped.push(s.name);
           if (!existing.encryptedValue && !existing.envRef) report.secretsToFill.push(s.name);
@@ -247,6 +342,9 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(secrets).values({
           id: newId(),
           ownerId: owner,
+          // a source-scoped secret lives with its source
+          projectId: (s.source && sourceProject.get(s.source)) || target,
+          createdByAgentId: null,
           name: s.name,
           sourceId: scopeId,
           encryptedValue: null,
@@ -266,7 +364,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         const [existing] = await tx
           .select()
           .from(tools)
-          .where(and(eq(tools.name, t.name), eq(tools.ownerId, owner)));
+          .where(and(eq(tools.name, t.name), eq(tools.ownerId, owner), toolVisibleCond(scope)));
         if (existing) {
           // a soft-deleted tool still owns the name: bring it back rather than link a ghost
           if (existing.deletedAt) await tx.update(tools).set({ deletedAt: null }).where(eq(tools.id, existing.id));
@@ -278,6 +376,8 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(tools).values({
           id,
           ownerId: owner,
+          projectId: target,
+          createdByAgentId: null,
           sourceId: t.source ? (sourceId.get(t.source) ?? null) : null,
           kind: t.kind,
           name: t.name,

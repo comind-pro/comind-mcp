@@ -78,6 +78,8 @@ DATABASE_URL=file:/data/comind SERVER_ENV=dev pnpm --filter comind-server start
 | **Agent** | A consumer bound to a group via an API key. Sees only the group's toolset |
 | **Self-cron** | MCP tools `schedule_task` / `list_schedules` / `cancel_schedule` inside a group — the agent schedules itself. Switch it off per workspace (Workspaces → Schedules): the tools disappear from the agent's `tools/list`, calls are refused, and the crons it already created are **paused** until it is back on. Your own schedules in that workspace keep running |
 | **Secret** | An encrypted credential (AES-256-GCM) or an env reference. Substituted at runtime via `${secret.NAME}`; the agent never sees it |
+| **Project / Team** | Nodes of a per-account tree. Every resource lives in one node; a node sees its own subtree plus what was shared with it (`project_access`). Pass `?project=<id>` to any control-plane call to act as that node; omit it to see everything. Each account starts with a default team and a default project. |
+| **COO / Lead agents** | An agent's `role`. A **Lead** (default) only sees its workspaces' tools. A **COO** additionally gets the `project_*` admin tools on its MCP endpoint and administers its project's subtree: connections, secrets (names only — you fill the values), staged tools, workspaces, child projects, grants and new agents. Everything a COO does is audited in Activity with its arguments. |
 
 ---
 
@@ -99,8 +101,15 @@ GET  /features
 # groups
 POST/GET /groups           GET/PATCH/DELETE /groups/:id
 GET/PUT /groups/:id/tools
+# projects (tree + sharing)  — every route above accepts ?project=<nodeId>
+GET /projects              POST /projects {kind:'team'|'project', name, parentId}
+GET /projects/:id/summary
+DELETE /projects/:id       (409 default_node for the default team/project)
+GET/POST /projects/:id/access {resourceType:'source'|'tool'|'secret', resourceId}
+DELETE /projects/:id/access/:type/:resourceId
 # agents
 POST/GET /agents           GET/DELETE /agents/:id            POST /agents/:id/rotate-key
+PATCH /agents/:id {role:'lead'|'coo'}
 # schedules
 POST/GET /groups/:id/schedules    DELETE /schedules/:id
 POST /schedules/:id/run           GET /schedules/:id/runs
@@ -120,6 +129,47 @@ POST /g/:groupId/mcp   — Streamable HTTP endpoint (Authorization: Bearer <agen
 SSE transport — planned.
 
 **Connect from Claude / ChatGPT (web):** step-by-step guide with screenshots — [docs/connect.md](docs/connect.md).
+
+---
+
+## COO agents
+
+To make a COO agent: create an agent in a project (`POST /agents?project=<id>`), then set its role to `coo` (via the Agents tab in the web UI, or `PATCH /agents/:id {role:'coo'}`), and connect it to `/a/mcp` with its API key. A COO sees the `project_*` admin tools on the MCP endpoint for its project's subtree and can manage all resources within it.
+
+| tool | what it does |
+|---|---|
+| `project_list` | nodes in the COO's subtree |
+| `project_create_child` | new team/project under a node of the subtree |
+| `project_delete` | delete a descendant node; without `confirm:true` returns a preview of what is removed |
+| `project_access_create` | share a source/tool/secret the COO can see with a descendant project |
+| `project_access_revoke` | revoke a grant; without `confirm` lists workspaces that would lose tools; with it also unlinks them |
+| `project_connections_list` | visible connections (never the config) |
+| `project_connection_describe` | cached objects (GA properties, tables, mailboxes) + tools with schemas |
+| `project_connection_create` | new connection; config may reference `${secret.NAME}` only |
+| `project_connection_test` | health check |
+| `project_connection_import` | import/refresh tools; `force` without `confirm` previews removals |
+| `project_secret_declare` | declare a secret by name → shows as *pending* in Secrets until you set its value |
+| `project_tool_candidate_create` | virtual / composite / python tool in staging (in no workspace yet) |
+| `project_tool_candidate_test` | run a tool with arguments |
+| `project_tool_candidate_promote` | add a tool to a workspace |
+| `project_workspace_create` | new workspace (virtual MCP server) with an optional tool set |
+| `project_workspace_set_tools` | replace a workspace's tool set |
+| `project_agent_mcp_provision` | new Lead (or COO) agent + key; the key is returned once |
+| `project_agent_revoke` | archive an agent's keys; preview without `confirm` |
+
+Isolation: a COO acts as its own project node — every id it passes is resolved inside its subtree, invisible ids read as `not_found`. It cannot change its own role, delete its own node or an ancestor, or revoke itself. Secret values never pass through a COO: it declares names, you fill them in Secrets.
+
+Agents: a COO provisions COOs only into descendant nodes (never a peer at its own node), and revokes agents in descendant nodes or ones it provisioned itself. Revoking an agent archives its keys and ends its OAuth sessions. Custom tool names starting with `project.` are reserved.
+
+Trust boundary: A COO never receives secret values through the API or audit, but any tool it creates (an HTTP connection or a virtual tool) can reference `${secret.NAME}` for every secret its node may use and send the request to any host. Treat a COO as trusted with the secrets you share with its project; share only what it needs. Per-secret allowed hosts are a planned follow-up.
+
+---
+
+## Projects tab
+
+A tree of teams and projects for the account, with per-node counts of connections, tools, secrets, and workspaces. Each node's **Allowlist** lists what has been shared *into* it; "Share a resource" offers any connection, tool or secret from outside the node's own subtree. The node card lists the COO agents that administer it; the role itself is set on the Agents tab. Revoking a grant warns which workspaces would lose tools before unlinking them. Each node offers "+ New child" to create a team or project below it, and "Delete node" (hidden for the default team and project). A project selector in the header filters all tabs and resource rows; each row shows the node it belongs to, whether it was shared from elsewhere, and which agent created it (resources only).
+
+Pending secrets declared by a COO agent appear in the Secrets tab with a `pending` badge and a password field to set the value — once set, the secret is encrypted at rest and the `pending` badge disappears.
 
 ---
 

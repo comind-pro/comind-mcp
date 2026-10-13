@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { type Agent, api, type CallLog, type Group } from '../api.js';
+import { RowBadges } from '../ProjectSelector.js';
 import { EmptyState, Loading, Th, useSort } from '../ui.js';
 
 interface ToolRow {
@@ -253,15 +254,20 @@ export function LogsTab() {
           <tbody>
             {logSort.sorted.map((l) => {
               const isError = l.status !== 'success';
+              const canOpen = isError || !!l.args;
               const isOpen = expanded === l.id;
               return (
                 <Fragment key={l.id}>
                   <tr
-                    className={isError ? 'clickable' : undefined}
-                    onClick={isError ? () => setExpanded(isOpen ? null : l.id) : undefined}
+                    className={canOpen ? 'clickable' : undefined}
+                    onClick={canOpen ? () => setExpanded(isOpen ? null : l.id) : undefined}
                   >
                     <td className="muted">{new Date(l.ts).toLocaleString()}</td>
-                    <td className="mono">{l.toolName}</td>
+                    <td className="mono">
+                      {l.toolName}
+                      {l.toolName.startsWith('project.') && <span className="tbadge">admin</span>}
+                      {l.projectId && <RowBadges row={{ projectId: l.projectId, createdByAgentId: null }} />}
+                    </td>
                     <td>
                       <span className={`badge ${l.source === 'live' ? 'ok' : 'muted'}`}>{l.source}</span>
                     </td>
@@ -271,7 +277,7 @@ export function LogsTab() {
                     <td>{l.durationMs}</td>
                     <td>{l.tokensEst ?? '—'}</td>
                   </tr>
-                  {isError && isOpen && (
+                  {canOpen && isOpen && (
                     <tr className="detail-row">
                       <td colSpan={6}>
                         <div className="row" style={{ gap: 16 }}>
@@ -283,10 +289,16 @@ export function LogsTab() {
                           <span>at: {new Date(l.ts).toISOString()}</span>
                           <span>duration: {l.durationMs}ms</span>
                         </div>
-                        <div className="field-label" style={{ marginTop: 10 }}>
-                          Error
-                        </div>
-                        <pre className="mono log-detail">{l.error || 'No error text was returned by the tool.'}</pre>
+                        {isError && (
+                          <>
+                            <div className="field-label" style={{ marginTop: 10 }}>
+                              Error
+                            </div>
+                            <pre className="mono log-detail">
+                              {l.error || 'No error text was returned by the tool.'}
+                            </pre>
+                          </>
+                        )}
                         {l.args && (
                           <>
                             <div className="field-label">Called with</div>

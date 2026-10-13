@@ -18,11 +18,14 @@ import { hashKey } from '../lib/crypto.js';
 import { mcpToolName, mcpToolTitle } from '../lib/tool-name.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { createSchedule, deleteSchedule, isValidCron, listByGroup, toolInGroup } from '../scheduler/service.js';
+import { canonicalProjectToolName, handleProjectTool, pickProjectTools } from './project-tools.js';
 import { canonicalSystemToolName, handleSystemTool, pickSystemTools, systemInstructions } from './system-tools.js';
 
 export interface AgentAuth {
   agentId: string;
   ownerId: string;
+  projectId: string;
+  role: 'lead' | 'coo';
   groupId: string;
   groupSlug: string;
   schedulingEnabled: boolean;
@@ -34,6 +37,8 @@ export interface AgentAuth {
 export interface AgentAuthAll {
   agentId: string;
   ownerId: string;
+  projectId: string;
+  role: 'lead' | 'coo';
   /** Built-in system.* tools this agent exposes (subset of SYSTEM_TOOL_NAMES). */
   systemTools: string[];
   groups: { id: string; slug: string; schedulingEnabled: boolean }[];
@@ -42,6 +47,8 @@ export interface AgentAuthAll {
 interface Resolved {
   agentId: string;
   ownerId: string;
+  projectId: string;
+  role: 'lead' | 'coo';
   /** Built-in system.* tools this agent exposes (subset of SYSTEM_TOOL_NAMES). */
   systemTools: string[];
   /** If set, the Bearer is restricted to this single group (group-scoped OAuth token). */
@@ -61,7 +68,14 @@ export async function resolveBearer(authHeader: string | undefined): Promise<Res
   if (key) {
     const [agent] = await db.select().from(agents).where(eq(agents.id, key.agentId));
     if (agent)
-      return { agentId: agent.id, ownerId: agent.ownerId, systemTools: agent.systemTools ?? [], restrictGroupId: null };
+      return {
+        agentId: agent.id,
+        ownerId: agent.ownerId,
+        projectId: agent.projectId,
+        role: agent.role,
+        systemTools: agent.systemTools ?? [],
+        restrictGroupId: null,
+      };
   }
 
   const [tok] = await db
@@ -71,7 +85,14 @@ export async function resolveBearer(authHeader: string | undefined): Promise<Res
   if (!tok || tok.expiresAt.getTime() <= Date.now()) return null;
   const [ag] = await db.select().from(agents).where(eq(agents.id, tok.agentId));
   if (!ag) return null;
-  return { agentId: ag.id, ownerId: ag.ownerId, systemTools: ag.systemTools ?? [], restrictGroupId: tok.groupId };
+  return {
+    agentId: ag.id,
+    ownerId: ag.ownerId,
+    projectId: ag.projectId,
+    role: ag.role,
+    systemTools: ag.systemTools ?? [],
+    restrictGroupId: tok.groupId,
+  };
 }
 
 /** Resolve a Bearer token to an agent and verify it belongs to group `ref`.
@@ -101,6 +122,8 @@ export async function authenticateAgent(ref: string, authHeader: string | undefi
   return {
     agentId: r.agentId,
     ownerId: r.ownerId,
+    projectId: r.projectId,
+    role: r.role,
     groupId: grp.id,
     groupSlug: grp.slug,
     schedulingEnabled: grp.schedulingEnabled,
@@ -117,12 +140,22 @@ export async function authenticateAgentAll(authHeader: string | undefined): Prom
   const grants = await db.select().from(agentGroups).where(eq(agentGroups.agentId, r.agentId));
   let groupIds = grants.map((g) => g.groupId);
   if (r.restrictGroupId) groupIds = groupIds.filter((id) => id === r.restrictGroupId);
-  if (!groupIds.length) return { agentId: r.agentId, ownerId: r.ownerId, systemTools: r.systemTools, groups: [] };
+  if (!groupIds.length)
+    return {
+      agentId: r.agentId,
+      ownerId: r.ownerId,
+      projectId: r.projectId,
+      role: r.role,
+      systemTools: r.systemTools,
+      groups: [],
+    };
 
   const grps = await db.select().from(groups).where(inArray(groups.id, groupIds));
   return {
     agentId: r.agentId,
     ownerId: r.ownerId,
+    projectId: r.projectId,
+    role: r.role,
     systemTools: r.systemTools,
     groups: grps.map((g) => ({
       id: g.id,
@@ -167,6 +200,13 @@ const SELF_CRON_TOOLS = [
 ] as const;
 
 const SELF_CRON_NAMES = new Set<string>(SELF_CRON_TOOLS.map((t) => t.name));
+
+/** A CallResult as an MCP tools/call response. */
+const asMcp = (r: Awaited<ReturnType<typeof handleProjectTool>>) => ({
+  content: r.content,
+  ...(r.structuredContent !== undefined ? { structuredContent: r.structuredContent } : {}),
+  isError: r.isError,
+});
 
 function text(t: string, isError = false) {
   return { content: [{ type: 'text', text: t }], isError };
@@ -273,7 +313,9 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
       ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
     }));
     const base = auth.schedulingEnabled ? [...toolDefs, ...SELF_CRON_TOOLS] : toolDefs;
-    return { tools: [...base, ...pickSystemTools(auth.systemTools)] };
+    return {
+      tools: [...base, ...pickSystemTools(auth.systemTools), ...(auth.role === 'coo' ? pickProjectTools() : [])],
+    };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -299,6 +341,9 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
         isError: r.isError,
       };
     }
+
+    const projName = auth.role === 'coo' ? canonicalProjectToolName(name) : null;
+    if (projName) return asMcp(await handleProjectTool(auth, projName, a));
 
     // Built-in self-cron tools: the agent schedules itself.
     if (auth.schedulingEnabled && SELF_CRON_NAMES.has(name)) {
@@ -370,6 +415,7 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
           ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
         })),
         ...pickSystemTools(auth.systemTools),
+        ...(auth.role === 'coo' ? pickProjectTools() : []),
       ],
     };
   });
@@ -400,6 +446,9 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
         isError: r.isError,
       };
     }
+
+    const projName = auth.role === 'coo' ? canonicalProjectToolName(name) : null;
+    if (projName) return asMcp(await handleProjectTool(auth, projName, (args ?? {}) as Record<string, unknown>));
 
     // Index is keyed by MCP-safe name; sanitize the incoming name too so older
     // clients that saw the raw (dotted) name still resolve.

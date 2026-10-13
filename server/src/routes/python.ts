@@ -1,31 +1,21 @@
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { scripts, tools } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
-import { newId } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
+import { ownerOf, sendErr } from '../lib/req.js';
+import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { runPython } from '../runtime/python.js';
+import { isErr } from '../services/sources.js';
+import { codeField, createPythonTool, pythonCreateBody } from '../services/tools.js';
 
-const codeField = z.string().min(1).max(config.pythonMaxCodeBytes);
-
-const createBody = z.object({
-  name: z.string().min(1),
-  displayName: z.string().optional(),
-  description: z.string().optional(),
-  code: codeField,
-  inputSchema: z.record(z.unknown()).nullable().optional(),
-  outputSchema: z.record(z.unknown()).nullable().optional(),
-});
-
-async function ownedPython(id: string, owner: string) {
+async function ownedPython(scope: Scope, id: string) {
   const [tool] = await db
     .select()
     .from(tools)
-    .where(and(eq(tools.id, id), eq(tools.ownerId, owner)));
+    .where(and(eq(tools.id, id), eq(tools.ownerId, scope.ownerId), inSubtree(tools.projectId, scope)));
   return tool && tool.kind === 'python' ? tool : null;
 }
 
@@ -54,41 +44,14 @@ export async function pythonRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/python-tools', async (req, reply) => {
-    const owner = ownerOf(req);
-    const body = createBody.parse(req.body);
-
-    const [clash] = await db
-      .select()
-      .from(tools)
-      .where(and(eq(tools.name, body.name), eq(tools.ownerId, owner)));
-    if (clash) return reply.code(409).send({ error: 'name_taken' });
-
-    const toolId = newId();
-    await db.transaction(async (tx) => {
-      await tx.insert(tools).values({
-        id: toolId,
-        ownerId: owner,
-        sourceId: null,
-        kind: 'python',
-        name: body.name,
-        upstreamName: null,
-        displayName: body.displayName ?? body.name,
-        description: body.description ?? null,
-        inputSchema: body.inputSchema ?? null,
-        outputSchema: body.outputSchema ?? null,
-        visible: true,
-        createdAt: new Date(),
-      });
-      await tx.insert(scripts).values({ id: newId(), toolId, code: body.code });
-    });
-
-    const [row] = await db.select().from(tools).where(eq(tools.id, toolId));
-    return reply.code(201).send(row);
+    const scope = await scopeFor(req);
+    const r = await createPythonTool(scope, pythonCreateBody.parse(req.body), null);
+    return isErr(r) ? sendErr(reply, r) : reply.code(201).send(r);
   });
 
   app.get('/python-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const tool = await ownedPython(id, ownerOf(req));
+    const tool = await ownedPython(await scopeFor(req), id);
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const [s] = await db.select().from(scripts).where(eq(scripts.toolId, id));
     return { ...tool, code: s?.code ?? '' };
@@ -96,7 +59,7 @@ export async function pythonRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch('/python-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const tool = await ownedPython(id, ownerOf(req));
+    const tool = await ownedPython(await scopeFor(req), id);
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const body = z.object({ code: codeField.optional() }).parse(req.body);
     if (body.code !== undefined) await db.update(scripts).set({ code: body.code }).where(eq(scripts.toolId, id));
@@ -106,14 +69,16 @@ export async function pythonRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/python-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    await db.delete(tools).where(and(eq(tools.id, id), eq(tools.ownerId, ownerOf(req)))); // cascades scripts
+    if (!(await ownedPython(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(tools).where(eq(tools.id, id)); // cascades scripts
     return reply.code(204).send();
   });
 
   app.post('/python-tools/:id/run', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
-    const tool = await ownedPython(id, owner);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
+    const tool = await ownedPython(scope, id);
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const [s] = await db.select().from(scripts).where(eq(scripts.toolId, id));
     if (!s) return reply.code(404).send({ error: 'code_missing' });

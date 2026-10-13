@@ -1810,3 +1810,36 @@ button,
     transition-duration: 0.01ms !important;
   }
 }
+
+.row-badges {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+/* Projects tab: tree left, node card right; stacks on phones */
+.projects-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 3fr;
+  gap: 16px;
+  align-items: start;
+}
+.projects-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.projects-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+}
+.projects-node.active {
+  background: var(--surface-inset);
+}
+@media (max-width: 720px) {
+  .projects-layout {
+    grid-template-columns: 1fr;
+  }
+}

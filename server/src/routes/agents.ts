@@ -1,13 +1,15 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, groups } from '../db/schema.js';
 import { SYSTEM_TOOL_NAMES } from '../gateway/system-tools.js';
 import { hashKey } from '../lib/crypto.js';
 import { newApiKey, newId } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
+import { sendErr } from '../lib/req.js';
+import { inSubtree, scopeFor } from '../lib/scope.js';
+import { createAgent, endpointFor, ownedAgent, setAgentRole } from '../services/agents.js';
+import { isErr } from '../services/sources.js';
 
 const createBody = z.object({ name: z.string().min(1) });
 // Only known system.* tool names may be enabled on an agent.
@@ -31,18 +33,6 @@ async function keyCount(agentId: string): Promise<number> {
   return rows.length;
 }
 
-function endpointFor(groupId: string): string {
-  return `http://${config.host}:${config.port}/g/${groupId}/mcp`;
-}
-
-async function ownedAgent(id: string, owner: string) {
-  const [row] = await db
-    .select()
-    .from(agents)
-    .where(and(eq(agents.id, id), eq(agents.ownerId, owner)));
-  return row ?? null;
-}
-
 async function agentGrants(agentId: string) {
   const links = await db.select().from(agentGroups).where(eq(agentGroups.agentId, agentId));
   const ids = links.map((l) => l.groupId);
@@ -53,36 +43,19 @@ async function agentGrants(agentId: string) {
 
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/agents', async (req, reply) => {
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
     const body = createBody.parse(req.body);
-    const key = newApiKey();
-    const row = {
-      id: newId(),
-      ownerId: owner,
-      name: body.name,
-      apiKeyHash: null,
-      apiKeyPrefix: null,
-      systemTools: [],
-      createdAt: new Date(),
-    };
-    await db.insert(agents).values(row);
-    await db.insert(agentKeys).values({
-      id: newId(),
-      agentId: row.id,
-      hash: hashKey(key.token),
-      prefix: key.prefix,
-      label: 'default',
-      archived: false,
-      createdAt: new Date(),
-    });
-    return reply.code(201).send({ ...publicAgent(row), apiKey: key.token, keyCount: 1, groups: [] });
+    const r = await createAgent(scope, { name: body.name, role: 'lead', groupIds: [] }, null);
+    if (isErr(r)) return sendErr(reply, r);
+    return reply.code(201).send({ ...publicAgent(r.agent), apiKey: r.apiKey, keyCount: 1, groups: [] });
   });
 
   app.get('/agents', async (req) => {
+    const scope = await scopeFor(req);
     const rows = await db
       .select()
       .from(agents)
-      .where(eq(agents.ownerId, ownerOf(req)));
+      .where(and(eq(agents.ownerId, scope.ownerId), inSubtree(agents.projectId, scope)));
     return Promise.all(
       rows.map(async (a) => ({ ...publicAgent(a), keyCount: await keyCount(a.id), groups: await agentGrants(a.id) })),
     );
@@ -91,8 +64,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   // Which built-in system.* introspection tools this agent exposes (all its V-MCPs + /a/mcp).
   app.put('/agents/:id/system-tools', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
-    if (!(await ownedAgent(id, owner))) return reply.code(404).send({ error: 'not_found' });
+    if (!(await ownedAgent(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
     const { names } = z.object({ names: systemTools }).parse(req.body);
     const unique = [...new Set(names)];
     await db.update(agents).set({ systemTools: unique }).where(eq(agents.id, id));
@@ -102,14 +74,14 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   // ----- API keys -----
   app.get('/agents/:id/keys', async (req, reply) => {
     const { id } = req.params as { id: string };
-    if (!(await ownedAgent(id, ownerOf(req)))) return reply.code(404).send({ error: 'not_found' });
+    if (!(await ownedAgent(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
     const rows = await db.select().from(agentKeys).where(eq(agentKeys.agentId, id)).orderBy(desc(agentKeys.createdAt));
     return rows.map(publicKey);
   });
 
   app.post('/agents/:id/keys', async (req, reply) => {
     const { id } = req.params as { id: string };
-    if (!(await ownedAgent(id, ownerOf(req)))) return reply.code(404).send({ error: 'not_found' });
+    if (!(await ownedAgent(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
     const { label } = z.object({ label: z.string().optional() }).parse(req.body ?? {});
     const key = newApiKey();
     const row = {
@@ -127,7 +99,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch('/agents/:id/keys/:keyId', async (req, reply) => {
     const { id, keyId } = req.params as { id: string; keyId: string };
-    if (!(await ownedAgent(id, ownerOf(req)))) return reply.code(404).send({ error: 'not_found' });
+    if (!(await ownedAgent(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
     const { archived, label } = z
       .object({ archived: z.boolean().optional(), label: z.string().optional() })
       .parse(req.body);
@@ -148,42 +120,51 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/agents/:id/keys/:keyId', async (req, reply) => {
     const { id, keyId } = req.params as { id: string; keyId: string };
-    if (!(await ownedAgent(id, ownerOf(req)))) return reply.code(404).send({ error: 'not_found' });
+    if (!(await ownedAgent(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
     await db.delete(agentKeys).where(and(eq(agentKeys.id, keyId), eq(agentKeys.agentId, id)));
     return reply.code(204).send();
   });
 
   app.get('/agents/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await ownedAgent(id, ownerOf(req));
+    const row = await ownedAgent(await scopeFor(req), id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
     return { ...publicAgent(row), keyCount: await keyCount(id), groups: await agentGrants(id) };
   });
 
+  app.patch('/agents/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { role } = z.object({ role: z.enum(['lead', 'coo']) }).parse(req.body);
+    const r = await setAgentRole(await scopeFor(req), id, role);
+    if (isErr(r)) return sendErr(reply, r);
+    return { ...publicAgent(r), keyCount: await keyCount(id), groups: await agentGrants(id) };
+  });
+
   app.delete('/agents/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    await db.delete(agents).where(and(eq(agents.id, id), eq(agents.ownerId, ownerOf(req))));
+    if (!(await ownedAgent(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(agents).where(eq(agents.id, id));
     return reply.code(204).send();
   });
 
   app.get('/agents/:id/groups', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await ownedAgent(id, ownerOf(req));
+    const row = await ownedAgent(await scopeFor(req), id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
     return agentGrants(id);
   });
 
   app.post('/agents/:id/groups', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
     const { groupId } = z.object({ groupId: z.string() }).parse(req.body);
-    const agent = await ownedAgent(id, owner);
+    const agent = await ownedAgent(scope, id);
     if (!agent) return reply.code(404).send({ error: 'not_found' });
-    // group must belong to the same owner
+    // group must be in the caller's subtree
     const [grp] = await db
       .select()
       .from(groups)
-      .where(and(eq(groups.id, groupId), eq(groups.ownerId, owner)));
+      .where(and(eq(groups.id, groupId), eq(groups.ownerId, scope.ownerId), inSubtree(groups.projectId, scope)));
     if (!grp) return reply.code(400).send({ error: 'unknown_group' });
 
     const [exists] = await db
@@ -196,7 +177,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/agents/:id/groups/:groupId', async (req, reply) => {
     const { id, groupId } = req.params as { id: string; groupId: string };
-    const agent = await ownedAgent(id, ownerOf(req));
+    const agent = await ownedAgent(await scopeFor(req), id);
     if (!agent) return reply.code(404).send({ error: 'not_found' });
     await db.delete(agentGroups).where(and(eq(agentGroups.agentId, id), eq(agentGroups.groupId, groupId)));
     return reply.code(204).send();

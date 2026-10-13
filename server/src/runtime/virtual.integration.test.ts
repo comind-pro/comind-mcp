@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db, pool, runMigrations } from '../db/client.js';
 import { tools, users, virtuals } from '../db/schema.js';
 import { newId } from '../lib/id.js';
+import { ensureDefaultNodes } from '../services/projects.js';
 import { invokeTool } from './invoker.js';
 
 /** Integration: invoker dispatch for virtual tools. Needs Postgres; skipped when
@@ -14,6 +15,7 @@ const dbUp = await pool
 
 const tag = newId().slice(0, 6).toLowerCase();
 const ownerId = newId();
+let projectId: string;
 
 async function makeVirtual(opts: {
   name: string;
@@ -26,6 +28,7 @@ async function makeVirtual(opts: {
   await db.insert(tools).values({
     id: toolId,
     ownerId,
+    projectId,
     sourceId: null,
     kind: 'virtual',
     name: opts.name,
@@ -55,6 +58,7 @@ d('virtual tool invocation', () => {
     await db
       .insert(users)
       .values({ id: ownerId, email: `vt_${tag}@t.local`, passwordHash: 'x', createdAt: new Date() });
+    projectId = (await ensureDefaultNodes(ownerId)).projectId;
   });
   afterAll(async () => {
     await db.delete(users).where(inArray(users.id, [ownerId])); // cascades tools/virtuals

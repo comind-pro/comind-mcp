@@ -6,10 +6,11 @@ import { createConnector } from '../connectors/index.js';
 import type { CallResult } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
 import { db } from '../db/client.js';
-import { callLogs, composites, liveTool, scripts, sources, tools, virtuals } from '../db/schema.js';
+import { callLogs, composites, groups, liveTool, scripts, sources, tools, virtuals } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
+import { toolUsableCond } from '../services/tools.js';
 import { runPython } from './python.js';
 import { runVirtual, staticResult } from './virtual.js';
 
@@ -19,6 +20,8 @@ export interface InvokeContext {
   groupId?: string | null;
   /** How the call was triggered (for analytics). Defaults to 'live'. */
   source?: 'live' | 'test' | 'schedule';
+  /** Set for nested calls: the tool must be usable by this project. Top-level calls leave it unset. */
+  projectId?: string;
 }
 
 const MAX_DEPTH = 5;
@@ -76,29 +79,48 @@ export async function invokeTool(
   depth = 0,
 ): Promise<CallResult> {
   const startedAt = Date.now();
-  const result = await dispatch(toolName, args, ctx, depth);
-  // Observability: record each call. Never let logging break the call.
-  void db
-    .insert(callLogs)
-    .values({
+  // Owner-scoped: never resolve another user's tool with the same name.
+  const [tool] = await db
+    .select()
+    .from(tools)
+    .where(
+      and(
+        eq(tools.name, toolName),
+        eq(tools.ownerId, ctx.ownerId),
+        liveTool(),
+        ...(ctx.projectId ? [toolUsableCond(ctx.projectId)] : []),
+      ),
+    );
+  const result = await dispatch(tool, toolName, args, ctx, depth);
+  // Observability: record each call. Never let logging break (or delay) the call.
+  const durationMs = Date.now() - startedAt;
+  void (async () => {
+    // Attribute the call to the CALLER's project (the group it came through); a
+    // direct call (test, no group) falls back to the tool's project.
+    const projectId = ctx.groupId
+      ? ((await db.select({ p: groups.projectId }).from(groups).where(eq(groups.id, ctx.groupId)))[0]?.p ?? null)
+      : (tool?.projectId ?? null);
+    await db.insert(callLogs).values({
       id: newId(),
       ownerId: ctx.ownerId,
+      projectId,
       groupId: ctx.groupId ?? null,
       agentId: ctx.agentId ?? null,
       toolName,
       source: ctx.source ?? 'live',
       status: result.isError ? 'error' : 'success',
-      durationMs: Date.now() - startedAt,
+      durationMs,
       tokensEst: estimateTokens(result),
       error: result.isError ? errorText(result) : null,
       args: result.isError ? JSON.stringify(args).slice(0, ARGS_LOG_CHARS) : null,
       ts: new Date(),
-    })
-    .catch(() => {});
+    });
+  })().catch(() => {});
   return result;
 }
 
 async function dispatch(
+  tool: typeof tools.$inferSelect | undefined,
   toolName: string,
   args: Record<string, unknown>,
   ctx: InvokeContext,
@@ -106,11 +128,6 @@ async function dispatch(
 ): Promise<CallResult> {
   if (depth > MAX_DEPTH) return textResult(`Max composite depth exceeded at ${toolName}`, true);
 
-  // Owner-scoped: never resolve another user's tool with the same name.
-  const [tool] = await db
-    .select()
-    .from(tools)
-    .where(and(eq(tools.name, toolName), eq(tools.ownerId, ctx.ownerId), liveTool()));
   if (!tool) return textResult(`Unknown tool: ${toolName}`, true);
 
   if (tool.kind === 'composite') {
@@ -119,7 +136,12 @@ async function dispatch(
     if (hasPythonStep(comp.definition) && !(await hasFeature(ctx.ownerId, PYTHON_TOOLS))) {
       return textResult(`Python steps are not enabled for this account (${toolName})`, true);
     }
-    return runComposite(comp.definition, args, (name, a, d) => invokeTool(name, a, ctx, d), depth);
+    return runComposite(
+      comp.definition,
+      args,
+      (name, a, d) => invokeTool(name, a, { ...ctx, projectId: tool.projectId }, d),
+      depth,
+    );
   }
 
   if (tool.kind === 'python') {
@@ -131,7 +153,12 @@ async function dispatch(
     const [script] = await db.select().from(scripts).where(eq(scripts.toolId, tool.id));
     if (!script) return textResult(`Python source missing for ${toolName}`, true);
     try {
-      const { result } = await runPython(script.code, { args }, (name, a, d) => invokeTool(name, a, ctx, d), depth);
+      const { result } = await runPython(
+        script.code,
+        { args },
+        (name, a, d) => invokeTool(name, a, { ...ctx, projectId: tool.projectId }, d),
+        depth,
+      );
       return result;
     } catch (err) {
       return textResult(errorMessage(err), true);
@@ -160,7 +187,7 @@ async function dispatch(
     if (tool.readOnly === true && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
       return textResult(`Tool ${toolName} is marked read-only but its request uses ${method}.`, true);
     }
-    return withStructured(await runVirtual(v.request, args, ctx.ownerId), tool.outputSchema);
+    return withStructured(await runVirtual(v.request, args, ctx.ownerId, tool.projectId), tool.outputSchema);
   }
 
   // native

@@ -3,31 +3,12 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { tools, virtuals } from '../db/schema.js';
-import { newId } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
+import { sendErr } from '../lib/req.js';
+import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { runVirtual, staticResult } from '../runtime/virtual.js';
-
-const requestSchema = z.object({
-  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
-  url: z.string().min(1),
-  headers: z.record(z.string()).optional(),
-  query: z.record(z.string()).optional(),
-  body: z.unknown().optional(),
-});
-
-const createBody = z.object({
-  name: z.string().min(1),
-  displayName: z.string().optional(),
-  description: z.string().optional(),
-  inputSchema: z.record(z.unknown()).nullable().optional(),
-  outputSchema: z.record(z.unknown()).nullable().optional(),
-  // executable → we HTTP-proxy `request`. descriptive → no endpoint, request optional.
-  executable: z.boolean().optional(),
-  request: requestSchema.optional(),
-  // descriptive: static response body returned on call.
-  response: z.unknown().optional(),
-});
+import { isErr } from '../services/sources.js';
+import { createVirtualTool, requestSchema, virtualCreateBody } from '../services/tools.js';
 
 const patchBody = z.object({
   request: requestSchema.optional(),
@@ -35,11 +16,11 @@ const patchBody = z.object({
   response: z.unknown().optional(),
 });
 
-async function ownedVirtual(id: string, owner: string) {
+async function ownedVirtual(scope: Scope, id: string) {
   const [tool] = await db
     .select()
     .from(tools)
-    .where(and(eq(tools.id, id), eq(tools.ownerId, owner)));
+    .where(and(eq(tools.id, id), eq(tools.ownerId, scope.ownerId), inSubtree(tools.projectId, scope)));
   return tool && tool.kind === 'virtual' ? tool : null;
 }
 
@@ -47,6 +28,7 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
   // Stateless test for an unsaved draft. Executable → run the request; descriptive
   // → echo the spec the agent would receive (nothing is called).
   app.post('/virtual-tools/test', async (req) => {
+    const scope = await scopeFor(req);
     const body = z
       .object({
         request: requestSchema.optional(),
@@ -65,49 +47,18 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
       };
       return { content: [{ type: 'text', text: JSON.stringify(note) }], structuredContent: note };
     }
-    return runVirtual(body.request as Record<string, unknown>, body.args ?? {}, ownerOf(req));
+    return runVirtual(body.request as Record<string, unknown>, body.args ?? {}, scope.ownerId, scope.createIn);
   });
 
   app.post('/virtual-tools', async (req, reply) => {
-    const owner = ownerOf(req);
-    const body = createBody.parse(req.body);
-    const executable = body.executable ?? true;
-    if (executable && !body.request) return reply.code(400).send({ error: 'request_required' });
-
-    const [clash] = await db
-      .select()
-      .from(tools)
-      .where(and(eq(tools.name, body.name), eq(tools.ownerId, owner)));
-    if (clash) return reply.code(409).send({ error: 'name_taken' });
-
-    const toolId = newId();
-    await db.transaction(async (tx) => {
-      await tx.insert(tools).values({
-        id: toolId,
-        ownerId: owner,
-        sourceId: null,
-        kind: 'virtual',
-        name: body.name,
-        upstreamName: null,
-        displayName: body.displayName ?? body.name,
-        description: body.description ?? null,
-        inputSchema: body.inputSchema ?? null,
-        outputSchema: body.outputSchema ?? null,
-        visible: true,
-        createdAt: new Date(),
-      });
-      await tx
-        .insert(virtuals)
-        .values({ id: newId(), toolId, executable, request: body.request ?? {}, response: body.response ?? null });
-    });
-
-    const [row] = await db.select().from(tools).where(eq(tools.id, toolId));
-    return reply.code(201).send(row);
+    const scope = await scopeFor(req);
+    const r = await createVirtualTool(scope, virtualCreateBody.parse(req.body), null);
+    return isErr(r) ? sendErr(reply, r) : reply.code(201).send(r);
   });
 
   app.get('/virtual-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const tool = await ownedVirtual(id, ownerOf(req));
+    const tool = await ownedVirtual(await scopeFor(req), id);
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const [v] = await db.select().from(virtuals).where(eq(virtuals.toolId, id));
     return { ...tool, request: v?.request ?? null, executable: v?.executable ?? true, response: v?.response ?? null };
@@ -115,7 +66,7 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch('/virtual-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const tool = await ownedVirtual(id, ownerOf(req));
+    const tool = await ownedVirtual(await scopeFor(req), id);
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const body = patchBody.parse(req.body);
     const set: Record<string, unknown> = {};
@@ -129,14 +80,16 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/virtual-tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    await db.delete(tools).where(and(eq(tools.id, id), eq(tools.ownerId, ownerOf(req)))); // cascades virtuals
+    if (!(await ownedVirtual(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(tools).where(eq(tools.id, id)); // cascades virtuals
     return reply.code(204).send();
   });
 
   app.post('/virtual-tools/:id/run', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
-    const tool = await ownedVirtual(id, owner);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
+    const tool = await ownedVirtual(scope, id);
     if (!tool) return reply.code(404).send({ error: 'not_found' });
     const args = ((req.body as { args?: Record<string, unknown> })?.args ?? {}) as Record<string, unknown>;
     return invokeTool(tool.name, args, { ownerId: owner, groupId: null, agentId: null, source: 'test' });

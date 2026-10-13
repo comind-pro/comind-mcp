@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { AuthPage } from './AuthPage.js';
-import { type AuthUser, api, tokenStore } from './api.js';
+import { type Agent, type AuthUser, api, type Project, projectStore, tokenStore } from './api.js';
 import { Home } from './Home.js';
 import { Icon, type IconName } from './icons.js';
+import { ProjectSelector, ProjectsContext } from './ProjectSelector.js';
+import { knownProject } from './projects.js';
 import { AgentsTab } from './tabs/AgentsTab.js';
 import { GroupsTab } from './tabs/GroupsTab.js';
 import { LogsTab } from './tabs/LogsTab.js';
+import { ProjectsTab } from './tabs/ProjectsTab.js';
 import { SecretsTab } from './tabs/SecretsTab.js';
 import { SourcesTab } from './tabs/SourcesTab.js';
 import { ToolsTab } from './tabs/ToolsTab.js';
 import { getTheme, toggleTheme } from './theme.js';
 
-export type PageId = 'home' | 'connections' | 'tools' | 'workspaces' | 'agents' | 'secrets' | 'activity';
+export type PageId = 'home' | 'projects' | 'connections' | 'tools' | 'workspaces' | 'agents' | 'secrets' | 'activity';
 
 const PAGES: { id: PageId; label: string; hint: string | null; icon: IconName }[] = [
   { id: 'home', label: 'Home', hint: null, icon: 'home' },
+  { id: 'projects', label: 'Projects', hint: 'teams, projects, sharing', icon: 'folder' },
   { id: 'connections', label: 'Connections', hint: 'sources', icon: 'plug' },
   { id: 'tools', label: 'Tools', hint: null, icon: 'wrench' },
   { id: 'workspaces', label: 'Workspaces', hint: 'virtual MCP servers', icon: 'grid' },
@@ -28,6 +32,9 @@ export function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState(getTheme());
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selected, setSelected] = useState<string | null>(projectStore.get());
+  const [agentNames, setAgentNames] = useState<Map<string, string>>(new Map());
   const [navOpen, setNavOpen] = useState(false);
   const [rail, setRail] = useState(() => localStorage.getItem('comind_nav') === 'rail');
 
@@ -54,6 +61,30 @@ export function App() {
     }
     return () => window.removeEventListener('comind-unauthorized', drop);
   }, []);
+
+  const reload = async () => {
+    await Promise.all([
+      api
+        .getUnscoped<Project[]>('/projects')
+        .then((ps) => {
+          setProjects(ps);
+          // a stale/foreign/deleted ?project= would 404 every scoped call: fall back to "all"
+          if (projectStore.get() && !knownProject(ps, projectStore.get())) {
+            projectStore.set(null);
+            setSelected(null);
+          }
+        })
+        .catch(() => {}),
+      api
+        .getUnscoped<Agent[]>('/agents')
+        .then((a) => setAgentNames(new Map(a.map((x) => [x.id, x.name]))))
+        .catch(() => {}),
+    ]);
+  };
+
+  useEffect(() => {
+    if (user) void reload();
+  }, [user]);
 
   const logout = () => {
     api.logout();
@@ -120,14 +151,21 @@ export function App() {
         <header className="page-head-shell">
           <h1 className="page-title">{current.label}</h1>
           {current.hint && <span className="page-hint">{current.hint}</span>}
+          <span className="ml-auto" />
+          <ProjectSelector projects={projects} value={selected} onChange={setSelected} />
         </header>
-        {page === 'home' && <Home onNavigate={setPage} />}
-        {page === 'connections' && <SourcesTab />}
-        {page === 'tools' && <ToolsTab onNavigate={setPage} />}
-        {page === 'workspaces' && <GroupsTab />}
-        {page === 'agents' && <AgentsTab />}
-        {page === 'secrets' && <SecretsTab />}
-        {page === 'activity' && <LogsTab />}
+        <ProjectsContext.Provider value={{ projects, selected, agentNames, reload }}>
+          <Fragment key={selected ?? 'all'}>
+            {page === 'home' && <Home onNavigate={setPage} />}
+            {page === 'projects' && <ProjectsTab onNavigate={setPage} />}
+            {page === 'connections' && <SourcesTab />}
+            {page === 'tools' && <ToolsTab onNavigate={setPage} />}
+            {page === 'workspaces' && <GroupsTab />}
+            {page === 'agents' && <AgentsTab />}
+            {page === 'secrets' && <SecretsTab />}
+            {page === 'activity' && <LogsTab />}
+          </Fragment>
+        </ProjectsContext.Provider>
       </main>
     </div>
   );

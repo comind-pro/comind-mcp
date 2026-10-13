@@ -55,6 +55,18 @@ function methodNotAllowed(reply: FastifyReply): FastifyReply {
 }
 
 /**
+ * The MCP SDK's Streamable HTTP transport (via @hono/node-server) drains a
+ * request body on a 500 ms timer and then calls `socket.destroySoon()`. The mock
+ * socket that `app.inject()` (light-my-request) hands us has no such method, so
+ * a slow test run (real Postgres on CI) crashed with an unhandled TypeError.
+ * Real sockets already have it; this only fills the gap for the mock.
+ */
+function shimInjectSocket(raw: import('node:http').IncomingMessage): void {
+  const sock = raw.socket as { destroySoon?: () => void; destroy?: () => void } | undefined;
+  if (sock && typeof sock.destroySoon !== 'function') sock.destroySoon = () => sock.destroy?.();
+}
+
+/**
  * Agent-facing MCP endpoint. Each group is a virtual MCP server at
  * `/g/:slug/mcp` (Streamable HTTP). Stateless: one server+transport per request.
  */
@@ -73,6 +85,7 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
       server.close();
     });
     await server.connect(transport);
+    shimInjectSocket(req.raw);
     reply.hijack();
     await transport.handleRequest(req.raw, reply.raw, req.body);
   });
@@ -91,6 +104,7 @@ export async function gatewayRoutes(app: FastifyInstance): Promise<void> {
       server.close();
     });
     await server.connect(transport);
+    shimInjectSocket(req.raw);
     reply.hijack();
     await transport.handleRequest(req.raw, reply.raw, req.body);
   };

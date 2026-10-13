@@ -212,6 +212,8 @@ export async function runVirtual(
   request: Record<string, unknown>,
   args: Record<string, unknown>,
   ownerId: string,
+  /** The tool's project: only its own + granted secrets resolve (rule 1). */
+  projectId?: string,
 ): Promise<CallResult> {
   const req = request as unknown as VirtualRequest;
   if (!req?.url || !req?.method) return textResult('Virtual tool request is missing method/url.', true);
@@ -220,7 +222,7 @@ export async function runVirtual(
     return textResult(`Rate limit exceeded (${config.virtualRateLimitPerMin}/min for virtual tools).`, true);
   }
 
-  const secretMap = await loadSecretMap(ownerId);
+  const secretMap = await loadSecretMap(ownerId, undefined, projectId);
   const render = <T>(v: T): T => injectSecrets(deepInterp(v, args), secretMap);
 
   let url: URL;

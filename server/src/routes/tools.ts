@@ -1,10 +1,12 @@
-import { and, eq, type SQL } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { liveTool, tools } from '../db/schema.js';
-import { ownerOf } from '../lib/req.js';
-import { invokeTool } from '../runtime/invoker.js';
+import { sendErr } from '../lib/req.js';
+import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
+import { isErr } from '../services/sources.js';
+import { getTool, listTools, testTool } from '../services/tools.js';
 
 const patchBody = z.object({
   name: z.string().min(1).optional(),
@@ -28,41 +30,35 @@ const patchBody = z.object({
     .optional(),
 });
 
-async function ownedTool(id: string, owner: string) {
+async function administeredTool(scope: Scope, id: string) {
   const [row] = await db
     .select()
     .from(tools)
-    .where(and(eq(tools.id, id), eq(tools.ownerId, owner), liveTool()));
+    .where(and(eq(tools.id, id), eq(tools.ownerId, scope.ownerId), liveTool(), inSubtree(tools.projectId, scope)));
   return row ?? null;
 }
 
 export async function toolRoutes(app: FastifyInstance): Promise<void> {
   app.get('/tools', async (req) => {
     const q = req.query as { sourceId?: string; kind?: string; visible?: string };
-    const filters: SQL[] = [eq(tools.ownerId, ownerOf(req)), liveTool()];
-    if (q.sourceId) filters.push(eq(tools.sourceId, q.sourceId));
-    if (q.kind === 'native' || q.kind === 'composite' || q.kind === 'virtual' || q.kind === 'python') {
-      filters.push(eq(tools.kind, q.kind));
-    }
-    if (q.visible === 'true' || q.visible === 'false') filters.push(eq(tools.visible, q.visible === 'true'));
-    return db
-      .select()
-      .from(tools)
-      .where(and(...filters));
+    const kind =
+      q.kind === 'native' || q.kind === 'composite' || q.kind === 'virtual' || q.kind === 'python' ? q.kind : undefined;
+    const visible = q.visible === 'true' || q.visible === 'false' ? q.visible === 'true' : undefined;
+    return listTools(await scopeFor(req), { sourceId: q.sourceId, kind, visible });
   });
 
   app.get('/tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await ownedTool(id, ownerOf(req));
-    if (!row) return reply.code(404).send({ error: 'not_found' });
-    return row;
+    const r = await getTool(await scopeFor(req), id);
+    return isErr(r) ? sendErr(reply, r) : r;
   });
 
   app.patch('/tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
+    const scope = await scopeFor(req);
+    const owner = scope.ownerId;
     const body = patchBody.parse(req.body);
-    const existing = await ownedTool(id, owner);
+    const existing = await administeredTool(scope, id);
     if (!existing) return reply.code(404).send({ error: 'not_found' });
 
     if (body.name && body.name !== existing.name) {
@@ -93,17 +89,15 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    await db.delete(tools).where(and(eq(tools.id, id), eq(tools.ownerId, ownerOf(req))));
+    if (!(await administeredTool(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    await db.delete(tools).where(eq(tools.id, id));
     return reply.code(204).send();
   });
 
   app.post('/tools/:id/test', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = ownerOf(req);
-    const tool = await ownedTool(id, owner);
-    if (!tool) return reply.code(404).send({ error: 'not_found' });
     const args = ((req.body as { args?: Record<string, unknown> })?.args ?? {}) as Record<string, unknown>;
-    const result = await invokeTool(tool.name, args, { ownerId: owner, groupId: null, agentId: null, source: 'test' });
-    return result;
+    const r = await testTool(await scopeFor(req), id, args, { agentId: null });
+    return isErr(r) ? sendErr(reply, r) : r;
   });
 }

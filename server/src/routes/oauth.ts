@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { authConfigSchema } from '../auth/config.js';
 import { completeMcpOAuth, startMcpOAuth } from '../auth/mcp-oauth.js';
@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { fetchWithTimeout } from '../connectors/fetch.js';
 import { db } from '../db/client.js';
 import { sources } from '../db/schema.js';
+import { inSubtree, scopeFor } from '../lib/scope.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
 
 // state → sourceId for the generic authorization_code flow (mcp_oauth uses state=sourceId).
@@ -29,10 +30,15 @@ async function loadAuth(sourceId: string) {
 export async function oauthRoutes(app: FastifyInstance): Promise<void> {
   app.get('/sources/:id/oauth/start', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const owner = (req as { userId?: string }).userId;
+    // Connecting writes the source's tokens: administered (subtree) sources only.
+    const scope = await scopeFor(req);
+    const [own] = await db
+      .select({ id: sources.id })
+      .from(sources)
+      .where(and(eq(sources.id, id), eq(sources.ownerId, scope.ownerId), inSubtree(sources.projectId, scope)));
+    if (!own) return reply.code(404).send({ error: 'not_found' });
     const loaded = await loadAuth(id);
     if (!loaded) return reply.code(400).send({ error: 'source_has_no_oauth' });
-    if (loaded.row.ownerId !== owner) return reply.code(404).send({ error: 'not_found' });
     const { auth, resolved } = loaded;
 
     // MCP-native OAuth: SDK does discovery/DCR/PKCE.

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Secret } from '../api.js';
+import { RowBadges } from '../ProjectSelector.js';
 import { EmptyState, Loading, useConfirm } from '../ui.js';
 
 export function SecretsTab() {
@@ -11,6 +12,7 @@ export function SecretsTab() {
   const [err, setErr] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const { confirm, element: confirmEl } = useConfirm();
 
   const load = () =>
@@ -22,6 +24,7 @@ export function SecretsTab() {
         setSecrets([]);
       });
   useEffect(() => void load(), []);
+  const isEditing = (s: Secret) => editId === s.id && !s.pending;
 
   if (secrets === null) return <Loading />;
 
@@ -38,6 +41,17 @@ export function SecretsTab() {
       await api.patch(`/secrets/${s.id}`, body);
       setEditId(null);
       setEditVal('');
+      await load();
+    } catch (e) {
+      setErr(String((e as Error).message));
+    }
+  };
+
+  const savePending = async (s: Secret) => {
+    setErr('');
+    try {
+      await api.patch(`/secrets/${s.id}`, { value: drafts[s.id] });
+      setDrafts(({ [s.id]: _, ...rest }) => rest);
       await load();
     } catch (e) {
       setErr(String((e as Error).message));
@@ -146,7 +160,10 @@ export function SecretsTab() {
           <tbody>
             {secrets.map((s) => (
               <tr key={s.id}>
-                <td className="mono">{s.displayName}</td>
+                <td className="mono">
+                  {s.displayName}
+                  <RowBadges row={s} />
+                </td>
                 <td>
                   {s.sourceName ? (
                     <span className="tbadge">{s.sourceName}</span>
@@ -156,11 +173,39 @@ export function SecretsTab() {
                 </td>
                 <td className="mono muted">{`\${secret.${s.name}}`}</td>
                 <td>
-                  <span className="tbadge">{s.kind}</span>
+                  {s.pending ? (
+                    <span className="badge" style={{ color: 'var(--warn)', borderColor: 'var(--warn)' }}>
+                      pending
+                    </span>
+                  ) : (
+                    <span className="tbadge">{s.kind}</span>
+                  )}
                   {s.envRef && editId !== s.id && <span className="muted"> ← {s.envRef}</span>}
                 </td>
                 <td>
-                  {editId === s.id ? (
+                  {s.pending ? (
+                    <div className="row gap-4">
+                      <input
+                        className="grow"
+                        type="password"
+                        placeholder="set value"
+                        value={drafts[s.id] ?? ''}
+                        onChange={(e) => setDrafts({ ...drafts, [s.id]: e.target.value })}
+                        onKeyDown={(e) => e.key === 'Enter' && drafts[s.id] && savePending(s)}
+                        autoComplete="new-password"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        name="comind-secret-pending"
+                      />
+                      <button className="mini" onClick={() => savePending(s)} disabled={!drafts[s.id]}>
+                        Save
+                      </button>
+                      <button className="danger mini" onClick={() => del(s.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  ) : isEditing(s) ? (
                     <div className="row gap-4">
                       <input
                         className="grow"

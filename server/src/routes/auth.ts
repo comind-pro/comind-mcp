@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { hashPassword, signJwt, verifyPassword } from '../lib/auth.js';
 import { newId } from '../lib/id.js';
+import { ensureDefaultNodes } from '../services/projects.js';
 
 const credsBody = z.object({
   email: z.string().email(),
@@ -25,6 +26,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       createdAt: new Date(),
     };
     await db.insert(users).values(row);
+    await ensureDefaultNodes(row.id);
     return reply.code(201).send({ token: signJwt(row.id), user: { id: row.id, email: row.email } });
   });
 
