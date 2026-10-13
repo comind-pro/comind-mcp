@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { type Agent, type AgentKey, api, type Group, SYSTEM_TOOLS } from '../api.js';
 import { Icon } from '../icons.js';
-import { RowBadges } from '../ProjectSelector.js';
+import { ProjectsContext, RowBadges } from '../ProjectSelector.js';
 import { Advanced, CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
 
 interface InspectGroup {
@@ -35,6 +35,7 @@ function KeyModal({ agent, apiKey, onClose }: { agent: Agent; apiKey: string; on
 }
 
 export function AgentsTab() {
+  const { reload } = useContext(ProjectsContext);
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [draft, setDraft] = useState<string | null>(null); // new-agent name (null = closed)
@@ -88,6 +89,7 @@ export function AgentsTab() {
     try {
       const upd = await api.patch<Agent>(`/agents/${id}`, { role });
       setAgents((as) => (as ?? []).map((x) => (x.id === id ? { ...x, role: upd.role ?? role } : x)));
+      void reload();
     } catch (e) {
       setErr(String((e as Error).message));
     }
@@ -170,6 +172,7 @@ export function AgentsTab() {
       const a = await api.post<Agent & { apiKey: string }>('/agents', { name: draft });
       setDraft(null);
       await load();
+      void reload();
       // open the new agent and reveal its first key once
       setOpenId(a.id);
       setConnMode('all');

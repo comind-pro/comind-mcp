@@ -1,4 +1,4 @@
-import type { Project } from './api.js';
+import type { AccessRow, Project, ProjectSummary, ResourceType } from './api.js';
 
 export type TreeNode = Project & { children: TreeNode[] };
 
@@ -38,3 +38,39 @@ export function rowBadges(
 /** The selected project id if it is among the loaded nodes, else null (stale/foreign `?project=`). */
 export const knownProject = (rows: Project[], id: string | null): string | null =>
   id && rows.some((p) => p.id === id) ? id : null;
+
+export interface Candidate {
+  type: ResourceType;
+  id: string;
+  name: string;
+  projectId: string;
+}
+
+/** Resources owned outside the node's subtree that the node has not been granted yet. */
+export function grantCandidates(
+  all: Candidate[],
+  access: AccessRow[],
+  node: Project,
+  projects: Project[],
+): Candidate[] {
+  const own = new Set(projects.filter((p) => p.path.startsWith(node.path)).map((p) => p.id));
+  const granted = new Set(access.map((a) => `${a.resourceType}:${a.resourceId}`));
+  return all.filter((c) => !own.has(c.projectId) && !granted.has(`${c.type}:${c.id}`));
+}
+
+const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+
+export function deleteConfirmText({ node, counts: c }: ProjectSummary): string {
+  const parts = [
+    n(c.children, 'child', 'children'),
+    n(c.sources, 'source', 'sources'),
+    n(c.tools, 'tool', 'tools'),
+    n(c.groups, 'workspace', 'workspaces'),
+    n(c.agents, 'agent', 'agents'),
+    n(c.secrets, 'secret', 'secrets'),
+  ];
+  return `Delete "${node.name}"? This removes ${parts.join(', ')}.`;
+}
+
+export const revokeWarnText = (row: AccessRow): string | null =>
+  row.usedBy.length ? `Workspaces ${row.usedBy.map((u) => u.name).join(', ')} will lose its tools.` : null;

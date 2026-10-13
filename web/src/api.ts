@@ -52,6 +52,22 @@ export interface Project {
   createdAt?: number | string;
 }
 
+export interface ProjectSummary {
+  node: Project;
+  counts: { children: number; sources: number; tools: number; groups: number; agents: number; secrets: number };
+  cooAgents: { id: string; name: string }[];
+}
+
+export type ResourceType = 'source' | 'tool' | 'secret';
+export interface AccessRow {
+  resourceType: ResourceType;
+  resourceId: string;
+  name: string;
+  fromProjectId: string | null;
+  grantedBy: string | null;
+  usedBy: { groupId: string; name: string }[];
+}
+
 async function req<T>(method: string, path: string, body?: unknown, unscoped = false): Promise<T> {
   const headers: Record<string, string> = {};
   const token = tokenStore.get();
@@ -88,6 +104,8 @@ export const api = {
   patch: <T>(p: string, b?: unknown) => req<T>('PATCH', p, b),
   put: <T>(p: string, b?: unknown) => req<T>('PUT', p, b),
   del: <T>(p: string) => req<T>('DELETE', p),
+  postUnscoped: <T>(p: string, b?: unknown) => req<T>('POST', p, b, true),
+  delUnscoped: <T>(p: string) => req<T>('DELETE', p, undefined, true),
   base: BASE,
   async register(email: string, password: string) {
     const r = await req<{ token: string; user: AuthUser }>('POST', '/auth/register', { email, password });

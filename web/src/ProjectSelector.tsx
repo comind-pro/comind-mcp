@@ -6,7 +6,8 @@ export const ProjectsContext = createContext<{
   projects: Project[];
   selected: string | null;
   agentNames: Map<string, string>;
-}>({ projects: [], selected: null, agentNames: new Map() });
+  reload: () => Promise<void>;
+}>({ projects: [], selected: null, agentNames: new Map(), reload: async () => {} });
 
 function flatten(nodes: TreeNode[], depth = 0): { id: string; label: string }[] {
   return nodes.flatMap((n) => [{ id: n.id, label: '— '.repeat(depth) + n.name }, ...flatten(n.children, depth + 1)]);

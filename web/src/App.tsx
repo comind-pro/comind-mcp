@@ -8,15 +8,17 @@ import { knownProject } from './projects.js';
 import { AgentsTab } from './tabs/AgentsTab.js';
 import { GroupsTab } from './tabs/GroupsTab.js';
 import { LogsTab } from './tabs/LogsTab.js';
+import { ProjectsTab } from './tabs/ProjectsTab.js';
 import { SecretsTab } from './tabs/SecretsTab.js';
 import { SourcesTab } from './tabs/SourcesTab.js';
 import { ToolsTab } from './tabs/ToolsTab.js';
 import { getTheme, toggleTheme } from './theme.js';
 
-export type PageId = 'home' | 'connections' | 'tools' | 'workspaces' | 'agents' | 'secrets' | 'activity';
+export type PageId = 'home' | 'projects' | 'connections' | 'tools' | 'workspaces' | 'agents' | 'secrets' | 'activity';
 
 const PAGES: { id: PageId; label: string; hint: string | null; icon: IconName }[] = [
   { id: 'home', label: 'Home', hint: null, icon: 'home' },
+  { id: 'projects', label: 'Projects', hint: 'teams, projects, sharing', icon: 'folder' },
   { id: 'connections', label: 'Connections', hint: 'sources', icon: 'plug' },
   { id: 'tools', label: 'Tools', hint: null, icon: 'wrench' },
   { id: 'workspaces', label: 'Workspaces', hint: 'virtual MCP servers', icon: 'grid' },
@@ -60,23 +62,28 @@ export function App() {
     return () => window.removeEventListener('comind-unauthorized', drop);
   }, []);
 
+  const reload = async () => {
+    await Promise.all([
+      api
+        .getUnscoped<Project[]>('/projects')
+        .then((ps) => {
+          setProjects(ps);
+          // a stale/foreign/deleted ?project= would 404 every scoped call: fall back to "all"
+          if (projectStore.get() && !knownProject(ps, projectStore.get())) {
+            projectStore.set(null);
+            setSelected(null);
+          }
+        })
+        .catch(() => {}),
+      api
+        .getUnscoped<Agent[]>('/agents')
+        .then((a) => setAgentNames(new Map(a.map((x) => [x.id, x.name]))))
+        .catch(() => {}),
+    ]);
+  };
+
   useEffect(() => {
-    if (!user) return;
-    api
-      .getUnscoped<Project[]>('/projects')
-      .then((ps) => {
-        setProjects(ps);
-        // a stale/foreign ?project= would 404 every scoped call: fall back to "all"
-        if (projectStore.get() && !knownProject(ps, projectStore.get())) {
-          projectStore.set(null);
-          setSelected(null);
-        }
-      })
-      .catch(() => {});
-    api
-      .getUnscoped<Agent[]>('/agents')
-      .then((a) => setAgentNames(new Map(a.map((x) => [x.id, x.name]))))
-      .catch(() => {});
+    if (user) void reload();
   }, [user]);
 
   const logout = () => {
@@ -147,9 +154,10 @@ export function App() {
           <span className="ml-auto" />
           <ProjectSelector projects={projects} value={selected} onChange={setSelected} />
         </header>
-        <ProjectsContext.Provider value={{ projects, selected, agentNames }}>
+        <ProjectsContext.Provider value={{ projects, selected, agentNames, reload }}>
           <Fragment key={selected ?? 'all'}>
             {page === 'home' && <Home onNavigate={setPage} />}
+            {page === 'projects' && <ProjectsTab onNavigate={setPage} />}
             {page === 'connections' && <SourcesTab />}
             {page === 'tools' && <ToolsTab onNavigate={setPage} />}
             {page === 'workspaces' && <GroupsTab />}
