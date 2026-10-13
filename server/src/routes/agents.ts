@@ -1,14 +1,15 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { agentGroups, agentKeys, agents, groups } from '../db/schema.js';
 import { SYSTEM_TOOL_NAMES } from '../gateway/system-tools.js';
 import { hashKey } from '../lib/crypto.js';
 import { newApiKey, newId } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
-import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
+import { sendErr } from '../lib/req.js';
+import { inSubtree, scopeFor } from '../lib/scope.js';
+import { createAgent, endpointFor, ownedAgent } from '../services/agents.js';
+import { isErr } from '../services/sources.js';
 
 const createBody = z.object({ name: z.string().min(1) });
 // Only known system.* tool names may be enabled on an agent.
@@ -32,18 +33,6 @@ async function keyCount(agentId: string): Promise<number> {
   return rows.length;
 }
 
-function endpointFor(groupId: string): string {
-  return `http://${config.host}:${config.port}/g/${groupId}/mcp`;
-}
-
-async function ownedAgent(scope: Scope, id: string) {
-  const [row] = await db
-    .select()
-    .from(agents)
-    .where(and(eq(agents.id, id), eq(agents.ownerId, scope.ownerId), inSubtree(agents.projectId, scope)));
-  return row ?? null;
-}
-
 async function agentGrants(agentId: string) {
   const links = await db.select().from(agentGroups).where(eq(agentGroups.agentId, agentId));
   const ids = links.map((l) => l.groupId);
@@ -54,33 +43,11 @@ async function agentGrants(agentId: string) {
 
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/agents', async (req, reply) => {
-    const owner = ownerOf(req);
     const scope = await scopeFor(req);
     const body = createBody.parse(req.body);
-    const key = newApiKey();
-    const row = {
-      id: newId(),
-      ownerId: owner,
-      projectId: scope.createIn,
-      createdByAgentId: null,
-      role: 'lead' as const,
-      name: body.name,
-      apiKeyHash: null,
-      apiKeyPrefix: null,
-      systemTools: [],
-      createdAt: new Date(),
-    };
-    await db.insert(agents).values(row);
-    await db.insert(agentKeys).values({
-      id: newId(),
-      agentId: row.id,
-      hash: hashKey(key.token),
-      prefix: key.prefix,
-      label: 'default',
-      archived: false,
-      createdAt: new Date(),
-    });
-    return reply.code(201).send({ ...publicAgent(row), apiKey: key.token, keyCount: 1, groups: [] });
+    const r = await createAgent(scope, { name: body.name, role: 'lead', groupIds: [] }, null);
+    if (isErr(r)) return sendErr(reply, r);
+    return reply.code(201).send({ ...publicAgent(r.agent), apiKey: r.apiKey, keyCount: 1, groups: [] });
   });
 
   app.get('/agents', async (req) => {

@@ -1,14 +1,23 @@
-import { and, eq, inArray, notInArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { applyAuth } from '../auth/apply.js';
 import { createConnector, parseSourceConfig, sourceKind } from '../connectors/index.js';
 import { db } from '../db/client.js';
-import { liveTool, sources, tools } from '../db/schema.js';
-import { newId, slugify } from '../lib/id.js';
-import { inScope, inSubtree, type Scope, scopeFor } from '../lib/scope.js';
-import { changedFields } from '../lib/tool-diff.js';
-import { injectSecrets, loadSecretMap, resolveSourceConfig } from '../secrets/loader.js';
+import { sources } from '../db/schema.js';
+import { sendErr } from '../lib/req.js';
+import { scopeFor } from '../lib/scope.js';
+import { injectSecrets, loadSecretMap } from '../secrets/loader.js';
+import {
+  administeredSource,
+  createSource,
+  getSource,
+  importSource,
+  isErr,
+  listSources,
+  refreshObjects,
+  slugTaken,
+  testSource,
+} from '../services/sources.js';
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -28,83 +37,24 @@ const testBody = z.object({
   secrets: z.record(z.string()).optional(),
 });
 
-/** Read: in the scope's subtree or granted to it. */
-async function visible(scope: Scope, id: string) {
-  const [row] = await db
-    .select()
-    .from(sources)
-    .where(
-      and(
-        eq(sources.id, id),
-        eq(sources.ownerId, scope.ownerId),
-        inScope(sources.projectId, sources.id, 'source', scope),
-      ),
-    );
-  return row ?? null;
-}
-
-/** Write: subtree only (a grant gives read, not edit). */
-async function administered(scope: Scope, id: string) {
-  const [row] = await db
-    .select()
-    .from(sources)
-    .where(and(eq(sources.id, id), eq(sources.ownerId, scope.ownerId), inSubtree(sources.projectId, scope)));
-  return row ?? null;
-}
-
-/** Native tool names are `${slugify(source.name)}.${upstream}` and unique per owner,
- *  so two sources of one owner must not share a slug (else one's import would claim
- *  the other's tools). */
-async function slugTaken(ownerId: string, name: string, exceptId?: string): Promise<boolean> {
-  const slug = slugify(name);
-  const rows = await db
-    .select({ id: sources.id, name: sources.name })
-    .from(sources)
-    .where(eq(sources.ownerId, ownerId));
-  return rows.some((r) => r.id !== exceptId && slugify(r.name) === slug);
-}
-
 export async function sourceRoutes(app: FastifyInstance): Promise<void> {
   app.post('/sources', async (req, reply) => {
-    const scope = await scopeFor(req);
-    const body = createBody.parse(req.body);
-    if (await slugTaken(scope.ownerId, body.name)) return reply.code(409).send({ error: 'name_taken' });
-    const config = parseSourceConfig(body.kind, body.config);
-    const row = {
-      id: newId(),
-      ownerId: scope.ownerId,
-      projectId: scope.createIn,
-      createdByAgentId: null,
-      name: body.name,
-      kind: body.kind,
-      config,
-      status: 'unknown' as const,
-      statusMessage: null,
-      createdAt: new Date(),
-    };
-    await db.insert(sources).values(row);
-    return reply.code(201).send(row);
+    const r = await createSource(await scopeFor(req), createBody.parse(req.body), null);
+    return isErr(r) ? sendErr(reply, r) : reply.code(201).send(r);
   });
 
-  app.get('/sources', async (req) => {
-    const scope = await scopeFor(req);
-    return db
-      .select()
-      .from(sources)
-      .where(and(eq(sources.ownerId, scope.ownerId), inScope(sources.projectId, sources.id, 'source', scope)));
-  });
+  app.get('/sources', async (req) => listSources(await scopeFor(req)));
 
   app.get('/sources/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await visible(await scopeFor(req), id);
-    if (!row) return reply.code(404).send({ error: 'not_found' });
-    return row;
+    const r = await getSource(await scopeFor(req), id);
+    return isErr(r) ? sendErr(reply, r) : r;
   });
 
   app.patch('/sources/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = patchBody.parse(req.body);
-    const existing = await administered(await scopeFor(req), id);
+    const existing = await administeredSource(await scopeFor(req), id);
     if (!existing) return reply.code(404).send({ error: 'not_found' });
     if (body.name !== undefined && body.name !== existing.name && (await slugTaken(existing.ownerId, body.name, id)))
       return reply.code(409).send({ error: 'name_taken' });
@@ -120,7 +70,7 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/sources/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    if (!(await administered(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
+    if (!(await administeredSource(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
     await db.delete(sources).where(eq(sources.id, id));
     return reply.code(204).send();
   });
@@ -147,216 +97,24 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/sources/:id/test', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const scope = await scopeFor(req);
-    const row = await visible(scope, id);
-    if (!row) return reply.code(404).send({ error: 'not_found' });
-
-    let result: { ok: boolean; message?: string };
-    try {
-      const connector = createConnector(
-        row.kind,
-        await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)),
-      );
-      result = await connector.health();
-    } catch (e) {
-      result = { ok: false, message: (e as Error).message }; // e.g. a pending secret
-    }
-    // A grantee may check the connection but not write the source's status.
-    if (await administered(scope, id))
-      await db
-        .update(sources)
-        .set({ status: result.ok ? 'ok' : 'error', statusMessage: result.message ?? null, statusCheckedAt: new Date() })
-        .where(eq(sources.id, id));
-    return result;
+    const r = await testSource(await scopeFor(req), id);
+    return isErr(r) ? sendErr(reply, r) : r;
   });
 
   // Refresh the cached queryable objects (GA properties, DB schemas, mailboxes…).
   app.post('/sources/:id/objects', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await administered(await scopeFor(req), id);
-    if (!row) return reply.code(404).send({ error: 'not_found' });
-    const connector = createConnector(
-      row.kind,
-      await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)),
-    );
-    const objects = connector.listObjects ? await connector.listObjects() : [];
-    const objectsCheckedAt = new Date();
-    await db
-      .update(sources)
-      .set({ objects: objects as unknown as Array<Record<string, unknown>>, objectsCheckedAt })
-      .where(eq(sources.id, id));
-    return { id, objects, objectsCheckedAt };
+    const r = await refreshObjects(await scopeFor(req), id);
+    return isErr(r) ? sendErr(reply, r) : { id, ...r };
   });
 
   app.post('/sources/:id/import', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const scope = await scopeFor(req);
-    const owner = scope.ownerId;
-    const row = await administered(scope, id);
-    if (!row) return reply.code(404).send({ error: 'not_found' });
-
     // `force`: overwrite existing tools too (refresh metadata/schemas). Default:
     // only create missing tools, leaving existing ones (and manual edits) intact.
     const force =
       (req.body as { force?: boolean } | null)?.force === true || (req.query as { force?: string }).force === 'true';
-
-    const connector = createConnector(
-      row.kind,
-      await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)),
-    );
-    const upstream = await connector.listTools();
-    const prefix = slugify(row.name);
-
-    // Snapshot the rows we may touch (soft-deleted ones too — they still own their
-    // name), so the response can say what actually changed.
-    const before = new Map(
-      upstream.length
-        ? (
-            await db
-              .select()
-              .from(tools)
-              .where(
-                and(
-                  eq(tools.ownerId, owner),
-                  inArray(
-                    tools.name,
-                    upstream.map((t) => `${prefix}.${t.name}`),
-                  ),
-                ),
-              )
-          ).map((r) => [r.name, r] as const)
-        : [],
-    );
-    // A same-named tool bound to another source (e.g. a sibling project's) is not ours
-    // to re-point: refuse the whole import before writing anything.
-    const foreign = [...before.values()].filter((t) => t.sourceId != null && t.sourceId !== row.id).map((t) => t.name);
-    if (foreign.length) return reply.code(409).send({ error: 'name_taken', names: foreign });
-
-    // Per-tool outcome. `outdated` = differs from the source but left alone (non-force);
-    // `removed` / `missing` = gone from the source: soft-deleted by force, otherwise kept;
-    // `restored` = was soft-deleted and the source offers it again.
-    const changes: Array<{
-      name: string;
-      status: 'created' | 'updated' | 'unchanged' | 'outdated' | 'removed' | 'missing' | 'restored';
-      fields: string[];
-    }> = [];
-    for (const t of upstream) {
-      // NB: dots are fine here — the MCP gateway maps names onto the MCP-safe
-      // charset at the boundary (see lib/tool-name.ts); stored names stay stable.
-      const name = `${prefix}.${t.name}`;
-      // What a force refresh overwrites. undefined is omitted by drizzle,
-      // preserving a manual value on refresh.
-      const refreshed = {
-        upstreamName: t.name,
-        description: t.description ?? null,
-        inputSchema: t.inputSchema ?? null,
-        outputSchema: t.outputSchema,
-        // curated discovery metadata from the connector (when provided)
-        readOnly: t.readOnly,
-        dangerous: t.dangerous,
-        permissions: t.permissions,
-        examples: t.examples,
-        recommendedUse: t.recommendedUse,
-      };
-      const values = {
-        id: newId(),
-        ownerId: owner,
-        projectId: row.projectId, // native tools live with their source
-        createdByAgentId: null,
-        sourceId: row.id,
-        kind: 'native' as const,
-        name,
-        upstreamName: t.name,
-        displayName: t.name,
-        description: t.description ?? null,
-        inputSchema: t.inputSchema ?? null,
-        outputSchema: t.outputSchema ?? null,
-        readOnly: t.readOnly ?? null,
-        dangerous: t.dangerous ?? null,
-        permissions: t.permissions ?? [],
-        examples: t.examples ?? [],
-        recommendedUse: t.recommendedUse ?? null,
-        visible: true,
-        createdAt: new Date(),
-      };
-      const old = before.get(name);
-      // The user can't see a soft-deleted tool, so its return is a fresh import in
-      // either mode: refresh it from the source and bring it back.
-      const restore = !!old?.deletedAt;
-      const fields = old && !restore ? changedFields(old, refreshed) : [];
-      changes.push({
-        name,
-        status: !old ? 'created' : restore ? 'restored' : !fields.length ? 'unchanged' : force ? 'updated' : 'outdated',
-        fields,
-      });
-      if (force || restore) {
-        await db
-          .insert(tools)
-          .values(values)
-          .onConflictDoUpdate({
-            target: [tools.ownerId, tools.name],
-            set: { sourceId: row.id, ...refreshed, deletedAt: null },
-          });
-      } else {
-        // create-only: existing tools are left untouched.
-        await db
-          .insert(tools)
-          .values(values)
-          .onConflictDoNothing({ target: [tools.ownerId, tools.name] });
-      }
-    }
-    const created = changes.filter((c) => c.status === 'created').length;
-
-    // Live tools the source no longer offers. Matched on upstreamName, not the
-    // prefixed name, so renaming a source never makes its tools look gone.
-    // ponytail: an empty upstream list is treated as a connector glitch, not "remove
-    // everything" — delete the source itself to drop all of its tools.
-    const gone = upstream.length
-      ? await db
-          .select({ id: tools.id, name: tools.name })
-          .from(tools)
-          .where(
-            and(
-              eq(tools.sourceId, row.id),
-              eq(tools.kind, 'native'),
-              liveTool(),
-              notInArray(
-                tools.upstreamName,
-                upstream.map((t) => t.name),
-              ),
-            ),
-          )
-      : [];
-    // Soft delete (see `tools.deletedAt`): gone for users and agents alike, restored
-    // by the next import that sees the tool again.
-    if (force && gone.length)
-      await db
-        .update(tools)
-        .set({ deletedAt: new Date() })
-        .where(
-          inArray(
-            tools.id,
-            gone.map((g) => g.id),
-          ),
-        );
-    for (const g of gone) changes.push({ name: g.name, status: force ? 'removed' : 'missing', fields: [] });
-
-    await db.update(sources).set({ status: 'ok', statusMessage: null }).where(eq(sources.id, id));
-    const imported = await db
-      .select()
-      .from(tools)
-      .where(and(eq(tools.sourceId, row.id), eq(tools.kind, 'native'), liveTool()));
-    return {
-      mode: force ? 'force' : 'new',
-      total: upstream.length,
-      created,
-      updated: changes.filter((c) => c.status === 'updated').length,
-      removed: force ? gone.length : 0,
-      restored: changes.filter((c) => c.status === 'restored').length,
-      skipped: changes.filter((c) => c.status === 'unchanged' || c.status === 'outdated').length,
-      imported: imported.length,
-      changes,
-      tools: imported,
-    };
+    const r = await importSource(await scopeFor(req), id, { force, createdByAgentId: null });
+    return isErr(r) ? sendErr(reply, r) : r;
   });
 }

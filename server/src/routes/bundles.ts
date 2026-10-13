@@ -6,8 +6,9 @@ import { db } from '../db/client.js';
 import { composites, groups, groupTools, liveTool, scripts, secrets, sources, tools, virtuals } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
-import { inScope, inSubtree, scopeFor } from '../lib/scope.js';
-import { toolUsableCond, toolVisibleCond } from './tools.js';
+import { inScope, inSubtree, scopeFor, usableBy } from '../lib/scope.js';
+import { slugTaken } from '../services/sources.js';
+import { toolUsableCond, toolVisibleCond } from '../services/tools.js';
 
 /**
  * Group bundle v1: a workspace serialized for transfer between instances.
@@ -203,18 +204,31 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         .where(and(eq(groups.slug, bundle.group.slug), eq(groups.ownerId, owner)));
       if (any) taken.push(bundle.group.slug);
     }
+    // Everything new lands in the target group's project (rule 1 is checked against it).
+    const target = slugVisible?.projectId ?? scope.createIn;
     const visibleSrc = new Map<string, string>();
+    const unusableSrc: string[] = [];
     for (const sd of bundle.sources) {
-      const byName = and(eq(sources.name, sd.name), eq(sources.ownerId, owner));
       const [vis] = await db
         .select()
         .from(sources)
-        .where(and(byName, inScope(sources.projectId, sources.id, 'source', scope)));
-      if (vis) visibleSrc.set(sd.name, vis.id);
-      else if ((await db.select().from(sources).where(byName)).length) taken.push(sd.name);
+        .where(
+          and(
+            eq(sources.name, sd.name),
+            eq(sources.ownerId, owner),
+            inScope(sources.projectId, sources.id, 'source', scope),
+          ),
+        );
+      if (vis) {
+        visibleSrc.set(sd.name, vis.id);
+        // A reused source backs the group's tools: it must be usable by the group's project.
+        const [ok] = await db
+          .select({ id: sources.id })
+          .from(sources)
+          .where(and(eq(sources.id, vis.id), usableBy(sources.projectId, sources.id, 'source', target)));
+        if (!ok) unusableSrc.push(sd.name);
+      } else if (await slugTaken(owner, sd.name)) taken.push(sd.name); // same rule as POST /sources
     }
-    // Everything new lands in the target group's project (rule 1 is checked against it).
-    const target = slugVisible?.projectId ?? scope.createIn;
     const unusable: string[] = [];
     for (const t of bundle.tools) {
       const byName = and(eq(tools.name, t.name), eq(tools.ownerId, owner));
@@ -251,6 +265,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
     }
     if (taken.length) return reply.code(409).send({ error: 'name_taken', names: [...new Set(taken)] });
     if (unusable.length) return reply.code(400).send({ error: 'unknown_tools', missing: unusable });
+    if (unusableSrc.length) return reply.code(400).send({ error: 'unknown_sources', missing: unusableSrc });
 
     await db.transaction(async (tx) => {
       // group by slug — existing is reused as-is (its name/description win)

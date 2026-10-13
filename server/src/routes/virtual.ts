@@ -3,31 +3,12 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { tools, virtuals } from '../db/schema.js';
-import { newId } from '../lib/id.js';
+import { sendErr } from '../lib/req.js';
 import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { runVirtual, staticResult } from '../runtime/virtual.js';
-
-const requestSchema = z.object({
-  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
-  url: z.string().min(1),
-  headers: z.record(z.string()).optional(),
-  query: z.record(z.string()).optional(),
-  body: z.unknown().optional(),
-});
-
-const createBody = z.object({
-  name: z.string().min(1),
-  displayName: z.string().optional(),
-  description: z.string().optional(),
-  inputSchema: z.record(z.unknown()).nullable().optional(),
-  outputSchema: z.record(z.unknown()).nullable().optional(),
-  // executable → we HTTP-proxy `request`. descriptive → no endpoint, request optional.
-  executable: z.boolean().optional(),
-  request: requestSchema.optional(),
-  // descriptive: static response body returned on call.
-  response: z.unknown().optional(),
-});
+import { isErr } from '../services/sources.js';
+import { createVirtualTool, requestSchema, virtualCreateBody } from '../services/tools.js';
 
 const patchBody = z.object({
   request: requestSchema.optional(),
@@ -71,42 +52,8 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/virtual-tools', async (req, reply) => {
     const scope = await scopeFor(req);
-    const owner = scope.ownerId;
-    const body = createBody.parse(req.body);
-    const executable = body.executable ?? true;
-    if (executable && !body.request) return reply.code(400).send({ error: 'request_required' });
-
-    const [clash] = await db
-      .select()
-      .from(tools)
-      .where(and(eq(tools.name, body.name), eq(tools.ownerId, owner)));
-    if (clash) return reply.code(409).send({ error: 'name_taken' });
-
-    const toolId = newId();
-    await db.transaction(async (tx) => {
-      await tx.insert(tools).values({
-        id: toolId,
-        ownerId: owner,
-        projectId: scope.createIn,
-        createdByAgentId: null,
-        sourceId: null,
-        kind: 'virtual',
-        name: body.name,
-        upstreamName: null,
-        displayName: body.displayName ?? body.name,
-        description: body.description ?? null,
-        inputSchema: body.inputSchema ?? null,
-        outputSchema: body.outputSchema ?? null,
-        visible: true,
-        createdAt: new Date(),
-      });
-      await tx
-        .insert(virtuals)
-        .values({ id: newId(), toolId, executable, request: body.request ?? {}, response: body.response ?? null });
-    });
-
-    const [row] = await db.select().from(tools).where(eq(tools.id, toolId));
-    return reply.code(201).send(row);
+    const r = await createVirtualTool(scope, virtualCreateBody.parse(req.body), null);
+    return isErr(r) ? sendErr(reply, r) : reply.code(201).send(r);
   });
 
   app.get('/virtual-tools/:id', async (req, reply) => {

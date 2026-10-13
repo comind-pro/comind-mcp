@@ -265,6 +265,34 @@ describe.skipIf(!dbUp)('project isolation: sources, tools, secrets', () => {
     expect(await db.select().from(groupTools).where(eq(groupTools.groupId, gB))).toEqual(before);
   });
 
+  it("bundle import into B's group refuses reusing A's ungranted source (root scope)", async () => {
+    const gB = await mkGroup(B, 'srcuse-grp');
+    const { slug } = (await call('GET', `/groups/${gB}`)).json() as { slug: string };
+    const r = await call('POST', '/groups/import', {
+      version: 1,
+      group: { slug, name: 'srcuse' },
+      sources: [httpSource('src-AKEY')],
+      tools: [],
+      secrets: [],
+    });
+    expect(r.statusCode).toBe(400);
+    expect(err(r).error).toBe('unknown_sources');
+    expect(err(r).missing).toEqual(['src-AKEY']);
+  });
+
+  it('bundle-created sources go through the source slug check', async () => {
+    await call('POST', `/sources?project=${B}`, httpSource('slug-clash'));
+    const r = await call('POST', `/groups/import?project=${A}`, {
+      version: 1,
+      group: { slug: 'slug-clash-grp', name: 'slug-clash-grp' },
+      sources: [httpSource('Slug Clash')],
+      tools: [],
+      secrets: [],
+    });
+    expect(r.statusCode).toBe(409);
+    expect(err(r).names).toEqual(['Slug Clash']);
+  });
+
   it("I2: a source-scoped secret created at root lives in the source's project", async () => {
     const r = await call('POST', '/secrets', { name: 'SRCB', value: 'val-SRCB', sourceId: srcB.id });
     expect(r.statusCode).toBe(201);

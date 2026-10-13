@@ -1,10 +1,12 @@
-import { and, eq, or, type SQL } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { liveTool, tools } from '../db/schema.js';
-import { granted, inScope, inSubtree, type Scope, scopeFor, usableBy } from '../lib/scope.js';
-import { invokeTool } from '../runtime/invoker.js';
+import { sendErr } from '../lib/req.js';
+import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
+import { isErr } from '../services/sources.js';
+import { getTool, listTools, testTool } from '../services/tools.js';
 
 const patchBody = z.object({
   name: z.string().min(1).optional(),
@@ -28,22 +30,6 @@ const patchBody = z.object({
     .optional(),
 });
 
-/** Tools a scope may read: its subtree, grants on the tool, or grants on its source. */
-export const toolVisibleCond = (scope: Scope) =>
-  or(inScope(tools.projectId, tools.id, 'tool', scope), granted(tools.sourceId, 'source', scope.nodeId)) as SQL;
-
-/** Tools a single node may put into its workspaces (rule 1). */
-export const toolUsableCond = (nodeId: string) =>
-  or(usableBy(tools.projectId, tools.id, 'tool', nodeId), granted(tools.sourceId, 'source', nodeId)) as SQL;
-
-async function visibleTool(scope: Scope, id: string) {
-  const [row] = await db
-    .select()
-    .from(tools)
-    .where(and(eq(tools.id, id), eq(tools.ownerId, scope.ownerId), liveTool(), toolVisibleCond(scope)));
-  return row ?? null;
-}
-
 async function administeredTool(scope: Scope, id: string) {
   const [row] = await db
     .select()
@@ -55,24 +41,16 @@ async function administeredTool(scope: Scope, id: string) {
 export async function toolRoutes(app: FastifyInstance): Promise<void> {
   app.get('/tools', async (req) => {
     const q = req.query as { sourceId?: string; kind?: string; visible?: string };
-    const scope = await scopeFor(req);
-    const filters: SQL[] = [eq(tools.ownerId, scope.ownerId), liveTool(), toolVisibleCond(scope)];
-    if (q.sourceId) filters.push(eq(tools.sourceId, q.sourceId));
-    if (q.kind === 'native' || q.kind === 'composite' || q.kind === 'virtual' || q.kind === 'python') {
-      filters.push(eq(tools.kind, q.kind));
-    }
-    if (q.visible === 'true' || q.visible === 'false') filters.push(eq(tools.visible, q.visible === 'true'));
-    return db
-      .select()
-      .from(tools)
-      .where(and(...filters));
+    const kind =
+      q.kind === 'native' || q.kind === 'composite' || q.kind === 'virtual' || q.kind === 'python' ? q.kind : undefined;
+    const visible = q.visible === 'true' || q.visible === 'false' ? q.visible === 'true' : undefined;
+    return listTools(await scopeFor(req), { sourceId: q.sourceId, kind, visible });
   });
 
   app.get('/tools/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await visibleTool(await scopeFor(req), id);
-    if (!row) return reply.code(404).send({ error: 'not_found' });
-    return row;
+    const r = await getTool(await scopeFor(req), id);
+    return isErr(r) ? sendErr(reply, r) : r;
   });
 
   app.patch('/tools/:id', async (req, reply) => {
@@ -118,12 +96,8 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/tools/:id/test', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const scope = await scopeFor(req);
-    const owner = scope.ownerId;
-    const tool = await visibleTool(scope, id);
-    if (!tool) return reply.code(404).send({ error: 'not_found' });
     const args = ((req.body as { args?: Record<string, unknown> })?.args ?? {}) as Record<string, unknown>;
-    const result = await invokeTool(tool.name, args, { ownerId: owner, groupId: null, agentId: null, source: 'test' });
-    return result;
+    const r = await testTool(await scopeFor(req), id, args, { agentId: null });
+    return isErr(r) ? sendErr(reply, r) : r;
   });
 }

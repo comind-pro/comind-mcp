@@ -1,21 +1,15 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { compositeDefinitionSchema, hasPythonStep, runCompositeTrace } from '../composite/engine.js';
 import { db } from '../db/client.js';
-import { composites, liveTool, tools } from '../db/schema.js';
+import { composites, tools } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
-import { newId } from '../lib/id.js';
+import { sendErr } from '../lib/req.js';
 import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
 import { invokeTool } from '../runtime/invoker.js';
-import { toolUsableCond, toolVisibleCond } from './tools.js';
-
-const createBody = z.object({
-  name: z.string().min(1),
-  displayName: z.string().optional(),
-  description: z.string().optional(),
-  definition: compositeDefinitionSchema,
-});
+import { isErr } from '../services/sources.js';
+import { compositeCreateBody, createCompositeTool, missingRefs, toolVisibleCond } from '../services/tools.js';
 
 async function ownedComposite(scope: Scope, id: string) {
   const [tool] = await db
@@ -25,59 +19,11 @@ async function ownedComposite(scope: Scope, id: string) {
   return tool && tool.kind === 'composite' ? tool : null;
 }
 
-/** Referenced step tools must be usable by the project (rule 1). Python steps reference none. */
-async function missingRefs(steps: { tool?: string }[], ownerId: string, projectId: string) {
-  const refNames = [...new Set(steps.map((s) => s.tool).filter((n): n is string => Boolean(n)))];
-  if (!refNames.length) return [];
-  const found = await db
-    .select()
-    .from(tools)
-    .where(and(inArray(tools.name, refNames), eq(tools.ownerId, ownerId), liveTool(), toolUsableCond(projectId)));
-  return refNames.filter((n) => !found.some((t) => t.name === n));
-}
-
 export async function compositeRoutes(app: FastifyInstance): Promise<void> {
   app.post('/composite-tools', async (req, reply) => {
     const scope = await scopeFor(req);
-    const owner = scope.ownerId;
-    const body = createBody.parse(req.body);
-
-    const missing = await missingRefs(body.definition.steps, owner, scope.createIn);
-    if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
-    if (hasPythonStep(body.definition) && !(await hasFeature(owner, PYTHON_TOOLS))) {
-      return reply.code(403).send({ error: 'feature_disabled', feature: PYTHON_TOOLS });
-    }
-
-    const [clash] = await db
-      .select()
-      .from(tools)
-      .where(and(eq(tools.name, body.name), eq(tools.ownerId, owner)));
-    if (clash) return reply.code(409).send({ error: 'name_taken' });
-
-    const toolId = newId();
-    const compId = newId();
-    await db.transaction(async (tx) => {
-      await tx.insert(tools).values({
-        id: toolId,
-        ownerId: owner,
-        projectId: scope.createIn,
-        createdByAgentId: null,
-        sourceId: null,
-        kind: 'composite',
-        name: body.name,
-        upstreamName: null,
-        displayName: body.displayName ?? body.name,
-        description: body.description ?? null,
-        inputSchema: body.definition.inputSchema ?? null,
-        outputSchema: body.definition.outputSchema ?? null,
-        visible: true,
-        createdAt: new Date(),
-      });
-      await tx.insert(composites).values({ id: compId, toolId, definition: body.definition });
-    });
-
-    const [row] = await db.select().from(tools).where(eq(tools.id, toolId));
-    return reply.code(201).send(row);
+    const r = await createCompositeTool(scope, compositeCreateBody.parse(req.body), null);
+    return isErr(r) ? sendErr(reply, r) : reply.code(201).send(r);
   });
 
   app.get('/composite-tools', async (req) => {
