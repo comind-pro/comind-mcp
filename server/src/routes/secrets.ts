@@ -29,12 +29,14 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
     const owner = sc.ownerId;
     const body = createBody.parse(req.body);
 
+    let projectId = sc.createIn;
     if (body.sourceId) {
       const [src] = await db
         .select()
         .from(sources)
         .where(and(eq(sources.id, body.sourceId), eq(sources.ownerId, owner), inSubtree(sources.projectId, sc)));
       if (!src) return reply.code(400).send({ error: 'unknown_source' });
+      projectId = src.projectId; // a source-scoped secret lives with its source
     }
 
     const where = body.sourceId
@@ -46,7 +48,7 @@ export async function secretRoutes(app: FastifyInstance): Promise<void> {
     const row = {
       id: newId(),
       ownerId: owner,
-      projectId: sc.createIn,
+      projectId,
       createdByAgentId: null,
       name: body.name,
       sourceId: body.sourceId ?? null,

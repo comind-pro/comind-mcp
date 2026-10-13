@@ -6,7 +6,6 @@ import { db } from '../db/client.js';
 import { composites, liveTool, tools } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
 import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { toolUsableCond, toolVisibleCond } from './tools.js';
@@ -27,15 +26,13 @@ async function ownedComposite(scope: Scope, id: string) {
 }
 
 /** Referenced step tools must be usable by the project (rule 1). Python steps reference none. */
-async function missingRefs(steps: { tool?: string }[], scope: Scope) {
+async function missingRefs(steps: { tool?: string }[], ownerId: string, projectId: string) {
   const refNames = [...new Set(steps.map((s) => s.tool).filter((n): n is string => Boolean(n)))];
   if (!refNames.length) return [];
   const found = await db
     .select()
     .from(tools)
-    .where(
-      and(inArray(tools.name, refNames), eq(tools.ownerId, scope.ownerId), liveTool(), toolUsableCond(scope.createIn)),
-    );
+    .where(and(inArray(tools.name, refNames), eq(tools.ownerId, ownerId), liveTool(), toolUsableCond(projectId)));
   return refNames.filter((n) => !found.some((t) => t.name === n));
 }
 
@@ -45,7 +42,7 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
     const owner = scope.ownerId;
     const body = createBody.parse(req.body);
 
-    const missing = await missingRefs(body.definition.steps, scope);
+    const missing = await missingRefs(body.definition.steps, owner, scope.createIn);
     if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
     if (hasPythonStep(body.definition) && !(await hasFeature(owner, PYTHON_TOOLS))) {
       return reply.code(403).send({ error: 'feature_disabled', feature: PYTHON_TOOLS });
@@ -115,7 +112,8 @@ export async function compositeRoutes(app: FastifyInstance): Promise<void> {
       .parse(req.body);
 
     if (body.definition) {
-      const missing = await missingRefs(body.definition.steps, scope);
+      // checked against the composite's own project, not the caller's
+      const missing = await missingRefs(body.definition.steps, owner, tool.projectId);
       if (missing.length) return reply.code(400).send({ error: 'unknown_tools', missing });
       if (hasPythonStep(body.definition) && !(await hasFeature(owner, PYTHON_TOOLS))) {
         return reply.code(403).send({ error: 'feature_disabled', feature: PYTHON_TOOLS });

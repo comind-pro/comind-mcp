@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentGroups, agents, callLogs, groups, groupTools, liveTool, tools } from '../db/schema.js';
-import { inSubtree, scopeFor } from '../lib/scope.js';
+import { inSubtree, isRoot, scopeFor } from '../lib/scope.js';
 import { invokeTool } from '../runtime/invoker.js';
 
 const SELF_CRON = ['schedule_task', 'list_schedules', 'cancel_schedule'];
@@ -33,7 +33,9 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
       limit?: string;
     };
     const scope = await scopeFor(req);
-    const filters: SQL[] = [eq(callLogs.ownerId, scope.ownerId), inSubtree(callLogs.projectId, scope)];
+    // Root sees every log, including unattributed (NULL project) rows, e.g. unknown tools.
+    const filters: SQL[] = [eq(callLogs.ownerId, scope.ownerId)];
+    if (!isRoot(scope)) filters.push(inSubtree(callLogs.projectId, scope));
     if (q.groupId) filters.push(eq(callLogs.groupId, q.groupId));
     if (q.agentId) filters.push(eq(callLogs.agentId, q.agentId));
     if (q.toolName) filters.push(eq(callLogs.toolName, q.toolName));
@@ -56,10 +58,9 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
   app.get('/metrics', async (req) => {
     const scope = await scopeFor(req);
     const q = req.query as { from?: string; to?: string; source?: string };
-    const conds = [
-      sql`owner_id = ${scope.ownerId}`,
-      sql`project_id in (select id from projects where starts_with(path, ${scope.nodePath}))`,
-    ];
+    const conds = [sql`owner_id = ${scope.ownerId}`];
+    if (!isRoot(scope))
+      conds.push(sql`project_id in (select id from projects where starts_with(path, ${scope.nodePath}))`);
     // NB: drizzle field `ts` maps to DB column `created_at`.
     if (q.from) conds.push(sql`created_at >= ${new Date(q.from).toISOString()}`);
     if (q.to) conds.push(sql`created_at <= ${new Date(q.to).toISOString()}`);

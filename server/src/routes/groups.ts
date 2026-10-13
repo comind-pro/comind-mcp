@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { groups, groupTools, liveTool, tools } from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
 import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
 import { toolUsableCond } from './tools.js';
 

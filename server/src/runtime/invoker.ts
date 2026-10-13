@@ -6,7 +6,7 @@ import { createConnector } from '../connectors/index.js';
 import type { CallResult } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
 import { db } from '../db/client.js';
-import { callLogs, composites, liveTool, scripts, sources, tools, virtuals } from '../db/schema.js';
+import { callLogs, composites, groups, liveTool, scripts, sources, tools, virtuals } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
@@ -82,25 +82,30 @@ export async function invokeTool(
     .from(tools)
     .where(and(eq(tools.name, toolName), eq(tools.ownerId, ctx.ownerId), liveTool()));
   const result = await dispatch(tool, toolName, args, ctx, depth);
-  // Observability: record each call. Never let logging break the call.
-  void db
-    .insert(callLogs)
-    .values({
+  // Observability: record each call. Never let logging break (or delay) the call.
+  const durationMs = Date.now() - startedAt;
+  void (async () => {
+    // Attribute the call to the CALLER's project (the group it came through); a
+    // direct call (test, no group) falls back to the tool's project.
+    const projectId = ctx.groupId
+      ? ((await db.select({ p: groups.projectId }).from(groups).where(eq(groups.id, ctx.groupId)))[0]?.p ?? null)
+      : (tool?.projectId ?? null);
+    await db.insert(callLogs).values({
       id: newId(),
       ownerId: ctx.ownerId,
-      projectId: tool?.projectId ?? null,
+      projectId,
       groupId: ctx.groupId ?? null,
       agentId: ctx.agentId ?? null,
       toolName,
       source: ctx.source ?? 'live',
       status: result.isError ? 'error' : 'success',
-      durationMs: Date.now() - startedAt,
+      durationMs,
       tokensEst: estimateTokens(result),
       error: result.isError ? errorText(result) : null,
       args: result.isError ? JSON.stringify(args).slice(0, ARGS_LOG_CHARS) : null,
       ts: new Date(),
-    })
-    .catch(() => {});
+    });
+  })().catch(() => {});
   return result;
 }
 
@@ -162,7 +167,7 @@ async function dispatch(
     if (tool.readOnly === true && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
       return textResult(`Tool ${toolName} is marked read-only but its request uses ${method}.`, true);
     }
-    return withStructured(await runVirtual(v.request, args, ctx.ownerId), tool.outputSchema);
+    return withStructured(await runVirtual(v.request, args, ctx.ownerId, tool.projectId), tool.outputSchema);
   }
 
   // native

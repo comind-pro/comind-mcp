@@ -36,6 +36,9 @@ export async function scopeFor(req: FastifyRequest): Promise<Scope> {
   return s;
 }
 
+/** The owner's top-level team (its path has a single id segment). */
+export const isRoot = (scope: Scope): boolean => scope.nodePath.split('/').filter(Boolean).length === 1;
+
 /** `col` starts with `path` — the subtree test. starts_with() is a literal
  *  prefix match (LIKE would treat the `_` in nanoid ids as a wildcard). */
 export const underPath = (col: PgColumn, path: string): SQL => sql`starts_with(${col}, ${path})`;

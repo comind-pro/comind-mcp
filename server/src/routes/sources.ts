@@ -52,10 +52,23 @@ async function administered(scope: Scope, id: string) {
   return row ?? null;
 }
 
+/** Native tool names are `${slugify(source.name)}.${upstream}` and unique per owner,
+ *  so two sources of one owner must not share a slug (else one's import would claim
+ *  the other's tools). */
+async function slugTaken(ownerId: string, name: string, exceptId?: string): Promise<boolean> {
+  const slug = slugify(name);
+  const rows = await db
+    .select({ id: sources.id, name: sources.name })
+    .from(sources)
+    .where(eq(sources.ownerId, ownerId));
+  return rows.some((r) => r.id !== exceptId && slugify(r.name) === slug);
+}
+
 export async function sourceRoutes(app: FastifyInstance): Promise<void> {
   app.post('/sources', async (req, reply) => {
     const scope = await scopeFor(req);
     const body = createBody.parse(req.body);
+    if (await slugTaken(scope.ownerId, body.name)) return reply.code(409).send({ error: 'name_taken' });
     const config = parseSourceConfig(body.kind, body.config);
     const row = {
       id: newId(),
@@ -93,6 +106,8 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     const body = patchBody.parse(req.body);
     const existing = await administered(await scopeFor(req), id);
     if (!existing) return reply.code(404).send({ error: 'not_found' });
+    if (body.name !== undefined && body.name !== existing.name && (await slugTaken(existing.ownerId, body.name, id)))
+      return reply.code(409).send({ error: 'name_taken' });
 
     const patch: Record<string, unknown> = {};
     if (body.name !== undefined) patch.name = body.name;
@@ -132,7 +147,8 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/sources/:id/test', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await visible(await scopeFor(req), id);
+    const scope = await scopeFor(req);
+    const row = await visible(scope, id);
     if (!row) return reply.code(404).send({ error: 'not_found' });
 
     let result: { ok: boolean; message?: string };
@@ -145,10 +161,12 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
     } catch (e) {
       result = { ok: false, message: (e as Error).message }; // e.g. a pending secret
     }
-    await db
-      .update(sources)
-      .set({ status: result.ok ? 'ok' : 'error', statusMessage: result.message ?? null, statusCheckedAt: new Date() })
-      .where(eq(sources.id, id));
+    // A grantee may check the connection but not write the source's status.
+    if (await administered(scope, id))
+      await db
+        .update(sources)
+        .set({ status: result.ok ? 'ok' : 'error', statusMessage: result.message ?? null, statusCheckedAt: new Date() })
+        .where(eq(sources.id, id));
     return result;
   });
 
@@ -209,6 +227,10 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
           ).map((r) => [r.name, r] as const)
         : [],
     );
+    // A same-named tool bound to another source (e.g. a sibling project's) is not ours
+    // to re-point: refuse the whole import before writing anything.
+    const foreign = [...before.values()].filter((t) => t.sourceId != null && t.sourceId !== row.id).map((t) => t.name);
+    if (foreign.length) return reply.code(409).send({ error: 'name_taken', names: foreign });
 
     // Per-tool outcome. `outdated` = differs from the source but left alone (non-force);
     // `removed` / `missing` = gone from the source: soft-deleted by force, otherwise kept;

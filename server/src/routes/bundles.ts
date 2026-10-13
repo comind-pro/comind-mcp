@@ -6,9 +6,8 @@ import { db } from '../db/client.js';
 import { composites, groups, groupTools, liveTool, scripts, secrets, sources, tools, virtuals } from '../db/schema.js';
 import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
 import { inScope, inSubtree, scopeFor } from '../lib/scope.js';
-import { toolVisibleCond } from './tools.js';
+import { toolUsableCond, toolVisibleCond } from './tools.js';
 
 /**
  * Group bundle v1: a workspace serialized for transfer between instances.
@@ -214,6 +213,9 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
       if (vis) visibleSrc.set(sd.name, vis.id);
       else if ((await db.select().from(sources).where(byName)).length) taken.push(sd.name);
     }
+    // Everything new lands in the target group's project (rule 1 is checked against it).
+    const target = slugVisible?.projectId ?? scope.createIn;
+    const unusable: string[] = [];
     for (const t of bundle.tools) {
       const byName = and(eq(tools.name, t.name), eq(tools.ownerId, owner));
       const [vis] = await db
@@ -221,6 +223,17 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         .from(tools)
         .where(and(byName, toolVisibleCond(scope)));
       if (!vis && (await db.select().from(tools).where(byName)).length) taken.push(t.name);
+      // A reused tool is linked into the group: it must be usable by the group's project.
+      if (
+        vis &&
+        !(
+          await db
+            .select({ id: tools.id })
+            .from(tools)
+            .where(and(eq(tools.id, vis.id), toolUsableCond(target)))
+        ).length
+      )
+        unusable.push(t.name);
     }
     for (const sc of bundle.secrets) {
       const scopeId = sc.source ? (visibleSrc.get(sc.source) ?? null) : null;
@@ -237,6 +250,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
       if (!vis && (await db.select().from(secrets).where(byName)).length) taken.push(sc.name);
     }
     if (taken.length) return reply.code(409).send({ error: 'name_taken', names: [...new Set(taken)] });
+    if (unusable.length) return reply.code(400).send({ error: 'unknown_tools', missing: unusable });
 
     await db.transaction(async (tx) => {
       // group by slug — existing is reused as-is (its name/description win)
@@ -249,7 +263,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         grp = {
           id: newId(),
           ownerId: owner,
-          projectId: scope.createIn,
+          projectId: target,
           createdByAgentId: null,
           slug: bundle.group.slug,
           name: bundle.group.name,
@@ -262,6 +276,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
 
       // sources by name
       const sourceId = new Map<string, string>();
+      const sourceProject = new Map<string, string>();
       for (const s of bundle.sources) {
         const [existing] = await tx
           .select()
@@ -275,6 +290,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
           );
         if (existing) {
           sourceId.set(s.name, existing.id);
+          sourceProject.set(s.name, existing.projectId);
           report.sources.skipped.push(s.name);
           continue;
         }
@@ -282,7 +298,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(sources).values({
           id,
           ownerId: owner,
-          projectId: scope.createIn,
+          projectId: target,
           createdByAgentId: null,
           name: s.name,
           kind: s.kind,
@@ -291,6 +307,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
           createdAt: new Date(),
         });
         sourceId.set(s.name, id);
+        sourceProject.set(s.name, target);
         report.sources.created.push(s.name);
       }
 
@@ -310,7 +327,8 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(secrets).values({
           id: newId(),
           ownerId: owner,
-          projectId: scope.createIn,
+          // a source-scoped secret lives with its source
+          projectId: (s.source && sourceProject.get(s.source)) || target,
           createdByAgentId: null,
           name: s.name,
           sourceId: scopeId,
@@ -343,7 +361,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
         await tx.insert(tools).values({
           id,
           ownerId: owner,
-          projectId: scope.createIn,
+          projectId: target,
           createdByAgentId: null,
           sourceId: t.source ? (sourceId.get(t.source) ?? null) : null,
           kind: t.kind,

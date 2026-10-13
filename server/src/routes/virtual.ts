@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { tools, virtuals } from '../db/schema.js';
 import { newId } from '../lib/id.js';
-import { ownerOf } from '../lib/req.js';
 import { inSubtree, type Scope, scopeFor } from '../lib/scope.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { runVirtual, staticResult } from '../runtime/virtual.js';
@@ -48,6 +47,7 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
   // Stateless test for an unsaved draft. Executable → run the request; descriptive
   // → echo the spec the agent would receive (nothing is called).
   app.post('/virtual-tools/test', async (req) => {
+    const scope = await scopeFor(req);
     const body = z
       .object({
         request: requestSchema.optional(),
@@ -66,7 +66,7 @@ export async function virtualRoutes(app: FastifyInstance): Promise<void> {
       };
       return { content: [{ type: 'text', text: JSON.stringify(note) }], structuredContent: note };
     }
-    return runVirtual(body.request as Record<string, unknown>, body.args ?? {}, ownerOf(req));
+    return runVirtual(body.request as Record<string, unknown>, body.args ?? {}, scope.ownerId, scope.createIn);
   });
 
   app.post('/virtual-tools', async (req, reply) => {
