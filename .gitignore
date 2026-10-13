@@ -33,3 +33,6 @@ temp/
 
 # Agent/session local
 .claude/
+
+# SDD scratch (plan ledgers, briefs, review packages)
+.superpowers/
