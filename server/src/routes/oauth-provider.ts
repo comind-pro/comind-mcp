@@ -198,6 +198,12 @@ export async function oauthProviderRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(oauthAccessTokens.refreshHash, hashKey(refresh)));
       if (!row) return tokenError(reply, 'invalid_grant', 'unknown refresh_token');
       await db.delete(oauthAccessTokens).where(eq(oauthAccessTokens.id, row.id)); // rotate
+      // a revoked agent (no active key) cannot extend its session
+      const [key] = await db
+        .select({ id: agentKeys.id })
+        .from(agentKeys)
+        .where(and(eq(agentKeys.agentId, row.agentId), eq(agentKeys.archived, false)));
+      if (!key) return tokenError(reply, 'invalid_grant', 'agent revoked');
       return reply.send(await issueTokens(row.clientId, row.agentId, row.groupId, b.resource));
     }
 

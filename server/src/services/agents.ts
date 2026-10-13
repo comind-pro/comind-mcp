@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { agentGroups, agentKeys, agents, groups, projects } from '../db/schema.js';
+import { agentGroups, agentKeys, agents, groups, oauthAccessTokens, oauthAuthCodes, projects } from '../db/schema.js';
 import { hashKey } from '../lib/crypto.js';
 import { newApiKey, newId } from '../lib/id.js';
 import { inSubtree, type Scope } from '../lib/scope.js';
@@ -86,7 +86,8 @@ export async function createAgent(
   };
 }
 
-/** Archive every active key (the agent row stays, so its logs keep their attribution). */
+/** Archive every active key and drop its OAuth sessions (tokens, refresh tokens, pending
+ *  codes). The agent row stays, so its logs keep their attribution. */
 export async function revokeAgent(scope: Scope, agentId: string): Promise<{ archivedKeys: number } | ServiceErr> {
   if (!(await ownedAgent(scope, agentId))) return NOT_FOUND;
   const rows = await db
@@ -94,6 +95,8 @@ export async function revokeAgent(scope: Scope, agentId: string): Promise<{ arch
     .set({ archived: true })
     .where(and(eq(agentKeys.agentId, agentId), eq(agentKeys.archived, false)))
     .returning({ id: agentKeys.id });
+  await db.delete(oauthAccessTokens).where(eq(oauthAccessTokens.agentId, agentId));
+  await db.delete(oauthAuthCodes).where(eq(oauthAuthCodes.agentId, agentId));
   return { archivedKeys: rows.length };
 }
 

@@ -97,12 +97,14 @@ export async function missingRefs(steps: { tool?: string }[], ownerId: string, p
   return refNames.filter((n) => !found.some((t) => t.name === n));
 }
 
-async function nameTaken(ownerId: string, name: string): Promise<boolean> {
+/** A custom tool name must be free and must not shadow the COO `project.*` tools. */
+async function badName(ownerId: string, name: string): Promise<ServiceErr | null> {
+  if (name.startsWith('project.')) return { error: 'validation', detail: { reason: 'reserved_prefix' } };
   const [clash] = await db
     .select({ id: tools.id })
     .from(tools)
     .where(and(eq(tools.name, name), eq(tools.ownerId, ownerId)));
-  return !!clash;
+  return clash ? { error: 'name_taken' } : null;
 }
 
 /** Insert a custom tool row plus its kind table row in one transaction. */
@@ -150,7 +152,8 @@ export async function createVirtualTool(
 ): Promise<ToolRow | ServiceErr> {
   const executable = input.executable ?? true;
   if (executable && !input.request) return { error: 'validation', detail: { error: 'request_required' } };
-  if (await nameTaken(scope.ownerId, input.name)) return { error: 'name_taken' };
+  const bad = await badName(scope.ownerId, input.name);
+  if (bad) return bad;
   return insertCustom(scope, 'virtual', input, createdByAgentId, (tx, toolId) =>
     tx
       .insert(virtuals)
@@ -166,7 +169,8 @@ export async function createCompositeTool(
   const missing = await missingRefs(input.definition.steps, scope.ownerId, scope.createIn);
   if (missing.length) return { error: 'unknown_tools', detail: { missing } };
   if (hasPythonStep(input.definition) && !(await hasFeature(scope.ownerId, PYTHON_TOOLS))) return FEATURE_OFF;
-  if (await nameTaken(scope.ownerId, input.name)) return { error: 'name_taken' };
+  const bad = await badName(scope.ownerId, input.name);
+  if (bad) return bad;
   const base = {
     ...input,
     inputSchema: input.definition.inputSchema ?? null,
@@ -183,7 +187,8 @@ export async function createPythonTool(
   createdByAgentId: string | null,
 ): Promise<ToolRow | ServiceErr> {
   if (!(await hasFeature(scope.ownerId, PYTHON_TOOLS))) return FEATURE_OFF;
-  if (await nameTaken(scope.ownerId, input.name)) return { error: 'name_taken' };
+  const bad = await badName(scope.ownerId, input.name);
+  if (bad) return bad;
   return insertCustom(scope, 'python', input, createdByAgentId, (tx, toolId) =>
     tx.insert(scripts).values({ id: newId(), toolId, code: input.code }),
   );

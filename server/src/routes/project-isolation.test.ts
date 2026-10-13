@@ -248,6 +248,35 @@ describe.skipIf(!dbUp)('project isolation: sources, tools, secrets', () => {
     expect(t.projectId).toBe(A);
   });
 
+  it("C1: a force import never overwrites a sibling project's custom tool", async () => {
+    const v = await call('POST', `/virtual-tools?project=${B}`, {
+      name: 'hij.ping',
+      description: 'b-owned',
+      request: { method: 'GET', url: 'http://127.0.0.1:9/b' },
+    });
+    expect(v.statusCode).toBe(201);
+    const s = (await call('POST', `/sources?project=${A}`, httpSource('hij'))).json() as Row;
+    for (const force of [true, false]) {
+      const imp = await call('POST', `/sources/${s.id}/import?project=${A}`, { force });
+      expect(imp.statusCode).toBe(409);
+      expect(err(imp)).toMatchObject({ error: 'name_taken', names: ['hij.ping'] });
+    }
+    const [t] = await db
+      .select()
+      .from(tools)
+      .where(and(eq(tools.ownerId, ownerId), eq(tools.name, 'hij.ping')));
+    expect(t).toMatchObject({ kind: 'virtual', sourceId: null, projectId: B, description: 'b-owned' });
+  });
+
+  it('custom tool names under project. are reserved', async () => {
+    const r = await call('POST', `/virtual-tools?project=${A}`, {
+      name: 'project.list',
+      request: { method: 'GET', url: 'http://127.0.0.1:9/x' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.json()).toMatchObject({ error: 'validation', reason: 'reserved_prefix' });
+  });
+
   it("I1: bundle import into B's group refuses A's ungranted tool (root scope)", async () => {
     const gB = await mkGroup(B, 'i1-grp');
     const { slug } = (await call('GET', `/groups/${gB}`)).json() as { slug: string };

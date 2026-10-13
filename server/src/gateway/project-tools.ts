@@ -4,7 +4,7 @@ import { sourceKind } from '../connectors/index.js';
 import type { CallResult, ToolDef } from '../connectors/types.js';
 import { textResult } from '../connectors/types.js';
 import { db } from '../db/client.js';
-import { agentKeys, callLogs, projects } from '../db/schema.js';
+import { agentKeys, callLogs } from '../db/schema.js';
 import { newId } from '../lib/id.js';
 import { type Scope, scopeForOwner } from '../lib/scope.js';
 import { mcpToolName } from '../lib/tool-name.js';
@@ -129,13 +129,8 @@ const DEFS: Def[] = [
     inputSchema: obj({ id: str, confirm: CONFIRM }, ['id']),
     args: z.object({ id: z.string(), confirm: z.boolean().optional() }),
     run: async (scope, _ctx, a) => {
-      const [target] = await db
-        .select({ path: projects.path })
-        .from(projects)
-        .where(and(eq(projects.id, a.id), eq(projects.ownerId, scope.ownerId)));
-      // the own node or an ancestor: its path is a prefix of ours
-      if (target && scope.nodePath.startsWith(target.path))
-        return fail('not_allowed: cannot delete your own node or an ancestor');
+      // previewDelete/deleteNode only see the subtree: an ancestor or a sibling is not_found
+      if (a.id === scope.nodeId) return fail('not_allowed: cannot delete your own node');
       if (!a.confirm) return out(await previewDelete(scope, a.id), (p) => ({ preview: true, ...p }));
       return out(await deleteNode(scope, a.id));
     },
@@ -216,7 +211,8 @@ const DEFS: Def[] = [
     name: 'project.connection_create',
     description:
       'Create a source in your node. Put credentials as ${secret.NAME} references (declare them with ' +
-      'project_secret_declare) — never raw secret values.',
+      'project_secret_declare) — never raw secret values. Requests made by this connection may use ' +
+      '${secret.NAME} for secrets shared with this project.',
     inputSchema: obj({ name: str, kind: { type: 'string', enum: sourceKind.options }, config: { type: 'object' } }, [
       'name',
       'kind',
@@ -272,7 +268,8 @@ const DEFS: Def[] = [
     name: 'project.tool_candidate_create',
     description:
       'Create a virtual, composite or python tool in your node, in no workspace (staging). `definition` is the ' +
-      'same body as the admin API for that kind.',
+      'same body as the admin API for that kind. Requests made by this tool may use ${secret.NAME} for secrets ' +
+      'shared with this project.',
     inputSchema: obj(
       { kind: { type: 'string', enum: ['virtual', 'composite', 'python'] }, definition: { type: 'object' } },
       ['kind', 'definition'],
@@ -347,8 +344,11 @@ const DEFS: Def[] = [
       groupIds: z.array(z.string()).default([]),
       role: z.enum(['lead', 'coo']).default('lead'),
     }),
-    run: async (scope, ctx, a) =>
-      out(
+    run: async (scope, ctx, a) => {
+      // a COO may only mint COOs below itself, never a peer at its own node
+      if (a.role === 'coo' && (a.projectId ?? ctx.projectId) === ctx.projectId)
+        return fail('not_allowed: a COO can only be provisioned into a descendant node');
+      return out(
         await createAgent(
           scope,
           { name: a.name, role: a.role, projectId: a.projectId ?? ctx.projectId, groupIds: a.groupIds },
@@ -361,7 +361,8 @@ const DEFS: Def[] = [
           apiKey: r.apiKey,
           endpoints: r.endpoints,
         }),
-      ),
+      );
+    },
   },
   {
     name: 'project.agent_revoke',
@@ -370,13 +371,17 @@ const DEFS: Def[] = [
     args: z.object({ agentId: z.string(), confirm: z.boolean().optional() }),
     run: async (scope, ctx, a) => {
       if (a.agentId === ctx.agentId) return fail('not_allowed: cannot revoke yourself');
+      const target = await ownedAgent(scope, a.agentId);
+      if (!target) return fail('not_found');
+      // peers at the own node are off limits unless this COO made them
+      if (target.projectId === ctx.projectId && target.createdByAgentId !== ctx.agentId)
+        return fail('not_allowed: can only revoke agents in descendant nodes or ones you provisioned');
       if (a.confirm) return out(await revokeAgent(scope, a.agentId), (r) => ({ revoked: true, ...r }));
-      if (!(await ownedAgent(scope, a.agentId))) return fail('not_found');
       const keys = await db
         .select({ id: agentKeys.id })
         .from(agentKeys)
         .where(and(eq(agentKeys.agentId, a.agentId), eq(agentKeys.archived, false)));
-      return json({ preview: true, agentId: a.agentId, keys: keys.length });
+      return json({ preview: true, agentId: a.agentId, archivedKeys: keys.length });
     },
   },
 ];

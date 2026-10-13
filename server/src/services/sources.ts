@@ -16,7 +16,8 @@ export type ServiceErr = {
   error: 'not_found' | 'name_taken' | 'not_visible' | 'unknown_tools' | 'validation' | 'feature_disabled';
   detail?: unknown;
 };
-export const isErr = (r: unknown): r is ServiceErr => typeof r === 'object' && r !== null && 'error' in r;
+export const isErr = (r: unknown): r is ServiceErr =>
+  typeof r === 'object' && r !== null && typeof (r as { error?: unknown }).error === 'string';
 export const NOT_FOUND: ServiceErr = { error: 'not_found' };
 
 /** Read: in the scope's subtree or granted to it. */
@@ -215,9 +216,10 @@ export async function importSource(
         ).map((r) => [r.name, r] as const)
       : [],
   );
-  // A same-named tool bound to another source (e.g. a sibling project's) is not ours
-  // to re-point: refuse the whole import before writing anything.
-  const foreign = [...before.values()].filter((t) => t.sourceId != null && t.sourceId !== row.id).map((t) => t.name);
+  // A same-named tool not bound to this source (another source's, or a custom tool
+  // with no source — possibly a sibling project's) is not ours to re-point or
+  // overwrite: refuse the whole import before writing anything.
+  const foreign = [...before.values()].filter((t) => t.sourceId !== row.id).map((t) => t.name);
   if (foreign.length) return { error: 'name_taken', detail: { names: foreign } };
 
   const changes: ImportChange[] = [];
