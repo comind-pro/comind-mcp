@@ -14,6 +14,8 @@ const dbUp = await pool
 const app = buildApp();
 const email = `coo-${Math.random().toString(36).slice(2, 8)}@test.local`;
 
+const LITERAL = 'lit-token-9f3k2';
+
 const PROJECT_NAMES = [
   'project.list',
   'project.create_child',
@@ -69,11 +71,12 @@ describe.skipIf(!dbUp)('project.* tools for COO agents', () => {
     called.add(name);
     return (await rpc(coo.apiKey, 'tools/call', { name: mcpToolName(name), arguments: args })).result;
   };
-  const httpSource = (name: string) => ({
+  const httpSource = (name: string, headers: Record<string, string> = {}) => ({
     name,
     kind: 'http',
     config: {
       baseUrl: 'http://127.0.0.1:9',
+      headers,
       endpoints: [{ name: 'ping', method: 'GET', path: '/ping', description: 'ping' }],
     },
   });
@@ -114,7 +117,7 @@ describe.skipIf(!dbUp)('project.* tools for COO agents', () => {
   });
 
   it('connection_create + connection_import create tools in A attributed to the COO', async () => {
-    const created = await tool('project.connection_create', httpSource('src-a'));
+    const created = await tool('project.connection_create', httpSource('src-a', { 'x-api-key': LITERAL }));
     expect(created.isError).toBeFalsy();
     const id = created.structuredContent?.id as string;
     expect(created.content[0].text).not.toContain('"config"');
@@ -180,14 +183,27 @@ describe.skipIf(!dbUp)('project.* tools for COO agents', () => {
     expect(r.content[0].text).toContain('not_found');
   });
 
-  it('every call is audited with args', async () => {
-    await new Promise((r) => setTimeout(r, 100)); // audit insert is fire-and-forget
-    const logs = (await rest('GET', `/logs?project=${A}&limit=1000`)).json() as {
-      toolName: string;
-      args: string | null;
-    }[];
-    const proj = logs.filter((l) => l.toolName.startsWith('project.'));
+  it('invalid args are an error result', async () => {
+    const r = await tool('project.create_child', { kind: 'project' });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('invalid arguments');
+  });
+
+  it('every call is audited with args, free-form config redacted', async () => {
+    type Log = { toolName: string; args: string | null; status: string };
+    let proj: Log[] = [];
+    // the audit insert is fire-and-forget: poll until every called tool has a row
+    for (let i = 0; i < 50; i++) {
+      const logs = (await rest('GET', `/logs?project=${A}&limit=1000`)).json() as Log[];
+      proj = logs.filter((l) => l.toolName.startsWith('project.'));
+      if ([...called].every((n) => proj.some((l) => l.toolName === n))) break;
+      await new Promise((r) => setTimeout(r, 40));
+    }
     expect(new Set(proj.map((l) => l.toolName))).toEqual(called);
     for (const l of proj) expect(l.args).not.toBeNull();
+    const create = proj.find((l) => l.toolName === 'project.connection_create');
+    expect(create?.args).toContain('"[redacted]"');
+    expect(create?.args).not.toContain(LITERAL);
+    expect(proj.find((l) => l.toolName === 'project.create_child' && l.status === 'error')?.args).toBeTruthy();
   });
 });

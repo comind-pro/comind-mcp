@@ -403,6 +403,12 @@ export function pickProjectTools(): ToolDef[] {
   return PROJECT_TOOLS.map((t) => ({ ...t, name: mcpToolName(t.name) }));
 }
 
+const redact = (args: Record<string, unknown>) => ({
+  ...args,
+  ...('config' in args ? { config: '[redacted]' } : {}),
+  ...('definition' in args ? { definition: '[redacted]' } : {}),
+});
+
 /** Dispatch a project.* tool for a COO, scoped to its node, and audit it (args always). */
 export async function handleProjectTool(
   ctx: ProjectCtx,
@@ -425,8 +431,8 @@ export async function handleProjectTool(
       durationMs: Date.now() - started,
       tokensEst: null,
       error: result.isError ? result.content.map((c) => c.text ?? '').join('\n') : null,
-      // project.* args never carry secret values (no tool accepts one)
-      args: JSON.stringify(args).slice(0, 2000),
+      // config / definition are free-form and could inline a literal token: never log them
+      args: JSON.stringify(redact(args)).slice(0, 2000),
       ts: new Date(),
     })
     .catch(() => {});
