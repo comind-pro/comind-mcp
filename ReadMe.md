@@ -107,6 +107,9 @@ GET /projects/:id/summary
 DELETE /projects/:id       (409 default_node for the default team/project)
 GET/POST /projects/:id/access {resourceType:'source'|'tool'|'secret', resourceId}
 DELETE /projects/:id/access/:type/:resourceId
+POST /projects/:id/move {resourceType:'source'|'tool'|'secret'|'group'|'agent', resourceId}
+                           (a source carries its tools and secrets; 409 native_tool — move the source;
+                            a moved workspace drops tools it can no longer use → {unlinked})
 # agents
 POST/GET /agents           GET/DELETE /agents/:id            POST /agents/:id/rotate-key
 PATCH /agents/:id {role:'lead'|'coo'}
@@ -167,7 +170,7 @@ Trust boundary: A COO never receives secret values through the API or audit, but
 
 ## Projects tab
 
-A tree of teams and projects for the account, with per-node counts of connections, tools, secrets, and workspaces. Each node's **Allowlist** lists what has been shared *into* it; "Share a resource" offers any connection, tool or secret from outside the node's own subtree. The node card lists the COO agents that administer it; the role itself is set on the Agents tab. Revoking a grant warns which workspaces would lose tools before unlinking them. Each node offers "+ New child" to create a team or project below it, and "Delete node" (hidden for the default team and project). A project selector in the header filters all tabs and resource rows; each row shows the node it belongs to, whether it was shared from elsewhere, and which agent created it (resources only).
+A tree of teams and projects for the account, with per-node counts of connections, tools, secrets, and workspaces. Each node's **Allowlist** lists what has been shared *into* it; "Share a resource" offers any connection, tool or secret from outside the node's own subtree. The node card lists the COO agents that administer it; the role itself is set on the Agents tab. Revoking a grant warns which workspaces would lose tools before unlinking them. "Move here" re-homes a connection, tool, secret, workspace or agent into the node (native tools move with their connection). The tree card creates a team or project under any parent; each node offers "Delete node" (hidden for the default team and project). A project selector in the header filters all tabs and resource rows; each row shows the node it belongs to, whether it was shared from elsewhere, and which agent created it (resources only).
 
 Pending secrets declared by a COO agent appear in the Secrets tab with a `pending` badge and a password field to set the value — once set, the secret is encrypted at rest and the `pending` badge disappears.
 

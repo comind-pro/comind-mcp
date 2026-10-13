@@ -27,6 +27,12 @@ const getUnscoped = vi.fn(async (p: string): Promise<unknown> => {
   if (p === '/projects/d/summary') return { ...summary, node: projects[1], cooAgents: [] };
   if (p === '/agents') return [{ id: 'ag1', name: 'coo-bot', role: 'coo', projectId: 'a' }];
   if (p === '/sources') return [{ id: 's2', name: 'Postgres', projectId: 'd' }];
+  if (p === '/tools')
+    return [
+      { id: 't1', name: 'pg.query', kind: 'native', projectId: 'd' },
+      { id: 't2', name: 'combo', kind: 'composite', projectId: 'd' },
+    ];
+  if (p === '/groups') return [{ id: 'g1', name: 'Ops', projectId: 'a' }];
   return [];
 });
 vi.mock('../api.js', () => ({
@@ -96,6 +102,32 @@ it('New child posts the node and reloads the tree', async () => {
     expect(api.postUnscoped).toHaveBeenCalledWith('/projects', { kind: 'team', name: 'Growth', parentId: 'a' }),
   );
   await waitFor(() => expect(reload).toHaveBeenCalled());
+});
+
+it('New child works with no node selected, parented to the root', async () => {
+  ui();
+  fireEvent.change(screen.getByLabelText('New child name'), { target: { value: 'Growth' } });
+  fireEvent.click(screen.getByRole('button', { name: '+ New child' }));
+  await waitFor(() =>
+    expect(api.postUnscoped).toHaveBeenCalledWith('/projects', { kind: 'project', name: 'Growth', parentId: 't' }),
+  );
+});
+
+it('Move offers non-native resources from other nodes and posts the move', async () => {
+  await openAnalytics();
+  fireEvent.change(screen.getByLabelText('Move type'), { target: { value: 'tool' } });
+  const opts = () => [...screen.getByLabelText<HTMLSelectElement>('Move resource').options].map((o) => o.value);
+  await waitFor(() => expect(opts()).toContain('t2'));
+  expect(opts()).not.toContain('t1'); // native: moves with its source
+  fireEvent.change(screen.getByLabelText('Move resource'), { target: { value: 't2' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+  await waitFor(() =>
+    expect(api.postUnscoped).toHaveBeenCalledWith('/projects/a/move', { resourceType: 'tool', resourceId: 't2' }),
+  );
+  await waitFor(() => expect(reload).toHaveBeenCalled());
+  // a workspace already homed here is not offered
+  fireEvent.change(screen.getByLabelText('Move type'), { target: { value: 'group' } });
+  await waitFor(() => expect(opts()).not.toContain('g1'));
 });
 
 it('Delete confirms with the counts; hidden for the default nodes', async () => {

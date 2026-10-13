@@ -7,11 +7,13 @@ import {
   grantAccess,
   listAccessNamed,
   listNodes,
+  moveResource,
   nodeSummary,
   revokeAccess,
 } from '../services/projects.js';
 
 const resType = z.enum(['source', 'tool', 'secret']);
+const moveType = z.enum(['source', 'tool', 'secret', 'group', 'agent']);
 
 export async function projectRoutes(app: FastifyInstance): Promise<void> {
   app.get('/projects', async (req) => listNodes(await scopeFor(req)));
@@ -52,6 +54,14 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
     if (r === 'not_found') return reply.code(404).send({ error: 'not_found' });
     if (r === 'not_visible') return reply.code(400).send({ error: 'not_visible' });
     return reply.code(201).send({ ok: true });
+  });
+  app.post('/projects/:id/move', async (req, reply) => {
+    const body = z.object({ resourceType: moveType, resourceId: z.string() }).parse(req.body);
+    const r = await moveResource(await scopeFor(req), { projectId: (req.params as { id: string }).id, ...body });
+    if (r === 'not_found') return reply.code(404).send({ error: 'not_found' });
+    if (r === 'not_visible') return reply.code(400).send({ error: 'not_visible' });
+    if (r === 'native_tool') return reply.code(409).send({ error: 'native_tool' });
+    return r;
   });
   app.delete('/projects/:id/access/:type/:resourceId', async (req, reply) => {
     const p = req.params as { id: string; type: string; resourceId: string };

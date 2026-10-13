@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { db, pool, runMigrations } from '../db/client.js';
@@ -91,6 +92,69 @@ describe.skipIf(!dbUp)('project routes', () => {
     expect(r.json()).toEqual({ error: 'not_visible' });
     // and A can't reach B at all
     expect((await call('GET', `/projects/${b.id}/access?project=${a.id}`)).statusCode).toBe(404);
+  });
+
+  it('moves resources between nodes', async () => {
+    const team = (await nodes()).find((p) => p.kind === 'team') as Node;
+    const from = await mk('project', 'From', team.id);
+    const to = await mk('project', 'To', team.id);
+    const now = new Date();
+    const sid = newId();
+    const tid = newId();
+    const cid = newId();
+    const gid = newId();
+    const aid = newId();
+    await db
+      .insert(sources)
+      .values({ id: sid, ownerId, projectId: from.id, name: 'mvsrc', kind: 'http', config: {}, createdAt: now });
+    await db
+      .insert(tools)
+      .values({ id: tid, ownerId, projectId: from.id, sourceId: sid, kind: 'native', name: 'mvsrc.t', createdAt: now });
+    await db
+      .insert(tools)
+      .values({ id: cid, ownerId, projectId: from.id, kind: 'virtual', name: 'mv.v', createdAt: now });
+    await db
+      .insert(secrets)
+      .values({ id: newId(), ownerId, projectId: from.id, sourceId: sid, name: 'MV', createdAt: now });
+    await db
+      .insert(groups)
+      .values({ id: gid, ownerId, projectId: from.id, slug: `g-${gid}`, name: 'mvg', createdAt: now });
+    await db.insert(groupTools).values([
+      { groupId: gid, toolId: tid },
+      { groupId: gid, toolId: cid },
+    ]);
+    await db.insert(agents).values({ id: aid, ownerId, projectId: from.id, name: 'mvagent', createdAt: now });
+    const move = (resourceType: string, resourceId: string, q = '') =>
+      call('POST', `/projects/${to.id}/move${q}`, { resourceType, resourceId });
+
+    // a native tool follows its source
+    expect((await move('tool', tid)).statusCode).toBe(409);
+    expect((await move('source', sid)).statusCode).toBe(200);
+    const home = async (
+      t: typeof tools | typeof sources | typeof secrets | typeof groups | typeof agents,
+      id: string,
+    ) => (await db.select({ p: t.projectId }).from(t).where(eq(t.id, id)))[0]?.p;
+    expect(await home(sources, sid)).toBe(to.id);
+    expect(await home(tools, tid)).toBe(to.id);
+    expect((await db.select({ p: secrets.projectId }).from(secrets).where(eq(secrets.name, 'MV')))[0]?.p).toBe(to.id);
+    expect(await home(tools, cid)).toBe(from.id);
+
+    // the workspace keeps the native tool (now in To) and loses the virtual one left in From
+    expect((await move('group', gid)).json()).toEqual({ unlinked: 1 });
+    expect(await home(groups, gid)).toBe(to.id);
+    expect((await db.select().from(groupTools).where(eq(groupTools.groupId, gid))).map((l) => l.toolId)).toEqual([tid]);
+
+    expect((await move('tool', cid)).statusCode).toBe(200);
+    expect((await move('agent', aid)).statusCode).toBe(200);
+    expect(await home(agents, aid)).toBe(to.id);
+
+    // a sibling scope administers neither the node nor the resource
+    const other = await mk('project', 'Other', team.id);
+    expect((await move('agent', aid, `?project=${other.id}`)).statusCode).toBe(404);
+    expect(
+      (await call('POST', `/projects/${other.id}/move?project=${other.id}`, { resourceType: 'agent', resourceId: aid }))
+        .statusCode,
+    ).toBe(400);
   });
 
   it('summarises a node and lists named access with usedBy', async () => {
