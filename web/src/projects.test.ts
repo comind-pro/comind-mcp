@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTree, rowBadges } from './projects.js';
+import { buildTree, knownProject, rowBadges } from './projects.js';
 
 const team = { id: 't', parentId: null, kind: 'team', name: 'My team', slug: 'team', path: '/t/' } as const;
 const def = { id: 'd', parentId: 't', kind: 'project', name: 'Default', slug: 'default', path: '/t/d/' } as const;
@@ -11,6 +11,11 @@ describe('projects', () => {
     expect(tree).toHaveLength(1);
     expect(tree[0].id).toBe('t');
     expect(tree[0].children.map((n) => n.id)).toEqual(['c', 'd']);
+  });
+  it('knownProject drops a stale or foreign id', () => {
+    expect(knownProject([team, def], 'd')).toBe('d');
+    expect(knownProject([team, def], 'gone')).toBeNull();
+    expect(knownProject([team, def], null)).toBeNull();
   });
   it('rowBadges: project name; shared-from when outside the selected subtree; by-agent name', () => {
     const byId = new Map<string, any>([team, def, child].map((p) => [p.id, p]));

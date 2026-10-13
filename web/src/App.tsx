@@ -4,6 +4,7 @@ import { type Agent, type AuthUser, api, type Project, projectStore, tokenStore 
 import { Home } from './Home.js';
 import { Icon, type IconName } from './icons.js';
 import { ProjectSelector, ProjectsContext } from './ProjectSelector.js';
+import { knownProject } from './projects.js';
 import { AgentsTab } from './tabs/AgentsTab.js';
 import { GroupsTab } from './tabs/GroupsTab.js';
 import { LogsTab } from './tabs/LogsTab.js';
@@ -63,7 +64,14 @@ export function App() {
     if (!user) return;
     api
       .getUnscoped<Project[]>('/projects')
-      .then(setProjects)
+      .then((ps) => {
+        setProjects(ps);
+        // a stale/foreign ?project= would 404 every scoped call: fall back to "all"
+        if (projectStore.get() && !knownProject(ps, projectStore.get())) {
+          projectStore.set(null);
+          setSelected(null);
+        }
+      })
       .catch(() => {});
     api
       .getUnscoped<Agent[]>('/agents')

@@ -34,3 +34,7 @@ export function rowBadges(
   const byAgent = row.createdByAgentId ? (ctx.agentNames.get(row.createdByAgentId) ?? 'agent') : null;
   return { project, sharedFrom, byAgent };
 }
+
+/** The selected project id if it is among the loaded nodes, else null (stale/foreign `?project=`). */
+export const knownProject = (rows: Project[], id: string | null): string | null =>
+  id && rows.some((p) => p.id === id) ? id : null;
