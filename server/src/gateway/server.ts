@@ -18,6 +18,7 @@ import { hashKey } from '../lib/crypto.js';
 import { mcpToolName, mcpToolTitle } from '../lib/tool-name.js';
 import { invokeTool } from '../runtime/invoker.js';
 import { createSchedule, deleteSchedule, isValidCron, listByGroup, toolInGroup } from '../scheduler/service.js';
+import { canonicalProjectToolName, handleProjectTool, pickProjectTools } from './project-tools.js';
 import { canonicalSystemToolName, handleSystemTool, pickSystemTools, systemInstructions } from './system-tools.js';
 
 export interface AgentAuth {
@@ -200,6 +201,13 @@ const SELF_CRON_TOOLS = [
 
 const SELF_CRON_NAMES = new Set<string>(SELF_CRON_TOOLS.map((t) => t.name));
 
+/** A CallResult as an MCP tools/call response. */
+const asMcp = (r: Awaited<ReturnType<typeof handleProjectTool>>) => ({
+  content: r.content,
+  ...(r.structuredContent !== undefined ? { structuredContent: r.structuredContent } : {}),
+  isError: r.isError,
+});
+
 function text(t: string, isError = false) {
   return { content: [{ type: 'text', text: t }], isError };
 }
@@ -305,7 +313,9 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
       ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
     }));
     const base = auth.schedulingEnabled ? [...toolDefs, ...SELF_CRON_TOOLS] : toolDefs;
-    return { tools: [...base, ...pickSystemTools(auth.systemTools)] };
+    return {
+      tools: [...base, ...pickSystemTools(auth.systemTools), ...(auth.role === 'coo' ? pickProjectTools() : [])],
+    };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -331,6 +341,9 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
         isError: r.isError,
       };
     }
+
+    const projName = auth.role === 'coo' ? canonicalProjectToolName(name) : null;
+    if (projName) return asMcp(await handleProjectTool(auth, projName, a));
 
     // Built-in self-cron tools: the agent schedules itself.
     if (auth.schedulingEnabled && SELF_CRON_NAMES.has(name)) {
@@ -402,6 +415,7 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
           ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
         })),
         ...pickSystemTools(auth.systemTools),
+        ...(auth.role === 'coo' ? pickProjectTools() : []),
       ],
     };
   });
@@ -432,6 +446,9 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
         isError: r.isError,
       };
     }
+
+    const projName = auth.role === 'coo' ? canonicalProjectToolName(name) : null;
+    if (projName) return asMcp(await handleProjectTool(auth, projName, (args ?? {}) as Record<string, unknown>));
 
     // Index is keyed by MCP-safe name; sanitize the incoming name too so older
     // clients that saw the raw (dotted) name still resolve.

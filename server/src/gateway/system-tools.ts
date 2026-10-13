@@ -304,7 +304,7 @@ async function recentLogs(ctx: SystemCtx, limit: number, errorsOnly: boolean) {
 }
 
 /** Emit both a text rendering and structured output matching the tool's outputSchema. */
-function json(value: unknown): CallResult {
+export function json(value: unknown): CallResult {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
 }
 

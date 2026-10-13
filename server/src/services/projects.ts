@@ -1,6 +1,16 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projectAccess, projects, secrets, sources, tools } from '../db/schema.js';
+import {
+  agents,
+  groups,
+  groupTools,
+  liveTool,
+  projectAccess,
+  projects,
+  secrets,
+  sources,
+  tools,
+} from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
 import { inScope, inSubtree, type Scope, underPath } from '../lib/scope.js';
 
@@ -175,4 +185,62 @@ export async function revokeAccess(
 export async function listAccess(scope: Scope, projectId: string) {
   if (!(await visibleNode(scope, projectId))) return null;
   return db.select().from(projectAccess).where(eq(projectAccess.projectId, projectId));
+}
+
+/** What deleteNode would remove: the node, its descendants and everything in them. No writes. */
+export async function previewDelete(scope: Scope, id: string) {
+  const node = await visibleNode(scope, id);
+  if (!node) return 'not_found' as const;
+  const ids = (
+    await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.ownerId, scope.ownerId), underPath(projects.path, node.path)))
+  ).map((r) => r.id);
+  const count = async (rows: Promise<unknown[]>) => (await rows).length;
+  return {
+    nodes: ids.length,
+    sources: await count(db.select({ id: sources.id }).from(sources).where(inArray(sources.projectId, ids))),
+    tools: await count(
+      db
+        .select({ id: tools.id })
+        .from(tools)
+        .where(and(inArray(tools.projectId, ids), liveTool())),
+    ),
+    groups: await count(db.select({ id: groups.id }).from(groups).where(inArray(groups.projectId, ids))),
+    agents: await count(db.select({ id: agents.id }).from(agents).where(inArray(agents.projectId, ids))),
+    secrets: await count(db.select({ id: secrets.id }).from(secrets).where(inArray(secrets.projectId, ids))),
+  };
+}
+
+/** Workspaces under the grantee node that hold tools of the resource (a source's
+ *  native tools, or the tool itself) — what revoking the grant would affect. No writes. */
+export async function previewRevoke(scope: Scope, g: { projectId: string; resourceType: ResType; resourceId: string }) {
+  const node = await visibleNode(scope, g.projectId);
+  if (!node) return 'not_found' as const;
+  if (g.resourceType === 'secret') return { workspaces: [] };
+  const toolCond = g.resourceType === 'source' ? eq(tools.sourceId, g.resourceId) : eq(tools.id, g.resourceId);
+  const rows = await db
+    .select({ id: groups.id, slug: groups.slug, name: groups.name, tool: tools.name })
+    .from(groupTools)
+    .innerJoin(groups, eq(groups.id, groupTools.groupId))
+    .innerJoin(tools, eq(tools.id, groupTools.toolId))
+    .where(
+      and(
+        eq(groups.ownerId, scope.ownerId),
+        inArray(
+          groups.projectId,
+          db.select({ id: projects.id }).from(projects).where(underPath(projects.path, node.path)),
+        ),
+        toolCond,
+        liveTool(),
+      ),
+    );
+  const byGroup = new Map<string, { id: string; slug: string; name: string; tools: string[] }>();
+  for (const r of rows) {
+    const w = byGroup.get(r.id) ?? { id: r.id, slug: r.slug, name: r.name, tools: [] };
+    w.tools.push(r.tool);
+    byGroup.set(r.id, w);
+  }
+  return { workspaces: [...byGroup.values()] };
 }
