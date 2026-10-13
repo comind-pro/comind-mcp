@@ -101,7 +101,7 @@ it('New child posts the node and reloads the tree', async () => {
 it('Delete confirms with the counts; hidden for the default nodes', async () => {
   await openAnalytics();
   fireEvent.click(screen.getByRole('button', { name: 'Delete node' }));
-  const msg = 'Delete "Analytics"? This removes 1 child, 2 sources, 5 tools, 1 workspace, 1 agent, 1 secret.';
+  const msg = 'Delete "Analytics"? This removes 1 descendant, 2 sources, 5 tools, 1 workspace, 1 agent, 1 secret.';
   const modal = (await screen.findByText(msg)).closest('.modal') as HTMLElement;
   fireEvent.click(within(modal).getByRole('button', { name: 'Delete' }));
   await waitFor(() => expect(api.delUnscoped).toHaveBeenCalledWith('/projects/a'));
@@ -111,7 +111,7 @@ it('Delete confirms with the counts; hidden for the default nodes', async () => 
 });
 
 it('shows who granted an allowlist row', async () => {
-  access[0] = { ...access[0], grantedBy: 'coo1' } as (typeof access)[0];
+  (access as unknown as { grantedBy: string | null }[])[0].grantedBy = 'coo1';
   render(
     <ProjectsContext.Provider
       value={{ projects: [...projects], selected: null, agentNames: new Map([['coo1', 'COO']]), reload }}
