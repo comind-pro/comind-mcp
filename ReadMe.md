@@ -158,6 +158,10 @@ To make a COO agent: create an agent in a project (`POST /agents?project=<id>`),
 
 Isolation: a COO acts as its own project node — every id it passes is resolved inside its subtree, invisible ids read as `not_found`. It cannot change its own role, delete its own node or an ancestor, or revoke itself. Secret values never pass through a COO: it declares names, you fill them in Secrets.
 
+Agents: a COO provisions COOs only into descendant nodes (never a peer at its own node), and revokes agents in descendant nodes or ones it provisioned itself. Revoking an agent archives its keys and ends its OAuth sessions. Custom tool names starting with `project.` are reserved.
+
+Trust boundary: A COO never receives secret values through the API or audit, but any tool it creates (an HTTP connection or a virtual tool) can reference `${secret.NAME}` for every secret its node may use and send the request to any host. Treat a COO as trusted with the secrets you share with its project; share only what it needs. Per-secret allowed hosts are a planned follow-up.
+
 ---
 
 ## Python tools
