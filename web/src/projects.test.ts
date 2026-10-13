@@ -83,11 +83,11 @@ it('deleteConfirmText pluralises the counts', () => {
     cooAgents: [],
   };
   expect(deleteConfirmText(s)).toBe(
-    'Delete "Analytics"? This removes 1 child, 2 sources, 5 tools, 1 workspace, 1 agent, 1 secret.',
+    'Delete "Analytics"? This removes 1 descendant, 2 sources, 5 tools, 1 workspace, 1 agent, 1 secret.',
   );
   s.counts = { children: 2, sources: 0, tools: 1, groups: 2, agents: 0, secrets: 3 };
   expect(deleteConfirmText(s)).toBe(
-    'Delete "Analytics"? This removes 2 children, 0 sources, 1 tool, 2 workspaces, 0 agents, 3 secrets.',
+    'Delete "Analytics"? This removes 2 descendants, 0 sources, 1 tool, 2 workspaces, 0 agents, 3 secrets.',
   );
 });
 

@@ -22,7 +22,7 @@ const errMsg = (e: unknown) => String((e as Error).message);
 
 // ponytail: every call is unscoped — node management is owner-wide; a header `?project=` would 404 nodes outside it.
 export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }) {
-  const { projects, selected, reload } = useContext(ProjectsContext);
+  const { projects, selected, reload, agentNames } = useContext(ProjectsContext);
   const { confirm, element: confirmEl } = useConfirm();
   const [selId, setSelId] = useState<string | null>(selected);
   const [summary, setSummary] = useState<ProjectSummary | null>(null);
@@ -42,6 +42,9 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
       .getUnscoped<Agent[]>('/agents')
       .then(setAgents)
       .catch(() => {});
+  }, []);
+
+  const loadCandidates = async () => {
     type Row = { id: string; name?: string; displayName?: string | null; projectId: string };
     const list = (type: ResourceType, path: string) =>
       api
@@ -50,13 +53,14 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
           rs.map((r) => ({ type, id: r.id, name: r.displayName || r.name || r.id, projectId: r.projectId })),
         )
         .catch(() => [] as Candidate[]);
-    void Promise.all([list('source', '/sources'), list('tool', '/tools'), list('secret', '/secrets')]).then((ls) =>
+    await Promise.all([list('source', '/sources'), list('tool', '/tools'), list('secret', '/secrets')]).then((ls) =>
       setAll(ls.flat()),
     );
-  }, []);
+  };
 
   const load = async (id: string) => {
     setErr('');
+    void loadCandidates();
     try {
       const [s, a] = await Promise.all([
         api.getUnscoped<ProjectSummary>(`/projects/${id}/summary`),
@@ -122,6 +126,7 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
       await api.delUnscoped(`/projects/${node.id}`);
       setSelId(null);
       await reload();
+      void loadCandidates();
     });
 
   return (
@@ -159,7 +164,7 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
               <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
                 {(
                   [
-                    [summary.counts.children, 'child', 'children'],
+                    [summary.counts.children, 'descendant', 'descendants'],
                     [summary.counts.sources, 'source', 'sources'],
                     [summary.counts.tools, 'tool', 'tools'],
                     [summary.counts.groups, 'workspace', 'workspaces'],
@@ -203,7 +208,12 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
                       <td>
                         <span className="tbadge">{r.resourceType}</span>
                       </td>
-                      <td>{r.name}</td>
+                      <td>
+                        {r.name}
+                        {r.grantedBy && (
+                          <span className="badge muted">by {agentNames.get(r.grantedBy) ?? 'agent'}</span>
+                        )}
+                      </td>
                       <td>{nameOf(r.fromProjectId)}</td>
                       <td>{r.usedBy.map((u) => u.name).join(', ') || '—'}</td>
                       <td>

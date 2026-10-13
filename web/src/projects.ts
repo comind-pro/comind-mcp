@@ -62,7 +62,7 @@ const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many
 
 export function deleteConfirmText({ node, counts: c }: ProjectSummary): string {
   const parts = [
-    n(c.children, 'child', 'children'),
+    n(c.children, 'descendant', 'descendants'),
     n(c.sources, 'source', 'sources'),
     n(c.tools, 'tool', 'tools'),
     n(c.groups, 'workspace', 'workspaces'),

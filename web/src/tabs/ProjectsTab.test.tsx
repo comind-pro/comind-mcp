@@ -109,3 +109,16 @@ it('Delete confirms with the counts; hidden for the default nodes', async () => 
   fireEvent.click(screen.getByRole('button', { name: /Default/ }));
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Delete node' })).toBeNull());
 });
+
+it('shows who granted an allowlist row', async () => {
+  access[0] = { ...access[0], grantedBy: 'coo1' } as (typeof access)[0];
+  render(
+    <ProjectsContext.Provider
+      value={{ projects: [...projects], selected: null, agentNames: new Map([['coo1', 'COO']]), reload }}
+    >
+      <ProjectsTab />
+    </ProjectsContext.Provider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /Analytics/ }));
+  expect(await screen.findByText('by COO')).toBeTruthy();
+});

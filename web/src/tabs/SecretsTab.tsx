@@ -12,6 +12,7 @@ export function SecretsTab() {
   const [err, setErr] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const { confirm, element: confirmEl } = useConfirm();
 
   const load = () =>
@@ -23,7 +24,7 @@ export function SecretsTab() {
         setSecrets([]);
       });
   useEffect(() => void load(), []);
-  const isEditing = (s: Secret) => editId === s.id || s.pending;
+  const isEditing = (s: Secret) => editId === s.id && !s.pending;
 
   if (secrets === null) return <Loading />;
 
@@ -40,6 +41,17 @@ export function SecretsTab() {
       await api.patch(`/secrets/${s.id}`, body);
       setEditId(null);
       setEditVal('');
+      await load();
+    } catch (e) {
+      setErr(String((e as Error).message));
+    }
+  };
+
+  const savePending = async (s: Secret) => {
+    setErr('');
+    try {
+      await api.patch(`/secrets/${s.id}`, { value: drafts[s.id] });
+      setDrafts(({ [s.id]: _, ...rest }) => rest);
       await load();
     } catch (e) {
       setErr(String((e as Error).message));
@@ -171,14 +183,34 @@ export function SecretsTab() {
                   {s.envRef && editId !== s.id && <span className="muted"> ← {s.envRef}</span>}
                 </td>
                 <td>
-                  {isEditing(s) ? (
+                  {s.pending ? (
+                    <div className="row gap-4">
+                      <input
+                        className="grow"
+                        type="password"
+                        placeholder="set value"
+                        value={drafts[s.id] ?? ''}
+                        onChange={(e) => setDrafts({ ...drafts, [s.id]: e.target.value })}
+                        onKeyDown={(e) => e.key === 'Enter' && drafts[s.id] && savePending(s)}
+                        autoComplete="new-password"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        name="comind-secret-pending"
+                      />
+                      <button className="mini" onClick={() => savePending(s)} disabled={!drafts[s.id]}>
+                        Save
+                      </button>
+                      <button className="danger mini" onClick={() => del(s.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  ) : isEditing(s) ? (
                     <div className="row gap-4">
                       <input
                         className="grow"
                         type={s.kind === 'env' ? 'text' : 'password'}
-                        placeholder={
-                          s.kind === 'env' ? 'ENV_VAR_NAME' : s.pending ? 'set value' : 'new value (current hidden)'
-                        }
+                        placeholder={s.kind === 'env' ? 'ENV_VAR_NAME' : 'new value (current hidden)'}
                         value={editVal}
                         onChange={(e) => setEditVal(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && saveEdit(s)}

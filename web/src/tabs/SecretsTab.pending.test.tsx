@@ -1,22 +1,24 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
 
-const row = {
-  id: 's1',
-  name: 'GA_KEY',
+const base = {
   sourceId: null,
   sourceName: null,
-  displayName: 'GA_KEY',
   kind: 'encrypted',
   envRef: null,
   pending: true,
   projectId: 'p',
   createdByAgentId: 'coo1',
 };
+const rows = [
+  { ...base, id: 's1', name: 'GA_KEY', displayName: 'GA_KEY' },
+  { ...base, id: 's2', name: 'DB_KEY', displayName: 'DB_KEY' },
+  { ...base, id: 's3', name: 'E', displayName: 'E', kind: 'env', envRef: 'MY_ENV', pending: false },
+];
 vi.mock('../api.js', () => ({
   api: {
     base: '',
-    get: vi.fn(async (p: string) => (p === '/secrets' ? [row] : [])),
+    get: vi.fn(async (p: string) => (p === '/secrets' ? rows : [])),
     patch: vi.fn(async () => ({})),
   },
   projectStore: { get: () => null, set: () => {} },
@@ -26,10 +28,20 @@ vi.mock('../api.js', () => ({
 import { api } from '../api.js';
 import { SecretsTab } from './SecretsTab.js';
 
-it('shows pending badge and saves the value inline', async () => {
+afterEach(cleanup);
+
+it('pending rows keep separate drafts, save only their own, and can be deleted', async () => {
   render(<SecretsTab />);
-  expect(await screen.findByText('pending')).toBeTruthy();
-  fireEvent.change(screen.getByPlaceholderText('set value'), { target: { value: 'abc' } });
-  fireEvent.click(screen.getByText('Save'));
+  await screen.findAllByText('pending');
+  const [a, b] = screen.getAllByPlaceholderText('set value') as HTMLInputElement[];
+  fireEvent.change(a, { target: { value: 'abc' } });
+  expect(a.value).toBe('abc');
+  expect(b.value).toBe('');
+  fireEvent.click(screen.getByText('Edit'));
+  expect(a.value).toBe('abc');
+  expect(b.value).toBe('');
+  expect(screen.getAllByText('Delete').length).toBeGreaterThanOrEqual(2);
+  fireEvent.click(screen.getAllByText('Save')[0]);
   await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/secrets/s1', { value: 'abc' }));
+  expect(api.patch).toHaveBeenCalledTimes(1);
 });
