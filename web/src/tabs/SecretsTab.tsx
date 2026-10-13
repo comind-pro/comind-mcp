@@ -23,6 +23,7 @@ export function SecretsTab() {
         setSecrets([]);
       });
   useEffect(() => void load(), []);
+  const isEditing = (s: Secret) => editId === s.id || s.pending;
 
   if (secrets === null) return <Loading />;
 
@@ -160,16 +161,24 @@ export function SecretsTab() {
                 </td>
                 <td className="mono muted">{`\${secret.${s.name}}`}</td>
                 <td>
-                  <span className="tbadge">{s.kind}</span>
+                  {s.pending ? (
+                    <span className="badge" style={{ color: 'var(--warn)', borderColor: 'var(--warn)' }}>
+                      pending
+                    </span>
+                  ) : (
+                    <span className="tbadge">{s.kind}</span>
+                  )}
                   {s.envRef && editId !== s.id && <span className="muted"> ← {s.envRef}</span>}
                 </td>
                 <td>
-                  {editId === s.id ? (
+                  {isEditing(s) ? (
                     <div className="row gap-4">
                       <input
                         className="grow"
                         type={s.kind === 'env' ? 'text' : 'password'}
-                        placeholder={s.kind === 'env' ? 'ENV_VAR_NAME' : 'new value (current hidden)'}
+                        placeholder={
+                          s.kind === 'env' ? 'ENV_VAR_NAME' : s.pending ? 'set value' : 'new value (current hidden)'
+                        }
                         value={editVal}
                         onChange={(e) => setEditVal(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && saveEdit(s)}
