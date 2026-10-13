@@ -39,11 +39,15 @@ export function rowBadges(
 export const knownProject = (rows: Project[], id: string | null): string | null =>
   id && rows.some((p) => p.id === id) ? id : null;
 
+export type MoveType = ResourceType | 'group' | 'agent';
+
 export interface Candidate {
-  type: ResourceType;
+  type: MoveType;
   id: string;
   name: string;
   projectId: string;
+  /** tools only: native tools move with their source */
+  kind?: string;
 }
 
 /** Resources owned outside the node's subtree that the node has not been granted yet. */
@@ -57,6 +61,10 @@ export function grantCandidates(
   const granted = new Set(access.map((a) => `${a.resourceType}:${a.resourceId}`));
   return all.filter((c) => !own.has(c.projectId) && !granted.has(`${c.type}:${c.id}`));
 }
+
+/** Resources not already homed in the node; a native tool only moves with its source. */
+export const moveCandidates = (all: Candidate[], node: Project): Candidate[] =>
+  all.filter((c) => c.projectId !== node.id && !(c.type === 'tool' && c.kind === 'native'));
 
 const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
 

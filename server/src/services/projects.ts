@@ -199,6 +199,11 @@ export async function revokeAccess(
         toolCond,
       ),
     );
+  return { unlinked: await pruneLinks(links) };
+}
+
+/** Drop workspace links whose tool is no longer usable by the workspace's project. */
+async function pruneLinks(links: { groupId: string; toolId: string; projectId: string }[]): Promise<number> {
   let unlinked = 0;
   for (const l of links) {
     const [ok] = await db
@@ -209,7 +214,64 @@ export async function revokeAccess(
     await db.delete(groupTools).where(and(eq(groupTools.groupId, l.groupId), eq(groupTools.toolId, l.toolId)));
     unlinked++;
   }
-  return { unlinked };
+  return unlinked;
+}
+
+export type MoveType = ResType | 'group' | 'agent';
+
+/** Re-home a resource the scope administers (rule 2 — a mere grant is not enough) into
+ *  a visible node. A source carries its native tools and source-scoped secrets; a native
+ *  tool cannot leave its source. Moving a workspace drops links it can no longer use. */
+export async function moveResource(
+  scope: Scope,
+  m: { projectId: string; resourceType: MoveType; resourceId: string },
+): Promise<{ unlinked: number } | 'not_found' | 'not_visible' | 'native_tool'> {
+  const node = await visibleNode(scope, m.projectId);
+  if (!node) return 'not_found';
+  const t =
+    m.resourceType === 'source'
+      ? sources
+      : m.resourceType === 'tool'
+        ? tools
+        : m.resourceType === 'secret'
+          ? secrets
+          : m.resourceType === 'group'
+            ? groups
+            : agents;
+  const [row] = await db
+    .select({ id: t.id })
+    .from(t)
+    .where(and(eq(t.id, m.resourceId), eq(t.ownerId, scope.ownerId), inSubtree(t.projectId, scope)));
+  if (!row) return 'not_visible';
+  const set = { projectId: node.id };
+  switch (m.resourceType) {
+    case 'source':
+      await db.update(sources).set(set).where(eq(sources.id, m.resourceId));
+      await db.update(tools).set(set).where(eq(tools.sourceId, m.resourceId));
+      await db.update(secrets).set(set).where(eq(secrets.sourceId, m.resourceId));
+      return { unlinked: 0 };
+    case 'tool': {
+      const [tool] = await db.select({ kind: tools.kind }).from(tools).where(eq(tools.id, m.resourceId));
+      if (tool?.kind === 'native') return 'native_tool';
+      await db.update(tools).set(set).where(eq(tools.id, m.resourceId));
+      return { unlinked: 0 };
+    }
+    case 'secret':
+      await db.update(secrets).set(set).where(eq(secrets.id, m.resourceId));
+      return { unlinked: 0 };
+    case 'agent':
+      await db.update(agents).set(set).where(eq(agents.id, m.resourceId));
+      return { unlinked: 0 };
+    case 'group': {
+      await db.update(groups).set(set).where(eq(groups.id, m.resourceId));
+      const links = await db
+        .select({ groupId: groupTools.groupId, toolId: groupTools.toolId, projectId: groups.projectId })
+        .from(groupTools)
+        .innerJoin(groups, eq(groups.id, groupTools.groupId))
+        .where(eq(groupTools.groupId, m.resourceId));
+      return { unlinked: await pruneLinks(links) };
+    }
+  }
 }
 
 export async function listAccess(scope: Scope, projectId: string) {

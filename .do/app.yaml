@@ -96,6 +96,8 @@ ingress:
       component: { name: server, preserve_path_prefix: true }
     - match: { path: { prefix: /a/mcp } }
       component: { name: server, preserve_path_prefix: true }
+    - match: { path: { prefix: /projects } }
+      component: { name: server, preserve_path_prefix: true }
     - match: { path: { prefix: /agents } }
       component: { name: server, preserve_path_prefix: true }
     - match: { path: { prefix: /groups } }

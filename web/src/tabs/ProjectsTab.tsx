@@ -7,6 +7,8 @@ import {
   type Candidate,
   deleteConfirmText,
   grantCandidates,
+  type MoveType,
+  moveCandidates,
   revokeWarnText,
   type TreeNode,
 } from '../projects.js';
@@ -31,6 +33,9 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
   const [all, setAll] = useState<Candidate[]>([]);
   const [grantType, setGrantType] = useState<ResourceType | ''>('');
   const [grantId, setGrantId] = useState('');
+  const [moveType, setMoveType] = useState<MoveType | ''>('');
+  const [moveId, setMoveId] = useState('');
+  const [parentId, setParentId] = useState('');
   const [childKind, setChildKind] = useState<'project' | 'team'>('project');
   const [childName, setChildName] = useState('');
   const [err, setErr] = useState('');
@@ -45,17 +50,27 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
   }, []);
 
   const loadCandidates = async () => {
-    type Row = { id: string; name?: string; displayName?: string | null; projectId: string };
-    const list = (type: ResourceType, path: string) =>
+    type Row = { id: string; name?: string; displayName?: string | null; projectId: string; kind?: string };
+    const list = (type: MoveType, path: string) =>
       api
         .getUnscoped<Row[]>(path)
         .then((rs) =>
-          rs.map((r) => ({ type, id: r.id, name: r.displayName || r.name || r.id, projectId: r.projectId })),
+          rs.map((r) => ({
+            type,
+            id: r.id,
+            name: r.displayName || r.name || r.id,
+            projectId: r.projectId,
+            kind: r.kind,
+          })),
         )
         .catch(() => [] as Candidate[]);
-    await Promise.all([list('source', '/sources'), list('tool', '/tools'), list('secret', '/secrets')]).then((ls) =>
-      setAll(ls.flat()),
-    );
+    await Promise.all([
+      list('source', '/sources'),
+      list('tool', '/tools'),
+      list('secret', '/secrets'),
+      list('group', '/groups'),
+      list('agent', '/agents'),
+    ]).then((ls) => setAll(ls.flat()));
   };
 
   const load = async (id: string) => {
@@ -84,6 +99,9 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
   const nameOf = (id: string | null) => (id ? (projects.find((p) => p.id === id)?.name ?? id) : '—');
   const cooCount = (id: string) => agents.filter((a) => a.role === 'coo' && a.projectId === id).length;
   const candidates = node ? grantCandidates(all, access, node, projects).filter((c) => c.type === grantType) : [];
+  const movable = node ? moveCandidates(all, node).filter((c) => c.type === moveType) : [];
+  const roots = buildTree(projects);
+  const parent = parentId || selId || roots[0]?.id || '';
 
   const run = async (fn: () => Promise<unknown>) => {
     setErr('');
@@ -113,9 +131,18 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
 
   const addChild = () =>
     run(async () => {
-      if (!node || !childName.trim()) return;
-      await api.postUnscoped('/projects', { kind: childKind, name: childName.trim(), parentId: node.id });
+      if (!parent || !childName.trim()) return;
+      await api.postUnscoped('/projects', { kind: childKind, name: childName.trim(), parentId: parent });
       setChildName('');
+      await reload();
+      if (node) await load(node.id);
+    });
+
+  const move = () =>
+    run(async () => {
+      if (!node || !moveType || !moveId) return;
+      await api.postUnscoped(`/projects/${node.id}/move`, { resourceType: moveType, resourceId: moveId });
+      setMoveId('');
       await reload();
       await load(node.id);
     });
@@ -145,6 +172,33 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
             {cooCount(n.id) > 0 && <span className="badge muted">{cooCount(n.id)} COO</span>}
           </button>
         ))}
+        <h4>New node</h4>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <select aria-label="New child parent" value={parent} onChange={(e) => setParentId(e.target.value)}>
+            {flatten(roots).map(({ node: n, depth }) => (
+              <option key={n.id} value={n.id}>
+                {'— '.repeat(depth) + n.name}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="New child kind"
+            value={childKind}
+            onChange={(e) => setChildKind(e.target.value as 'project' | 'team')}
+          >
+            <option value="project">Project</option>
+            <option value="team">Team</option>
+          </select>
+          <input
+            aria-label="New child name"
+            placeholder="Name"
+            value={childName}
+            onChange={(e) => setChildName(e.target.value)}
+          />
+          <button className="ghost" disabled={!childName.trim() || !parent} onClick={() => void addChild()}>
+            + New child
+          </button>
+        </div>
       </div>
       <div>
         {err && <div className="err-msg">{err}</div>}
@@ -262,25 +316,42 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
               </button>
             </div>
 
-            <h4>New child</h4>
+            <h4>Move here</h4>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               <select
-                aria-label="New child kind"
-                value={childKind}
-                onChange={(e) => setChildKind(e.target.value as 'project' | 'team')}
+                aria-label="Move type"
+                value={moveType}
+                onChange={(e) => {
+                  setMoveType(e.target.value as MoveType | '');
+                  setMoveId('');
+                }}
               >
-                <option value="project">Project</option>
-                <option value="team">Team</option>
+                <option value="">Type…</option>
+                <option value="source">Source</option>
+                <option value="tool">Tool</option>
+                <option value="secret">Secret</option>
+                <option value="group">Workspace</option>
+                <option value="agent">Agent</option>
               </select>
-              <input
-                aria-label="New child name"
-                placeholder="Name"
-                value={childName}
-                onChange={(e) => setChildName(e.target.value)}
-              />
-              <button className="ghost" disabled={!childName.trim()} onClick={() => void addChild()}>
-                + New child
+              <select
+                aria-label="Move resource"
+                value={moveId}
+                disabled={!moveType}
+                onChange={(e) => setMoveId(e.target.value)}
+              >
+                <option value="">{moveType && !movable.length ? 'Nothing to move' : 'Resource…'}</option>
+                {movable.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({nameOf(c.projectId)})
+                  </option>
+                ))}
+              </select>
+              <button className="btn-primary" disabled={!moveId} onClick={() => void move()}>
+                Move
               </button>
+            </div>
+            <div className="hint">
+              A source brings its tools and secrets; a workspace drops tools it can no longer use.
             </div>
 
             {!isDefaultNode(node) && (
