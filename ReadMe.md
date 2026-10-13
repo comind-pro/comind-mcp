@@ -103,6 +103,7 @@ POST/GET /groups           GET/PATCH/DELETE /groups/:id
 GET/PUT /groups/:id/tools
 # projects (tree + sharing)  — every route above accepts ?project=<nodeId>
 GET /projects              POST /projects {kind:'team'|'project', name, parentId}
+GET /projects/:id/summary
 DELETE /projects/:id       (409 default_node for the default team/project)
 GET/POST /projects/:id/access {resourceType:'source'|'tool'|'secret', resourceId}
 DELETE /projects/:id/access/:type/:resourceId
@@ -161,6 +162,14 @@ Isolation: a COO acts as its own project node — every id it passes is resolved
 Agents: a COO provisions COOs only into descendant nodes (never a peer at its own node), and revokes agents in descendant nodes or ones it provisioned itself. Revoking an agent archives its keys and ends its OAuth sessions. Custom tool names starting with `project.` are reserved.
 
 Trust boundary: A COO never receives secret values through the API or audit, but any tool it creates (an HTTP connection or a virtual tool) can reference `${secret.NAME}` for every secret its node may use and send the request to any host. Treat a COO as trusted with the secrets you share with its project; share only what it needs. Per-secret allowed hosts are a planned follow-up.
+
+---
+
+## Projects tab
+
+A tree of teams and projects for the account, with per-node counts of connections, tools, secrets, and workspaces. COO agents can be pinned to manage a node's subtree. The **Allowlist** lets a node share a connection, tool, or secret with a descendant; the "Share a resource" dialog shows only resources outside that node's subtree, and revoking a grant warns which workspaces would lose tools before unlinking them. Each node offers "+ New child" to create a team or project below it, and "Delete node" (disabled for the default team and project). A project selector in the header filters all tabs and resource rows; each row shows the node it belongs to, whether it was shared from elsewhere, and which agent created it.
+
+Pending secrets declared by a COO agent appear in the Secrets tab with a `pending` badge and an inline text field to set the value — once set, the secret is encrypted at rest and the `pending` badge disappears.
 
 ---
 
