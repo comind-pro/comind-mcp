@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   agents,
@@ -273,4 +273,62 @@ export async function previewRevoke(scope: Scope, g: { projectId: string; resour
     byGroup.set(r.id, w);
   }
   return { workspaces: [...byGroup.values()] };
+}
+
+/** Subtree counts (incl. the node), descendant node count and COO agents. Null when invisible. */
+export async function nodeSummary(scope: Scope, id: string) {
+  const node = await visibleNode(scope, id);
+  if (!node) return null;
+  const sub = db.select({ id: projects.id }).from(projects).where(underPath(projects.path, node.path));
+  const rows = (q: Promise<unknown[]>) => q.then((r) => r.length);
+  const agentRows = await db
+    .select({ id: agents.id, name: agents.name, role: agents.role })
+    .from(agents)
+    .where(and(eq(agents.ownerId, scope.ownerId), inArray(agents.projectId, sub)));
+  return {
+    node,
+    counts: {
+      children: await rows(
+        db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(and(eq(projects.ownerId, scope.ownerId), underPath(projects.path, node.path), ne(projects.id, id))),
+      ),
+      sources: await rows(db.select({ id: sources.id }).from(sources).where(inArray(sources.projectId, sub))),
+      tools: await rows(
+        db
+          .select({ id: tools.id })
+          .from(tools)
+          .where(and(inArray(tools.projectId, sub), liveTool())),
+      ),
+      groups: await rows(db.select({ id: groups.id }).from(groups).where(inArray(groups.projectId, sub))),
+      agents: agentRows.length,
+      secrets: await rows(db.select({ id: secrets.id }).from(secrets).where(inArray(secrets.projectId, sub))),
+    },
+    cooAgents: agentRows.filter((a) => a.role === 'coo').map((a) => ({ id: a.id, name: a.name })),
+  };
+}
+
+/** Grants on a node with the resource's name/home and the workspaces using it. */
+export async function listAccessNamed(scope: Scope, id: string) {
+  const rows = await listAccess(scope, id);
+  if (!rows) return null;
+  const out = [];
+  for (const r of rows) {
+    const t = r.resourceType === 'source' ? sources : r.resourceType === 'tool' ? tools : secrets;
+    const [res] = await db
+      .select({ name: t.name, projectId: t.projectId })
+      .from(t)
+      .where(and(eq(t.id, r.resourceId), eq(t.ownerId, scope.ownerId)));
+    const prev = await previewRevoke(scope, { projectId: id, resourceType: r.resourceType, resourceId: r.resourceId });
+    out.push({
+      resourceType: r.resourceType,
+      resourceId: r.resourceId,
+      name: res?.name ?? '(deleted)',
+      fromProjectId: res?.projectId ?? null,
+      grantedBy: r.grantedBy,
+      usedBy: prev === 'not_found' ? [] : prev.workspaces.map((w) => ({ groupId: w.id, name: w.name })),
+    });
+  }
+  return out;
 }

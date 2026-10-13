@@ -1,7 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { scopeFor } from '../lib/scope.js';
-import { createNode, deleteNode, grantAccess, listAccess, listNodes, revokeAccess } from '../services/projects.js';
+import {
+  createNode,
+  deleteNode,
+  grantAccess,
+  listAccessNamed,
+  listNodes,
+  nodeSummary,
+  revokeAccess,
+} from '../services/projects.js';
 
 const resType = z.enum(['source', 'tool', 'secret']);
 
@@ -27,8 +35,12 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(204).send();
   });
   app.get('/projects/:id/access', async (req, reply) => {
-    const rows = await listAccess(await scopeFor(req), (req.params as { id: string }).id);
+    const rows = await listAccessNamed(await scopeFor(req), (req.params as { id: string }).id);
     return rows ?? reply.code(404).send({ error: 'not_found' });
+  });
+  app.get('/projects/:id/summary', async (req, reply) => {
+    const r = await nodeSummary(await scopeFor(req), (req.params as { id: string }).id);
+    return r ?? reply.code(404).send({ error: 'not_found' });
   });
   app.post('/projects/:id/access', async (req, reply) => {
     const body = z.object({ resourceType: resType, resourceId: z.string() }).parse(req.body);
