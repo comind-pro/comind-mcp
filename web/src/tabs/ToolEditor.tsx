@@ -35,6 +35,8 @@ export interface MetaForm {
   confirm: string;
   examplesRaw: string; // JSON array text
   examplesErr: string | null;
+  outputFields: string; // comma-separated dot paths
+  outputLimit: string; // '' = no cap
 }
 
 export interface VReq {
@@ -578,6 +580,24 @@ export function ToolEditor({
               value={e.meta.perms}
               onChange={(ev) => setMeta({ perms: ev.target.value })}
               placeholder="ga4.read, gmail.read"
+            />
+            <div className="field-label mt-10">Output fields (dot paths, comma-separated)</div>
+            <input
+              className="w-full mono"
+              aria-label="Output fields"
+              value={e.meta.outputFields}
+              onChange={(ev) => setMeta({ outputFields: ev.target.value })}
+              placeholder="items.title, items.url"
+            />
+            <div className="field-label mt-10">Output limit</div>
+            <input
+              type="number"
+              min={1}
+              className="w-160"
+              aria-label="Output limit"
+              value={e.meta.outputLimit}
+              onChange={(ev) => setMeta({ outputLimit: ev.target.value })}
+              placeholder="no cap"
             />
             <div className="field-label mt-10">Recommended use · automation hints</div>
             <div className="row" style={{ gap: 12 }}>

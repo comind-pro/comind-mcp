@@ -96,6 +96,8 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
         confirm: '',
         examplesRaw: '',
         examplesErr: null,
+        outputFields: '',
+        outputLimit: '',
       },
       params: [],
       required: [],
@@ -125,6 +127,8 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
     confirm: '',
     examplesRaw: '',
     examplesErr: null,
+    outputFields: '',
+    outputLimit: '',
   });
 
   const openNewVirtual = () =>
@@ -208,6 +212,8 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
         confirm: triS(ru.requires_user_confirmation),
         examplesRaw: t.examples?.length ? JSON.stringify(t.examples, null, 2) : '',
         examplesErr: null,
+        outputFields: (t.outputFields ?? []).join(', '),
+        outputLimit: t.outputLimit == null ? '' : String(t.outputLimit),
       },
       params,
       required,
@@ -326,6 +332,12 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
         .filter(Boolean),
       recommendedUse: Object.keys(ru).length ? ru : null,
     };
+    const fields = m.outputFields
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    body.outputFields = fields.length ? fields : null;
+    body.outputLimit = m.outputLimit.trim() ? Number(m.outputLimit) : null;
     if (m.examplesRaw.trim()) {
       try {
         const ex = JSON.parse(m.examplesRaw);
