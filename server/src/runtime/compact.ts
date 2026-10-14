@@ -1,6 +1,7 @@
 import type { CallResult } from '../connectors/types.js';
 
 export const COMPACT_MIN_BYTES = 2048;
+const bytes = (s: string) => Buffer.byteLength(s, 'utf8');
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -8,7 +9,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 export function cleanJson(v: unknown): unknown {
   if (typeof v === 'number') return Number.isInteger(v) ? v : Number(v.toFixed(6));
   if (typeof v === 'string') {
-    const b64 = v.length >= 200 && /^[A-Za-z0-9+/=\s]+$/.test(v);
+    const b64 = v.length >= 200 && /^[A-Za-z0-9+/]+=*$/.test(v);
     return b64 || v.startsWith('data:') ? `<base64 ${v.length} chars>` : v;
   }
   if (Array.isArray(v)) return v.map(cleanJson);
@@ -123,13 +124,13 @@ export function compactResult(r: CallResult): CallResult {
   const isText = (b: CallResult['content'][number]) => b.type === 'text' && typeof b.text === 'string';
   const texts = r.content.filter(isText).map((b) => b.text as string);
   const joined = texts.join('\n');
-  if (r.isError || !texts.length || joined.length < COMPACT_MIN_BYTES) return r;
+  if (r.isError || !texts.length || bytes(joined) < COMPACT_MIN_BYTES) return r;
   const text = compactText(joined);
   const { structuredContent: sc, ...rest } = r;
   const out: CallResult = { ...rest, content: [...r.content.filter((b) => !isText(b)), { type: 'text', text }] };
   if (sc !== undefined) {
     const cleaned = cleanJson(sc);
-    if (!(text !== joined && JSON.stringify(cleaned).length >= COMPACT_MIN_BYTES)) out.structuredContent = cleaned;
+    if (!(text !== joined && bytes(JSON.stringify(cleaned)) >= COMPACT_MIN_BYTES)) out.structuredContent = cleaned;
   }
   return out;
 }

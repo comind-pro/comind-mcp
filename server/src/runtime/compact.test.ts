@@ -120,3 +120,16 @@ describe('compactResult', () => {
   });
   it('threshold constant is 2048', () => expect(COMPACT_MIN_BYTES).toBe(2048));
 });
+
+describe('compactResult bytes and base64', () => {
+  it('threshold counts UTF-8 bytes, not chars', () => {
+    const wide = { content: [{ type: 'text', text: `${'é'.repeat(1100)}\n\n\n\nx` }] };
+    expect(compactResult(wide)).not.toBe(wide);
+    const ascii = { content: [{ type: 'text', text: `${'e'.repeat(1100)}\n\n\n\nx` }] };
+    expect(compactResult(ascii)).toBe(ascii);
+  });
+  it('keeps a long sentence with spaces verbatim', () => {
+    const s = 'word '.repeat(60);
+    expect(cleanJson({ s })).toEqual({ s });
+  });
+});

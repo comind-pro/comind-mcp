@@ -73,3 +73,26 @@ describe('projectResult', () => {
     expect(projectResult(r, {}, {})).toBe(r);
   });
 });
+
+describe('projectResult multi-block / structured-only', () => {
+  it('joins all text blocks before parsing JSON, keeps non-text blocks', () => {
+    const txt = JSON.stringify(data);
+    const m = {
+      content: [
+        { type: 'image', data: 'x' },
+        { type: 'text', text: txt.slice(0, 20) },
+        { type: 'text', text: txt.slice(20) },
+      ],
+    };
+    const out = projectResult(m, {}, { fields: ['total'] });
+    expect(out.content).toHaveLength(2);
+    expect(out.content[0]).toEqual(m.content[0]);
+    expect(JSON.parse(out.content[1].text as string)).toEqual({ total: 3 });
+  });
+  it('projects structuredContent when text is not JSON', () => {
+    const t = { content: [{ type: 'text', text: 'plain' }], structuredContent: data };
+    const out = projectResult(t, {}, { fields: ['total'] });
+    expect(out.content[0].text).toBe('plain');
+    expect(out.structuredContent).toEqual({ total: 3 });
+  });
+});

@@ -71,26 +71,6 @@ export function projectResult(
   const limit = limits.length ? Math.min(...limits) : undefined;
   if (r.isError || (!ownerFields && !agentFields && limit === undefined)) return r;
 
-  const idx = r.content.findIndex((b) => b.type === 'text' && typeof b.text === 'string');
-  if (idx < 0) return r;
-  const text = r.content[idx]?.text as string;
-  const replaceAt = (t: string, notes: string[] = []): CallResult => ({
-    ...r,
-    content: [
-      ...r.content.map((b, i) => (i === idx ? { ...b, text: t } : b)),
-      ...notes.map((n) => ({ type: 'text', text: n })),
-    ],
-  });
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    // ponytail: non-JSON → only a line limit; _fields ignored
-    return limit === undefined ? r : replaceAt(text.split('\n').slice(0, limit).join('\n'));
-  }
-  if (!isTree(parsed)) return r;
-
   let nomatch = false;
   let omitted = 0;
   const apply = (v: unknown): unknown => {
@@ -108,6 +88,32 @@ export function projectResult(
     }
     return cur;
   };
+  const isText = (b: CallResult['content'][number]) => b.type === 'text' && typeof b.text === 'string';
+  const texts = r.content.filter(isText).map((b) => b.text as string);
+  if (!texts.length) return r;
+  const text = texts.join('\n');
+  // one data block replaces all text blocks, at the first text block's position
+  const first = r.content.findIndex(isText);
+  const replaceAt = (t: string, notes: string[] = []): CallResult => ({
+    ...r,
+    content: [
+      ...r.content.flatMap((b, i) => (i === first ? [{ type: 'text', text: t }] : isText(b) ? [] : [b])),
+      ...notes.map((n) => ({ type: 'text', text: n })),
+    ],
+  });
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // ponytail: non-JSON text → only a line limit; _fields ignored (structuredContent still projected below)
+    const out = limit === undefined ? replaceAt(text) : replaceAt(text.split('\n').slice(0, limit).join('\n'));
+    if (!isTree(r.structuredContent)) return limit === undefined && texts.length === 1 ? r : out;
+    out.structuredContent = apply(r.structuredContent);
+    return out;
+  }
+  if (!isTree(parsed)) return r;
+
   const out = replaceAt(JSON.stringify(apply(parsed)));
   const notes: string[] = [];
   if (nomatch) notes.push(`(_fields matched nothing: ${agentFields?.join(', ')})`);
