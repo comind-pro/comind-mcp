@@ -32,13 +32,13 @@ Input: the concatenated `text` of the result's text blocks (and `structuredConte
 
 **JSON** (text parses as JSON object/array):
 - Drop `null`, `undefined` and `""` values from objects (keep empty arrays/objects — "none" is information).
-- Numbers with more than 6 decimals are rounded to 6.
-- Strings that look like base64 / data-URIs (≥ 200 chars, base64 charset, or `data:` prefix) → `<base64 N chars>`.
+- Strings that are clearly binary — a `data:<mime>;base64,` URI, or a base64-charset string of ≥ 1 000 chars — → `<base64 N chars>`. Unquoted integers beyond 2^53 are quoted before parsing so they survive re-serialisation.
+- When the rendered text is still ≥ 8 KB, one hint line is appended telling the agent to pass `_fields`/`_limit`.
 - Render as **flat text**, not JSON:
   - object → `key: value` lines; nested objects indented by two spaces;
   - an array of ≥ 3 objects whose keys overlap ≥ 60 % (by the union of keys) → a table: `key (N rows)` header line, then a `|`-separated header row and one row per item; cell values that are objects/arrays are inline JSON; missing cells are empty;
   - other arrays → inline JSON on one line.
-- `structuredContent`: same value cleanup and projection, stays JSON (clients with outputSchema consumers need it). If its serialised size is still ≥ 2 048 bytes after cleanup **and** text was compacted, it is dropped — the text carries the data.
+- `structuredContent`: when the tool declares an `outputSchema`, it is passed through untouched (MCP clients validate it against the schema and reject a missing or reshaped value). Otherwise it gets the same value cleanup and projection and stays JSON; if its serialised size is still ≥ 2 048 bytes after cleanup **and** text was compacted, it is dropped — the text carries the data.
 
 **HTML** (text starts with `<!doctype`/`<html`, or contains ≥ 20 tags): drop `<script>`, `<style>`, `<head>`, comments; `<a href="u">t</a>` → `t (u)`; block tags → newlines; other tags removed; entities decoded (`&amp; &lt; &gt; &quot; &#39; &nbsp;`); whitespace collapsed; ≤ 1 blank line in a row.
 
