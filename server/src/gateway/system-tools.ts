@@ -143,6 +143,7 @@ export const SYSTEM_TOOLS: ToolDef[] = [
         groups: { type: 'array', items: GROUP_ITEM },
         sources: { type: 'array', items: SOURCE_ITEM },
         tools: { type: 'array', items: TOOL_ITEM },
+        result_compaction: { type: 'string' },
       },
     },
   },
@@ -198,13 +199,17 @@ const TOOL_HINTS: Record<string, string> = {
   'system.debug': 'call system_debug when a tool returns empty or errors, to tell apart "no data" from a broken source',
 };
 
-/** Build the MCP `instructions` string for the enabled system tools (empty when none). */
+export const COMPACTION_HINT =
+  'Results are compacted for context: JSON is rendered as key: value lines and tables. ' +
+  'Pass _fields (dot paths, e.g. items.title) and _limit to any tool to get only what you need.';
+
+/** Build the MCP `instructions` string: hints for the enabled system tools, then the compaction hint (always). */
 export function systemInstructions(names: Iterable<string>): string {
   const lines = SYSTEM_TOOLS.filter((t) => new Set(names).has(t.name))
     .map((t) => TOOL_HINTS[t.name])
     .filter(Boolean);
-  if (!lines.length) return '';
-  return `This server provides built-in introspection tools: ${lines.join('; ')}.`;
+  if (!lines.length) return COMPACTION_HINT;
+  return `This server provides built-in introspection tools: ${lines.join('; ')}. ${COMPACTION_HINT}`;
 }
 
 export const SYSTEM_TOOL_NAMES = new Set<string>(SYSTEM_TOOLS.map((t) => t.name));
@@ -462,6 +467,7 @@ async function dispatch(ctx: SystemCtx, name: string, args: Record<string, unkno
         groups: groupRows,
         sources: sourcesOut,
         tools: toolsOut,
+        result_compaction: COMPACTION_HINT,
       });
     }
 

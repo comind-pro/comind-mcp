@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COMPACTION_HINT,
   handleSystemTool,
   pickSystemTools,
   SYSTEM_TOOL_NAMES,
@@ -38,8 +39,9 @@ describe('pickSystemTools', () => {
 });
 
 describe('systemInstructions', () => {
-  it('mentions only enabled tools (by their client-visible name), empty when none', () => {
-    expect(systemInstructions([])).toBe('');
+  it('mentions only enabled tools (by their client-visible name), always the compaction hint', () => {
+    expect(systemInstructions([])).toBe(COMPACTION_HINT);
+    expect(systemInstructions(['system.context']).endsWith(COMPACTION_HINT)).toBe(true);
     const ctxOnly = systemInstructions(['system.context']);
     expect(ctxOnly).toContain('system_context');
     expect(ctxOnly).not.toContain('system_debug');

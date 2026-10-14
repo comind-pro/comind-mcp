@@ -129,6 +129,9 @@ export const tools = pgTable(
     examples: jsonb('examples').$type<Array<Record<string, unknown>>>().notNull().default(sql`'[]'::jsonb`),
     // { daily_report?, safe_for_automation?, requires_user_confirmation? } — automation hints.
     recommendedUse: jsonb('recommended_use').$type<Record<string, unknown>>(),
+    // Owner projection defaults applied to every agent-facing result (before the agent's _fields/_limit).
+    outputFields: jsonb('output_fields').$type<string[]>(),
+    outputLimit: integer('output_limit'),
     // Soft delete: set when a force re-import finds the tool gone from its source.
     // The row stays out of every read path (see `liveTool`) but still owns its name,
     // so an import that sees the tool again restores it with edits and groups intact.
@@ -224,6 +227,8 @@ export const groups = pgTable(
     description: text('description'),
     // when true the group exposes built-in schedule_task/list/cancel MCP tools.
     schedulingEnabled: boolean('scheduling_enabled').notNull().default(true),
+    // when true agent-facing results are auto-compacted (JSON → flat text, HTML → text, logs deduped).
+    compactResults: boolean('compact_results').notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => ({
@@ -478,6 +483,9 @@ export const callLogs = pgTable(
     // Failed calls only: the arguments the tool was called with (JSON, truncated),
     // so the log says what was attempted and not just that it failed.
     args: text('args'),
+    // UTF-8 bytes of the raw result text vs the text returned to the agent (compaction savings).
+    bytesIn: integer('bytes_in'),
+    bytesOut: integer('bytes_out'),
     ts: createdAt(),
   },
   (t) => ({

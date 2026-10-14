@@ -11,6 +11,8 @@ import { hasFeature, PYTHON_TOOLS } from '../lib/features.js';
 import { newId } from '../lib/id.js';
 import { resolveSourceConfig } from '../secrets/loader.js';
 import { toolUsableCond } from '../services/tools.js';
+import { compactResult } from './compact.js';
+import { projectResult } from './projection.js';
 import { runPython } from './python.js';
 import { runVirtual, staticResult } from './virtual.js';
 
@@ -22,9 +24,26 @@ export interface InvokeContext {
   source?: 'live' | 'test' | 'schedule';
   /** Set for nested calls: the tool must be usable by this project. Top-level calls leave it unset. */
   projectId?: string;
+  /** Auto-compact the agent-facing (depth 0) result — the workspace's compactResults. Unset = off. */
+  compact?: boolean;
 }
 
 const MAX_DEPTH = 5;
+
+/** UTF-8 bytes of the joined text blocks. */
+function textBytes(result: CallResult): number {
+  const texts = result.content.filter((c) => c.type === 'text' && typeof c.text === 'string').map((c) => c.text);
+  return Buffer.byteLength(texts.join('\n'), 'utf8');
+}
+
+/** Split off the reserved `_fields`/`_limit` args; malformed values are dropped silently. */
+function reservedArgs(args: Record<string, unknown>) {
+  const { _fields, _limit, ...rest } = args;
+  const fields =
+    Array.isArray(_fields) && _fields.length && _fields.every((f) => typeof f === 'string' && f) ? _fields : undefined;
+  const limit = Number.isInteger(_limit) && (_limit as number) > 0 ? (_limit as number) : undefined;
+  return { rest, fields, limit };
+}
 
 function estimateTokens(result: CallResult): number {
   const len = result.content.reduce((n, c) => n + (typeof c.text === 'string' ? c.text.length : 0), 0);
@@ -91,7 +110,16 @@ export async function invokeTool(
         ...(ctx.projectId ? [toolUsableCond(ctx.projectId)] : []),
       ),
     );
-  const result = await dispatch(tool, toolName, args, ctx, depth);
+  const { rest, fields, limit } = reservedArgs(args);
+  const raw = await dispatch(tool, toolName, rest, ctx, depth);
+  // Agent boundary only: nested calls (composites, python) get the raw result.
+  let result = raw;
+  if (depth === 0 && !raw.isError) {
+    result = projectResult(raw, { fields: tool?.outputFields, limit: tool?.outputLimit }, { fields, limit });
+    if (ctx.compact) result = compactResult(result);
+  }
+  const bytesIn = textBytes(raw);
+  const bytesOut = result === raw ? bytesIn : textBytes(result);
   // Observability: record each call. Never let logging break (or delay) the call.
   const durationMs = Date.now() - startedAt;
   void (async () => {
@@ -113,6 +141,8 @@ export async function invokeTool(
       tokensEst: estimateTokens(result),
       error: result.isError ? errorText(result) : null,
       args: result.isError ? JSON.stringify(args).slice(0, ARGS_LOG_CHARS) : null,
+      bytesIn,
+      bytesOut,
       ts: new Date(),
     });
   })().catch(() => {});

@@ -284,6 +284,7 @@ export async function bundleRoutes(app: FastifyInstance): Promise<void> {
           name: bundle.group.name,
           description: bundle.group.description ?? null,
           schedulingEnabled: bundle.group.schedulingEnabled ?? true,
+          compactResults: true,
           createdAt: new Date(),
         };
         await tx.insert(groups).values(grp);

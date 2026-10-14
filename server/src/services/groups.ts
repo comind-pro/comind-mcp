@@ -41,6 +41,7 @@ export async function createGroup(
     name: input.name,
     description: input.description ?? null,
     schedulingEnabled: input.schedulingEnabled ?? true,
+    compactResults: true,
     createdAt: new Date(),
   };
   await db.insert(groups).values(row);
