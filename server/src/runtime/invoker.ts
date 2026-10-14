@@ -117,6 +117,9 @@ export async function invokeTool(
   if (depth === 0 && !raw.isError) {
     result = projectResult(raw, { fields: tool?.outputFields, limit: tool?.outputLimit }, { fields, limit });
     if (ctx.compact) result = compactResult(result);
+    // MCP clients validate structuredContent against the declared outputSchema: pass it through raw.
+    if (tool?.outputSchema && raw.structuredContent !== undefined && result !== raw)
+      result = { ...result, structuredContent: raw.structuredContent };
   }
   const bytesIn = textBytes(raw);
   const bytesOut = result === raw ? bytesIn : textBytes(result);
@@ -138,7 +141,7 @@ export async function invokeTool(
       source: ctx.source ?? 'live',
       status: result.isError ? 'error' : 'success',
       durationMs,
-      tokensEst: estimateTokens(result),
+      tokensEst: estimateTokens(raw), // upstream size, comparable across the compaction toggle
       error: result.isError ? errorText(result) : null,
       args: result.isError ? JSON.stringify(args).slice(0, ARGS_LOG_CHARS) : null,
       bytesIn,

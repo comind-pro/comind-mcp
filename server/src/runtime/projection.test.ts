@@ -96,3 +96,10 @@ describe('projectResult multi-block / structured-only', () => {
     expect(out.structuredContent).toEqual({ total: 3 });
   });
 });
+
+describe('projectResult big integers', () => {
+  it('keeps integers beyond 2^53 exact (as strings)', () => {
+    const r = { content: [{ type: 'text', text: '{"id":9007199254740993,"tags":[1,2,3]}' }] };
+    expect(projectResult(r, {}, { limit: 1 }).content[0].text).toBe('{"id":"9007199254740993","tags":[1]}');
+  });
+});

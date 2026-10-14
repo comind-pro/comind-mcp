@@ -47,6 +47,7 @@ describe('invokeTool compaction and projection', () => {
   const ownerId = newId();
   const tag = newId().slice(0, 6).toLowerCase();
   const native = `cr_${tag}.issues`;
+  const schemad = `cr_${tag}.schemad`;
 
   /** The call log row for `name` (inserted fire-and-forget, so poll). */
   const logOf = (name: string) =>
@@ -70,6 +71,15 @@ describe('invokeTool compaction and projection', () => {
     await db.insert(sources).values({ id: sourceId, ownerId, projectId, name: 's', kind: 'http', config: {} });
     const base = { ownerId, projectId, visible: true, inputSchema: {}, createdAt: new Date() };
     await db.insert(tools).values({ ...base, id: newId(), sourceId, kind: 'native', name: native, upstreamName: 'x' });
+    await db.insert(tools).values({
+      ...base,
+      id: newId(),
+      sourceId,
+      kind: 'native',
+      name: schemad,
+      upstreamName: 'x',
+      outputSchema: { type: 'object' },
+    });
     const compId = newId();
     await db.insert(tools).values({ ...base, id: compId, kind: 'composite', name: `cr_${tag}.comp` });
     await db.insert(composites).values({
@@ -130,5 +140,25 @@ describe('invokeTool compaction and projection', () => {
     const r = await invokeTool(native, {}, { ownerId, compact: true });
     expect(r.content[0].text).toBe(fake.body);
     await logOf(native);
+  });
+
+  test('(f) outputSchema: text shaped, structuredContent stays raw', async () => {
+    const body = JSON.stringify({
+      items: Array.from({ length: 60 }, (_, i) => ({
+        id: i,
+        title: `Issue number ${i} needs attention`,
+        url: `https://x.test/i/${i}`,
+        state: null,
+      })),
+    });
+    fake.body = body;
+    const r = await invokeTool(
+      schemad,
+      { _fields: ['items.title', 'items.url', 'items.state'] },
+      { ownerId, compact: true },
+    );
+    expect(r.content[0].text).toMatch(/^items \(60 rows\):\ntitle \| url\n/);
+    expect(r.structuredContent).toEqual(JSON.parse(body));
+    await logOf(schemad);
   });
 });

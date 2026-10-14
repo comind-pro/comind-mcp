@@ -1,4 +1,5 @@
 import type { CallResult } from '../connectors/types.js';
+import { parseJson } from './compact.js';
 
 interface Node {
   leaf: boolean;
@@ -104,7 +105,7 @@ export function projectResult(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    parsed = parseJson(text);
   } catch {
     // ponytail: non-JSON text → only a line limit; _fields ignored (structuredContent still projected below)
     const out = limit === undefined ? replaceAt(text) : replaceAt(text.split('\n').slice(0, limit).join('\n'));

@@ -225,15 +225,17 @@ authoring time. Tuning: `PYTHON_TOOL_TIMEOUT_MS` (30000), `PYTHON_TOOL_MAX_CALLS
 
 ## Compact results
 
-Tool results cost the agent's context, so the gateway shrinks them before they leave. It applies only
-to the agent-facing call; composites and Python tools calling other tools always get the raw result.
+Tool results cost the agent's context, so the gateway shrinks them before they leave. Level 1 applies
+only to agent calls; owner projection applies to every top-level call. Composites and Python tools
+calling other tools always get the raw result.
 Errors are never touched.
 
 **Level 1, auto-compaction** (results of 2 KiB or more, per-workspace toggle, default on). JSON becomes
-flat `key: value` lines (nulls and empty strings dropped, long floats rounded, base64 replaced by a
-placeholder), and arrays of 3+ similar objects become a `|` table. HTML becomes text (scripts, styles
+flat `key: value` lines (nulls and empty strings dropped, numbers kept exact, base64 payloads replaced
+by a placeholder), and arrays of 3+ similar objects become a `|` table. HTML becomes text (scripts, styles
 and tags removed, links as `text (url)`). Logs collapse repeated lines to `line (×N)`. It is skipped
-when the output would not be smaller.
+when the output would not be smaller. If the flat text is still 8 KiB or more, a hint line suggests
+`_fields` / `_limit`.
 
 **Level 2, projection** (always on). Every tool in `tools/list` accepts two extra optional arguments,
 stripped before the upstream sees them: `_fields` (dot paths, arrays traversed implicitly) and `_limit`
@@ -253,8 +255,9 @@ The per-workspace switch is `compactResults` on `POST/PATCH /groups` (Workspaces
 (`GET /metrics`: `saved_bytes`).
 
 **Trade-off.** Level 1 returns flat text, not JSON, in the `text` block. A programmatic consumer that
-parses that block should read `structuredContent` instead (it stays JSON, only cleaned and projected)
-or turn the workspace toggle off.
+parses that block should read `structuredContent` instead or turn the workspace toggle off. For tools
+with an `outputSchema`, `structuredContent` is always the raw upstream value (MCP clients validate it);
+for others it stays JSON, cleaned and projected, and is dropped when still large.
 
 ---
 
