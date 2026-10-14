@@ -92,6 +92,7 @@ POST/GET /sources          GET/PATCH/DELETE /sources/:id
 POST /sources/:id/test     POST /sources/:id/import
 # tools
 GET /tools  (?sourceId&kind&visible)   GET/PATCH/DELETE /tools/:id
+PATCH /tools/:id {outputFields:string[]|null, outputLimit:int>0|null}   (owner projection defaults)
 # composites
 POST/GET /composite-tools  GET/DELETE /composite-tools/:id   POST /composite-tools/:id/run
 # python tools (gated — see "Python tools")
@@ -99,7 +100,7 @@ POST /python-tools         GET/PATCH/DELETE /python-tools/:id
 POST /python-tools/test    POST /python-tools/:id/run
 GET  /features
 # groups
-POST/GET /groups           GET/PATCH/DELETE /groups/:id
+POST/GET /groups           GET/PATCH/DELETE /groups/:id   (body: ..., compactResults?: bool, default true)
 GET/PUT /groups/:id/tools
 # projects (tree + sharing)  — every route above accepts ?project=<nodeId>
 GET /projects              POST /projects {kind:'team'|'project', name, parentId}
@@ -119,7 +120,7 @@ POST /schedules/:id/run           GET /schedules/:id/runs
 # secrets (metadata only; value/ciphertext is NEVER returned)
 POST/GET /secrets          DELETE /secrets/:id
 # observability
-GET /logs (?groupId&agentId&toolName&status&limit)   GET /metrics
+GET /logs (?groupId&agentId&toolName&status&limit)   GET /metrics (totals/byTool carry saved_bytes)
 GET /agents/:id/inspect    POST /agents/:id/invoke
 ```
 
@@ -221,6 +222,39 @@ VALUES (gen_random_uuid()::text, '<user-id>', 'python_tools', true);
 Revoking the row stops existing tools too — the ACL is re-checked on every call, not just at
 authoring time. Tuning: `PYTHON_TOOL_TIMEOUT_MS` (30000), `PYTHON_TOOL_MAX_CALLS` (100),
 `PYTHON_TOOL_MAX_CODE_BYTES` (65536).
+
+## Compact results
+
+Tool results cost the agent's context, so the gateway shrinks them before they leave. It applies only
+to the agent-facing call; composites and Python tools calling other tools always get the raw result.
+Errors are never touched.
+
+**Level 1, auto-compaction** (results of 2 KiB or more, per-workspace toggle, default on). JSON becomes
+flat `key: value` lines (nulls and empty strings dropped, long floats rounded, base64 replaced by a
+placeholder), and arrays of 3+ similar objects become a `|` table. HTML becomes text (scripts, styles
+and tags removed, links as `text (url)`). Logs collapse repeated lines to `line (×N)`. It is skipped
+when the output would not be smaller.
+
+**Level 2, projection** (always on). Every tool in `tools/list` accepts two extra optional arguments,
+stripped before the upstream sees them: `_fields` (dot paths, arrays traversed implicitly) and `_limit`
+(max items per array):
+
+```json
+{ "query": "open bugs", "_fields": ["items.title", "items.url"], "_limit": 5 }
+```
+
+If no path matches, the original result comes back with a note, so a typo never blanks it.
+
+**Owner defaults.** Set `outputFields` / `outputLimit` on a tool (`PATCH /tools/:id`, or the Tools tab)
+to project every call by default; the agent's `_fields` / `_limit` can only narrow that further.
+The per-workspace switch is `compactResults` on `POST/PATCH /groups` (Workspaces tab). Projection stays on.
+
+**Savings** show in Activity: a `saved` total, a `saved` column per tool, and in/out KB per log row
+(`GET /metrics`: `saved_bytes`).
+
+**Trade-off.** Level 1 returns flat text, not JSON, in the `text` block. A programmatic consumer that
+parses that block should read `structuredContent` instead (it stays JSON, only cleaned and projected)
+or turn the workspace toggle off.
 
 ---
 

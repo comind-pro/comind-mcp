@@ -20,6 +20,8 @@ const patchBody = z.object({
   dangerous: z.boolean().nullable().optional(),
   permissions: z.array(z.string()).optional(),
   examples: z.array(z.object({ description: z.string().optional(), input: z.record(z.unknown()) })).optional(),
+  outputFields: z.array(z.string().min(1)).nullable().optional(),
+  outputLimit: z.number().int().positive().nullable().optional(),
   recommendedUse: z
     .object({
       daily_report: z.boolean().optional(),
@@ -80,6 +82,8 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
     if (body.dangerous !== undefined) patch.dangerous = body.dangerous;
     if (body.permissions !== undefined) patch.permissions = body.permissions;
     if (body.examples !== undefined) patch.examples = body.examples;
+    if (body.outputFields !== undefined) patch.outputFields = body.outputFields;
+    if (body.outputLimit !== undefined) patch.outputLimit = body.outputLimit;
     if (body.recommendedUse !== undefined) patch.recommendedUse = body.recommendedUse;
     if (Object.keys(patch).length) await db.update(tools).set(patch).where(eq(tools.id, id));
 
