@@ -163,6 +163,10 @@ export interface Tool {
   permissions?: string[];
   examples?: ToolExample[];
   recommendedUse?: RecommendedUse | null;
+  /** dot paths kept in the agent-facing result; null = everything */
+  outputFields?: string[] | null;
+  /** max array items kept per projected array; null = no cap */
+  outputLimit?: number | null;
   projectId: string;
   createdByAgentId: string | null;
 }
@@ -172,6 +176,7 @@ export interface Group {
   name: string;
   description: string | null;
   schedulingEnabled: boolean;
+  compactResults: boolean;
   projectId: string;
   createdByAgentId: string | null;
 }
@@ -300,6 +305,9 @@ export interface CallLog {
   error: string | null;
   /** failed calls only: JSON of the call arguments (may be truncated) */
   args: string | null;
+  /** result size before/after compaction (null for older rows) */
+  bytesIn?: number | null;
+  bytesOut?: number | null;
   ts: number;
   projectId: string | null;
 }

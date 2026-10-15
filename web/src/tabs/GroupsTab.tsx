@@ -192,6 +192,17 @@ export function GroupsTab() {
     }
   };
 
+  const setCompact = async (g: Group, enabled: boolean) => {
+    setErr('');
+    setGroups((gs) => (gs ?? []).map((x) => (x.id === g.id ? { ...x, compactResults: enabled } : x)));
+    try {
+      await api.patch(`/groups/${g.id}`, { compactResults: enabled });
+    } catch (e) {
+      setErr(String((e as Error).message));
+      void loadGroups();
+    }
+  };
+
   const body = (g: Group) => (
     <div className="editor-left no-border-r">
       <CopyRow label="MCP endpoint" text={`${api.base}/g/${g.slug}/mcp`} />
@@ -203,6 +214,23 @@ export function GroupsTab() {
       </div>
       <div className="hint">Changes save automatically.</div>
       <ToolPicker tools={tools} sources={sources} selected={assigned} onChange={(next) => onToolsChange(next, g.id)} />
+
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 22 }}>
+        <span className="editor-section m0">Tool results</span>
+        <span className="seg">
+          <span className={g.compactResults ? 'on' : ''} onClick={() => setCompact(g, true)}>
+            Compact
+          </span>
+          <span className={!g.compactResults ? 'on' : ''} onClick={() => setCompact(g, false)}>
+            Raw
+          </span>
+        </span>
+      </div>
+      <div className="hint">
+        {g.compactResults
+          ? 'Large results are flattened to compact text before agents see them, saving tokens.'
+          : 'Agents receive tool results exactly as the tool returned them.'}
+      </div>
 
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 22 }}>
         <span className="editor-section m0">Schedules</span>

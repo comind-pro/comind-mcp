@@ -13,12 +13,14 @@ const createBody = z.object({
   slug: z.string().min(1).optional(),
   description: z.string().optional(),
   schedulingEnabled: z.boolean().optional(),
+  compactResults: z.boolean().optional(),
 });
 
 const patchBody = z.object({
   name: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
   schedulingEnabled: z.boolean().optional(),
+  compactResults: z.boolean().optional(),
 });
 
 export async function groupRoutes(app: FastifyInstance): Promise<void> {
@@ -52,6 +54,7 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
     if (body.name !== undefined) patch.name = body.name;
     if (body.description !== undefined) patch.description = body.description;
     if (body.schedulingEnabled !== undefined) patch.schedulingEnabled = body.schedulingEnabled;
+    if (body.compactResults !== undefined) patch.compactResults = body.compactResults;
     if (Object.keys(patch).length) await db.update(groups).set(patch).where(eq(groups.id, id));
 
     const [row] = await db.select().from(groups).where(eq(groups.id, id));

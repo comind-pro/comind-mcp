@@ -29,7 +29,7 @@ export async function ownedGroup(scope: Scope, id: string): Promise<GroupRow | n
 
 export async function createGroup(
   scope: Scope,
-  input: { name: string; slug?: string; description?: string; schedulingEnabled?: boolean },
+  input: { name: string; slug?: string; description?: string; schedulingEnabled?: boolean; compactResults?: boolean },
   createdByAgentId: string | null,
 ): Promise<GroupRow> {
   const row = {
@@ -41,6 +41,7 @@ export async function createGroup(
     name: input.name,
     description: input.description ?? null,
     schedulingEnabled: input.schedulingEnabled ?? true,
+    compactResults: input.compactResults ?? true,
     createdAt: new Date(),
   };
   await db.insert(groups).values(row);

@@ -9,6 +9,7 @@ interface ToolRow {
   errors: number;
   tokens: number;
   avg_ms: number;
+  saved_bytes: number;
 }
 interface AgentRow {
   agent: string;
@@ -23,6 +24,7 @@ const toolGetters = {
   errors: (r: ToolRow) => r.errors,
   tokens: (r: ToolRow) => r.tokens,
   avg_ms: (r: ToolRow) => r.avg_ms,
+  saved_bytes: (r: ToolRow) => r.saved_bytes,
 };
 const agentGetters = {
   agent: (r: AgentRow) => r.agent.toLowerCase(),
@@ -39,10 +41,13 @@ const logGetters = {
   tokensEst: (l: CallLog) => l.tokensEst,
 };
 interface Metrics {
-  totals: { calls: number; errors: number; tokens: number; avg_ms: number; p95_ms: number };
+  totals: { calls: number; errors: number; tokens: number; avg_ms: number; p95_ms: number; saved_bytes: number };
   byTool: ToolRow[];
   byAgent: AgentRow[];
 }
+
+const kb = (b: number) => Math.round(b / 1024);
+const kb1 = (b: number) => (b / 1024).toFixed(1);
 
 const WINDOWS: Record<string, number> = { '24h': 1, '7d': 7, '30d': 30, all: 0 };
 const SOURCES = [
@@ -170,6 +175,7 @@ export function LogsTab() {
             {stat('~tokens', metrics.totals.tokens)}
             {stat('avg ms', metrics.totals.avg_ms)}
             {stat('p95 ms', metrics.totals.p95_ms)}
+            {stat('saved KB', kb(metrics.totals.saved_bytes))}
           </div>
 
           <div className="card">
@@ -182,6 +188,7 @@ export function LogsTab() {
                   <Th id="errors" label="errors" sort={toolSort} />
                   <Th id="tokens" label="~tokens" sort={toolSort} />
                   <Th id="avg_ms" label="avg ms" sort={toolSort} />
+                  <Th id="saved_bytes" label="saved KB" sort={toolSort} />
                 </tr>
               </thead>
               <tbody>
@@ -192,11 +199,12 @@ export function LogsTab() {
                     <td>{m.errors}</td>
                     <td>{m.tokens}</td>
                     <td>{m.avg_ms}</td>
+                    <td>{kb(m.saved_bytes)}</td>
                   </tr>
                 ))}
                 {!metrics.byTool.length && (
                   <tr>
-                    <td colSpan={5} className="muted">
+                    <td colSpan={6} className="muted">
                       No data in window.
                     </td>
                   </tr>
@@ -249,6 +257,7 @@ export function LogsTab() {
               <Th id="status" label="status" sort={logSort} />
               <Th id="durationMs" label="ms" sort={logSort} />
               <Th id="tokensEst" label="~tok" sort={logSort} />
+              <th>in→out</th>
             </tr>
           </thead>
           <tbody>
@@ -276,10 +285,13 @@ export function LogsTab() {
                     </td>
                     <td>{l.durationMs}</td>
                     <td>{l.tokensEst ?? '—'}</td>
+                    <td className="mono">
+                      {l.bytesIn != null && l.bytesOut != null ? `${kb1(l.bytesIn)}→${kb1(l.bytesOut)} KB` : '—'}
+                    </td>
                   </tr>
                   {canOpen && isOpen && (
                     <tr className="detail-row">
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         <div className="row" style={{ gap: 16 }}>
                           <span>
                             tool: <span className="mono">{l.toolName}</span>
@@ -313,7 +325,7 @@ export function LogsTab() {
             })}
             {!logs.length && (
               <tr>
-                <td colSpan={6}>
+                <td colSpan={7}>
                   <EmptyState
                     title="No activity yet"
                     body="Calls appear here as soon as an agent (or a schedule) runs a tool."

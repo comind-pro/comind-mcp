@@ -71,6 +71,7 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
       select count(*)::int calls,
              count(*) filter (where status='error')::int errors,
              coalesce(sum(tokens_est),0)::int tokens,
+             coalesce(sum(bytes_in - bytes_out),0)::int saved_bytes,
              coalesce(round(avg(duration_ms)),0)::int avg_ms,
              coalesce(percentile_cont(0.95) within group (order by duration_ms),0)::int p95_ms
       from call_logs where ${where}`);
@@ -79,6 +80,7 @@ export async function observabilityRoutes(app: FastifyInstance): Promise<void> {
              count(*)::int calls,
              count(*) filter (where status='error')::int errors,
              coalesce(sum(tokens_est),0)::int tokens,
+             coalesce(sum(bytes_in - bytes_out),0)::int saved_bytes,
              coalesce(round(avg(duration_ms)),0)::int avg_ms
       from call_logs where ${where} group by tool_name order by calls desc limit 50`);
     const byAgent = await db.execute(sql`

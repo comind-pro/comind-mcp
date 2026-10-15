@@ -29,6 +29,8 @@ export interface AgentAuth {
   groupId: string;
   groupSlug: string;
   schedulingEnabled: boolean;
+  /** Workspace setting: auto-compact tool results for this group. */
+  compactResults: boolean;
   /** Built-in system.* tools this group exposes (subset of SYSTEM_TOOL_NAMES). */
   systemTools: string[];
 }
@@ -41,7 +43,7 @@ export interface AgentAuthAll {
   role: 'lead' | 'coo';
   /** Built-in system.* tools this agent exposes (subset of SYSTEM_TOOL_NAMES). */
   systemTools: string[];
-  groups: { id: string; slug: string; schedulingEnabled: boolean }[];
+  groups: { id: string; slug: string; schedulingEnabled: boolean; compactResults: boolean }[];
 }
 
 interface Resolved {
@@ -127,6 +129,7 @@ export async function authenticateAgent(ref: string, authHeader: string | undefi
     groupId: grp.id,
     groupSlug: grp.slug,
     schedulingEnabled: grp.schedulingEnabled,
+    compactResults: grp.compactResults,
     systemTools: r.systemTools,
   };
 }
@@ -161,6 +164,7 @@ export async function authenticateAgentAll(authHeader: string | undefined): Prom
       id: g.id,
       slug: g.slug,
       schedulingEnabled: g.schedulingEnabled,
+      compactResults: g.compactResults,
     })),
   };
 }
@@ -247,6 +251,26 @@ async function handleSelfCron(auth: AgentAuth, name: string, args: Record<string
   return text(`Unknown self-cron tool: ${name}`, true);
 }
 
+/** Reserved result-shaping args advertised on every tool (stripped by the invoker before dispatch). */
+const RESERVED_ARGS = {
+  _fields: {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Return only these dot-paths (e.g. items.title). Arrays are traversed.',
+  },
+  _limit: { type: 'integer', description: 'Keep at most N items per array.' },
+};
+
+/** A tool inputSchema plus `_fields`/`_limit`; non-object schemas pass through untouched. */
+export function withReservedArgs(schema: Record<string, unknown>): Record<string, unknown> {
+  if (schema.type !== 'object' && !schema.properties) return schema;
+  return {
+    ...schema,
+    properties: { ...(schema.properties as Record<string, unknown> | undefined), ...RESERVED_ARGS },
+    ...(schema.additionalProperties === false ? { additionalProperties: true } : {}),
+  };
+}
+
 /** Visible tools assigned to a group. */
 async function groupVisibleTools(groupId: string) {
   const links = await db.select().from(groupTools).where(eq(groupTools.groupId, groupId));
@@ -297,7 +321,7 @@ const branding = {
 export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
   const server = new Server(
     { name: `comind:${auth.groupSlug}`, version: '0.1.0', title: `Comind · ${auth.groupSlug}`, ...branding },
-    { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) || undefined },
+    { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -309,7 +333,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
       description: t.displayName
         ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
         : (t.description ?? undefined),
-      inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
+      inputSchema: withReservedArgs((t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} }),
       ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
     }));
     const base = auth.schedulingEnabled ? [...toolDefs, ...SELF_CRON_TOOLS] : toolDefs;
@@ -362,6 +386,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
       ownerId: auth.ownerId,
       agentId: auth.agentId,
       groupId: auth.groupId,
+      compact: auth.compactResults,
     });
     return {
       content: result.content,
@@ -383,7 +408,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
 export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
   const server = new Server(
     { name: 'comind:agent', version: '0.1.0', title: 'ComindMCP', ...branding },
-    { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) || undefined },
+    { capabilities: { tools: {} }, instructions: systemInstructions(auth.systemTools) },
   );
 
   // MCP-safe name -> { groupId, tool } across all reachable groups (first group
@@ -411,7 +436,9 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
           description: t.displayName
             ? `${t.displayName}${t.description ? ` — ${t.description}` : ''}`
             : (t.description ?? undefined),
-          inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
+          inputSchema: withReservedArgs(
+            (t.inputSchema as Record<string, unknown>) ?? { type: 'object', properties: {} },
+          ),
           ...(t.outputSchema ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
         })),
         ...pickSystemTools(auth.systemTools),
@@ -460,6 +487,7 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
       ownerId: auth.ownerId,
       agentId: auth.agentId,
       groupId: hit.groupId,
+      compact: auth.groups.find((g) => g.id === hit.groupId)?.compactResults ?? true,
     });
     return {
       content: result.content,
