@@ -247,6 +247,17 @@ export function SourcesTab() {
     close();
   };
 
+  const checkAll = async () => {
+    setBusy('check');
+    try {
+      setSources(await api.post<Source[]>('/sources/check', {}));
+    } catch (e) {
+      setErr(String((e as Error).message));
+    } finally {
+      setBusy('');
+    }
+  };
+
   const dotColor = (status: string) =>
     status === 'ok' ? 'var(--ok)' : status === 'error' ? 'var(--err)' : 'var(--text-muted)';
 
@@ -574,9 +585,19 @@ export function SourcesTab() {
         <div>
           <span className="sub">{sources.length} connected</span>
         </div>
-        <button className="btn-primary" onClick={openNew}>
-          + New connection
-        </button>
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            className="ghost"
+            onClick={checkAll}
+            disabled={!!busy}
+            title="Ping every connection now and refresh what a re-import would change"
+          >
+            {busy === 'check' ? 'Checking…' : 'Refresh all'}
+          </button>
+          <button className="btn-primary" onClick={openNew}>
+            + New connection
+          </button>
+        </div>
       </div>
 
       {err && !ed && <div className="err-msg">{err}</div>}

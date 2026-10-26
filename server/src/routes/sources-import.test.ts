@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import Fastify from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { db, pool, runMigrations } from '../db/client.js';
@@ -133,5 +134,23 @@ describe.skipIf(!dbUp)('source import report', () => {
     const src = await getSource();
     expect(src.status).toBe('error');
     expect(src.drift).toEqual({ new: [], changed: ['imp.keep'], gone: ['imp.drop'] });
+  });
+
+  it('POST /sources/check runs the check now and returns the refreshed list', async () => {
+    const stub = Fastify();
+    stub.get('/', async () => ({ ok: true }));
+    const base = await stub.listen({ port: 0, host: '127.0.0.1' });
+    try {
+      await call('PATCH', `/sources/${sourceId}`, {
+        config: { baseUrl: base, endpoints: [endpoint('keep', 'v4'), endpoint('extra', 'v1')] },
+      });
+      const res = await call('POST', '/sources/check');
+      expect(res.statusCode).toBe(200);
+      const src = (res.json() as { id: string; status: string; drift: unknown }[]).find((s) => s.id === sourceId);
+      expect(src?.status).toBe('ok');
+      expect(src?.drift).toEqual({ new: [], changed: ['imp.keep'], gone: ['imp.drop'] });
+    } finally {
+      await stub.close();
+    }
   });
 });
