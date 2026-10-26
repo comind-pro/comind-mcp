@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type Source, type Tool } from '../api.js';
+import { api, type Source, type SourceDrift, type Tool } from '../api.js';
 import { Icon, type IconName } from '../icons.js';
 import { RowBadges } from '../ProjectSelector.js';
 import { Advanced, EmptyState, Loading, useConfirm } from '../ui.js';
@@ -25,6 +25,24 @@ type ImportChange = {
   fields: string[];
 };
 type ImportReport = { mode: 'force' | 'new'; changes: ImportChange[] };
+
+/** "2 new · 1 changed · 1 gone" — empty string when a re-import would change nothing. */
+export const driftSummary = (d: SourceDrift | null | undefined): string =>
+  (['new', 'changed', 'gone'] as const)
+    .filter((k) => d?.[k].length)
+    .map((k) => `${d?.[k].length} ${k}`)
+    .join(' · ');
+
+const ago = (iso: string): string => {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  return m < 1
+    ? 'just now'
+    : m < 60
+      ? `${m}m ago`
+      : m < 1440
+        ? `${Math.round(m / 60)}h ago`
+        : `${Math.round(m / 1440)}d ago`;
+};
 
 interface Editing {
   id: string; // 'new' for a draft
@@ -291,6 +309,7 @@ export function SourcesTab() {
     const toolCount = /(\d+)\s*(tools?|operations?)/i.exec(e.testMsg)?.[1];
     const testFirstLine = e.testMsg.split('\n')[0];
     const testIsLong = e.testMsg.length > 140 || e.testMsg.includes('\n');
+    const drift = isNew ? null : sources?.find((s) => s.id === e.id)?.drift;
     return (
       <div className="editor-split">
         {/* LEFT: form */}
@@ -438,6 +457,25 @@ export function SourcesTab() {
               );
             })()}
 
+          {!e.importReport && driftSummary(drift) && (
+            <div style={{ margin: '12px 0' }}>
+              {(['new', 'changed', 'gone'] as const).map((k) =>
+                (drift?.[k] ?? []).map((name) => (
+                  <div key={name} className="row" style={{ gap: 8, padding: '3px 0' }}>
+                    <span className="badge" style={{ color: 'var(--warn)', borderColor: 'var(--warn)' }}>
+                      {k}
+                    </span>
+                    <span className="mono">{name}</span>
+                  </div>
+                )),
+              )}
+              <div className="hint">
+                The source differs from what you imported. “Import tools” adds the new ones; “Force re-import” also
+                replaces changed tools and removes gone ones.
+              </div>
+            </div>
+          )}
+
           {/* actions */}
           <div className="row divider-top">
             {isNew && !e.created && (
@@ -566,6 +604,15 @@ export function SourcesTab() {
               <span className="status-line src-status" style={{ color: dotColor(s.status) }}>
                 <span className="status-dot" style={{ background: dotColor(s.status) }} /> {s.status}
               </span>
+              {driftSummary(s.drift) && (
+                <span
+                  className="badge"
+                  style={{ color: 'var(--warn)', borderColor: 'var(--warn)' }}
+                  title={`Re-import needed: ${driftSummary(s.drift)}${s.driftCheckedAt ? ` (checked ${ago(s.driftCheckedAt)})` : ''}`}
+                >
+                  update available · {driftSummary(s.drift)}
+                </span>
+              )}
               <span className="ml-auto" />
               <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Edit'}</span>
               <span className={`chev ${open ? 'up' : ''}`}>⌄</span>

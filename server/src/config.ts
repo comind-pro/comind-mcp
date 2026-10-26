@@ -49,6 +49,8 @@ export const config = {
   serverEnv: env('SERVER_ENV', process.env.NODE_ENV || 'dev'),
   // Optional build timestamp (ISO string) surfaced via system.version.
   buildTime: process.env.BUILD_TIME || null,
+  // Minutes (1–59) between periodic source checks (status + pending re-import changes). 0 = off.
+  sourceCheckMinutes: Number(env('SOURCE_CHECK_MINUTES', '10')),
   // How long a cached source status is considered fresh (system.context freshness).
   sourceStatusTtlSeconds: Number(env('SOURCE_STATUS_TTL_SECONDS', '300')),
   // Executable virtual tools: timeout per outbound HTTP call.

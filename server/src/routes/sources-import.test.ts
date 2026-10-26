@@ -2,7 +2,9 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { db, pool, runMigrations } from '../db/client.js';
-import { users } from '../db/schema.js';
+import { sources, users } from '../db/schema.js';
+import { checkSource } from '../scheduler/source-check.js';
+import { sourceDrift } from '../services/sources.js';
 
 /** Integration test: per-tool import report + force re-import soft-deleting tools
  *  the source dropped, and restoring them when they come back. Needs a reachable Postgres; skipped otherwise. */
@@ -101,5 +103,35 @@ describe.skipIf(!dbUp)('source import report', () => {
     expect(await userTools()).toEqual({ 'imp.keep': 'v2', 'imp.drop': 'v3' });
     const back = (await call('GET', `/groups/${groupId}/tools`)).json() as { id: string }[];
     expect(back.map((t) => t.id)).toContain(dropId);
+  });
+
+  const sourceRow = async () => (await db.select().from(sources).where(eq(sources.id, sourceId)))[0];
+  const getSource = async () =>
+    (await call('GET', `/sources/${sourceId}`)).json() as { status: string; drift: unknown; driftCheckedAt: string };
+
+  it('reports what a re-import would change without touching the tools', async () => {
+    await setEndpoints([endpoint('keep', 'v3'), endpoint('extra', 'v1')]);
+    expect(await sourceDrift(await sourceRow())).toEqual({
+      new: ['imp.extra'],
+      changed: ['imp.keep'],
+      gone: ['imp.drop'],
+    });
+    expect(await userTools()).toEqual({ 'imp.keep': 'v2', 'imp.drop': 'v3' });
+
+    // an import is a check too: a plain one creates the new tool and records what it left alone
+    await runImport(false);
+    const src = await getSource();
+    expect(src.drift).toEqual({ new: [], changed: ['imp.keep'], gone: ['imp.drop'] });
+    expect(src.driftCheckedAt).toBeTruthy();
+  });
+
+  it('an unreachable source turns red and keeps its last known drift', async () => {
+    await call('PATCH', `/sources/${sourceId}`, {
+      config: { baseUrl: 'http://127.0.0.1:1', endpoints: [endpoint('keep', 'v3'), endpoint('extra', 'v1')] },
+    });
+    await checkSource(await sourceRow());
+    const src = await getSource();
+    expect(src.status).toBe('error');
+    expect(src.drift).toEqual({ new: [], changed: ['imp.keep'], gone: ['imp.drop'] });
   });
 });

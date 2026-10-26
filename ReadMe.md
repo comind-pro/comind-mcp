@@ -223,6 +223,10 @@ Revoking the row stops existing tools too — the ACL is re-checked on every cal
 authoring time. Tuning: `PYTHON_TOOL_TIMEOUT_MS` (30000), `PYTHON_TOOL_MAX_CALLS` (100),
 `PYTHON_TOOL_MAX_CODE_BYTES` (65536).
 
+## Source check
+
+Every `SOURCE_CHECK_MINUTES` (default 10, `0` = off) the server pings every connection and records what a re-import would change (`sources.drift`: `new` / `changed` / `gone` tool names, plus `driftCheckedAt`). The Connections page shows an "update available" badge on such rows; the row's "Import tools" adds the new ones, "Force re-import" also replaces changed tools and removes gone ones. An import records the drift it leaves behind, so the badge clears as soon as the source and the import agree.
+
 ## Compact results
 
 Tool results cost the agent's context, so the gateway shrinks them before they leave. Level 1 applies

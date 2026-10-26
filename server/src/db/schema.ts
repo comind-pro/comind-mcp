@@ -93,8 +93,13 @@ export const sources = pgTable('sources', {
   // Cached queryable objects (GA properties, DB schemas, mailboxes). Refreshed on demand.
   objects: jsonb('objects').$type<Array<Record<string, unknown>>>().notNull().default(sql`'[]'::jsonb`),
   objectsCheckedAt: timestamp('objects_checked_at', { withTimezone: true }),
+  // What a re-import would change, as seen by the periodic source check (or the
+  // last import). Null = never checked. Names are the prefixed tool names.
+  drift: jsonb('drift').$type<SourceDrift>(),
+  driftCheckedAt: timestamp('drift_checked_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
+export type SourceDrift = { new: string[]; changed: string[]; gone: string[] };
 
 /**
  * Tool = a single callable. Either native (proxied from a source) or composite

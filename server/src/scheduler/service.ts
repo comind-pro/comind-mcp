@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { callLogs, groups, groupTools, jobRuns, liveTool, rateLimits, schedules, tools } from '../db/schema.js';
 import { newId } from '../lib/id.js';
 import { invokeTool } from '../runtime/invoker.js';
+import { checkAllSources } from './source-check.js';
 
 const registry = new Map<string, ScheduledTask>();
 
@@ -158,6 +159,14 @@ export async function initScheduler(): Promise<void> {
         .delete(callLogs)
         .where(lt(callLogs.ts, new Date(Date.now() - days * 86_400_000)))
         .catch(() => {});
+    });
+  }
+
+  // Source check: status + pending re-import changes for every connection.
+  const minutes = config.sourceCheckMinutes;
+  if (minutes > 0) {
+    cron.schedule(`*/${minutes} * * * *`, () => {
+      void checkAllSources();
     });
   }
 
