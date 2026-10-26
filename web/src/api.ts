@@ -127,6 +127,11 @@ export interface SourceObject {
   type?: string;
   product_hint?: string | null;
 }
+export interface SourceDrift {
+  new: string[];
+  changed: string[];
+  gone: string[];
+}
 export interface Source {
   id: string;
   name: string;
@@ -134,6 +139,10 @@ export interface Source {
   config: Record<string, unknown>;
   status: string;
   statusMessage: string | null;
+  statusCheckedAt?: string | null;
+  /** What a re-import would change, from the periodic check or the last import. */
+  drift?: SourceDrift | null;
+  driftCheckedAt?: string | null;
   objects?: SourceObject[];
   objectsCheckedAt?: string | null;
   projectId: string;

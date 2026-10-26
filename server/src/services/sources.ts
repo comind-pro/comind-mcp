@@ -1,8 +1,9 @@
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { applyAuth } from '../auth/apply.js';
 import { createConnector, parseSourceConfig, type SourceKind } from '../connectors/index.js';
+import type { HealthResult, ToolDef } from '../connectors/types.js';
 import { db } from '../db/client.js';
-import { liveTool, sources, tools } from '../db/schema.js';
+import { liveTool, type SourceDrift, sources, tools } from '../db/schema.js';
 import { newId, slugify } from '../lib/id.js';
 import { inScope, inSubtree, type Scope } from '../lib/scope.js';
 import { changedFields } from '../lib/tool-diff.js';
@@ -94,15 +95,20 @@ export async function createSource(
 const connectorFor = async (row: SourceRow) =>
   createConnector(row.kind, await applyAuth(row.id, await resolveSourceConfig(row.config, row.ownerId, row.id)));
 
+/** Health check that never throws: a connector that cannot even be built (e.g.
+ *  a pending secret) is reported as a failed check. */
+export async function probeSource(row: SourceRow): Promise<HealthResult> {
+  try {
+    return await (await connectorFor(row)).health();
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+}
+
 export async function testSource(scope: Scope, id: string): Promise<{ ok: boolean; message?: string } | ServiceErr> {
   const row = await visibleSource(scope, id);
   if (!row) return NOT_FOUND;
-  let result: { ok: boolean; message?: string };
-  try {
-    result = await (await connectorFor(row)).health();
-  } catch (e) {
-    result = { ok: false, message: (e as Error).message }; // e.g. a pending secret
-  }
+  const result = await probeSource(row);
   // A grantee may check the connection but not write the source's status.
   if (await administeredSource(scope, id))
     await db
@@ -169,6 +175,64 @@ async function goneTools(sourceId: string, upstreamNames: string[]) {
     );
 }
 
+/** The fields a force import refreshes from the source. undefined is omitted by
+ *  drizzle on update, preserving a manual value. */
+const refreshedFrom = (t: ToolDef) => ({
+  upstreamName: t.name,
+  description: t.description ?? null,
+  inputSchema: t.inputSchema ?? null,
+  outputSchema: t.outputSchema,
+  // curated discovery metadata from the connector (when provided)
+  readOnly: t.readOnly,
+  dangerous: t.dangerous,
+  permissions: t.permissions,
+  examples: t.examples,
+  recommendedUse: t.recommendedUse,
+});
+
+/** The owner's rows (soft-deleted too — they still own their name) under the
+ *  names an import of `upstream` would claim, keyed by name. */
+async function storedByName(owner: string, prefix: string, upstream: ToolDef[]): Promise<Map<string, ToolRow>> {
+  if (!upstream.length) return new Map();
+  const rows = await db
+    .select()
+    .from(tools)
+    .where(
+      and(
+        eq(tools.ownerId, owner),
+        inArray(
+          tools.name,
+          upstream.map((t) => `${prefix}.${t.name}`),
+        ),
+      ),
+    );
+  return new Map(rows.map((r) => [r.name, r] as const));
+}
+
+/** What a re-import would change — the read-only twin of `importSource`'s report:
+ *  `new` = not imported yet (or soft-deleted and back), `changed` = differs from
+ *  the source, `gone` = live here but no longer offered. Tools owned by another
+ *  source are not ours and are skipped. */
+export async function sourceDrift(row: SourceRow): Promise<SourceDrift> {
+  const upstream = await (await connectorFor(row)).listTools();
+  const prefix = slugify(row.name);
+  const before = await storedByName(row.ownerId, prefix, upstream);
+  const drift: SourceDrift = { new: [], changed: [], gone: [] };
+  for (const t of upstream) {
+    const name = `${prefix}.${t.name}`;
+    const old = before.get(name);
+    if (!old || old.deletedAt) drift.new.push(name);
+    else if (old.sourceId === row.id && changedFields(old, refreshedFrom(t)).length) drift.changed.push(name);
+  }
+  drift.gone = (
+    await goneTools(
+      row.id,
+      upstream.map((t) => t.name),
+    )
+  ).map((g) => g.name);
+  return drift;
+}
+
 /** What a force import would soft-delete. No writes. */
 export async function previewImportRemovals(scope: Scope, id: string): Promise<{ removed: string[] } | ServiceErr> {
   const row = await administeredSource(scope, id);
@@ -196,26 +260,8 @@ export async function importSource(
   const upstream = await (await connectorFor(row)).listTools();
   const prefix = slugify(row.name);
 
-  // Snapshot the rows we may touch (soft-deleted ones too — they still own their
-  // name), so the response can say what actually changed.
-  const before = new Map(
-    upstream.length
-      ? (
-          await db
-            .select()
-            .from(tools)
-            .where(
-              and(
-                eq(tools.ownerId, owner),
-                inArray(
-                  tools.name,
-                  upstream.map((t) => `${prefix}.${t.name}`),
-                ),
-              ),
-            )
-        ).map((r) => [r.name, r] as const)
-      : [],
-  );
+  // Snapshot the rows we may touch, so the response can say what actually changed.
+  const before = await storedByName(owner, prefix, upstream);
   // A same-named tool not bound to this source (another source's, or a custom tool
   // with no source — possibly a sibling project's) is not ours to re-point or
   // overwrite: refuse the whole import before writing anything.
@@ -227,20 +273,7 @@ export async function importSource(
     // NB: dots are fine here — the MCP gateway maps names onto the MCP-safe
     // charset at the boundary (see lib/tool-name.ts); stored names stay stable.
     const name = `${prefix}.${t.name}`;
-    // What a force refresh overwrites. undefined is omitted by drizzle,
-    // preserving a manual value on refresh.
-    const refreshed = {
-      upstreamName: t.name,
-      description: t.description ?? null,
-      inputSchema: t.inputSchema ?? null,
-      outputSchema: t.outputSchema,
-      // curated discovery metadata from the connector (when provided)
-      readOnly: t.readOnly,
-      dangerous: t.dangerous,
-      permissions: t.permissions,
-      examples: t.examples,
-      recommendedUse: t.recommendedUse,
-    };
+    const refreshed = refreshedFrom(t);
     const values = {
       id: newId(),
       ownerId: owner,
@@ -308,7 +341,13 @@ export async function importSource(
       );
   for (const g of gone) changes.push({ name: g.name, status: force ? 'removed' : 'missing', fields: [] });
 
-  await db.update(sources).set({ status: 'ok', statusMessage: null }).where(eq(sources.id, id));
+  // An import is a check too: what it left alone is exactly the remaining drift.
+  const names = (st: ImportChange['status']) => changes.filter((c) => c.status === st).map((c) => c.name);
+  const drift: SourceDrift = { new: [], changed: names('outdated'), gone: names('missing') };
+  await db
+    .update(sources)
+    .set({ status: 'ok', statusMessage: null, drift, driftCheckedAt: new Date() })
+    .where(eq(sources.id, id));
   const imported = await db
     .select()
     .from(tools)
