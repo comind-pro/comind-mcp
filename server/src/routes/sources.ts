@@ -6,6 +6,7 @@ import { db } from '../db/client.js';
 import { sources } from '../db/schema.js';
 import { sendErr } from '../lib/req.js';
 import { scopeFor } from '../lib/scope.js';
+import { checkScopedSources } from '../scheduler/source-check.js';
 import { injectSecrets, loadSecretMap } from '../secrets/loader.js';
 import {
   administeredSource,
@@ -94,6 +95,9 @@ export async function sourceRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(200).send({ ok: false, message: msg });
     }
   });
+
+  // Run the periodic source check now, for every connection in scope.
+  app.post('/sources/check', async (req) => checkScopedSources(await scopeFor(req)));
 
   app.post('/sources/:id/test', async (req, reply) => {
     const { id } = req.params as { id: string };

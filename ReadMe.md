@@ -225,7 +225,7 @@ authoring time. Tuning: `PYTHON_TOOL_TIMEOUT_MS` (30000), `PYTHON_TOOL_MAX_CALLS
 
 ## Source check
 
-Every `SOURCE_CHECK_MINUTES` (default 10, `0` = off) the server pings every connection and records what a re-import would change (`sources.drift`: `new` / `changed` / `gone` tool names, plus `driftCheckedAt`). The Connections page shows an "update available" badge on such rows; the row's "Import tools" adds the new ones, "Force re-import" also replaces changed tools and removes gone ones. An import records the drift it leaves behind, so the badge clears as soon as the source and the import agree.
+Every `SOURCE_CHECK_MINUTES` (default 10, `0` = off) the server pings every connection and records what a re-import would change (`sources.drift`: `new` / `changed` / `gone` tool names, plus `driftCheckedAt`). The Connections page shows an "update available" badge on such rows; the row's "Import tools" adds the new ones, "Force re-import" also replaces changed tools and removes gone ones. An import records the drift it leaves behind, so the badge clears as soon as the source and the import agree. "Refresh all" (`POST /sources/check`) runs the pass now for the connections in scope.
 
 ## Compact results
 

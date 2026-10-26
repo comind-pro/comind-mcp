@@ -1,7 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { sources } from '../db/schema.js';
-import { probeSource, type SourceRow, sourceDrift } from '../services/sources.js';
+import { inSubtree, type Scope } from '../lib/scope.js';
+import { listSources, probeSource, type SourceRow, sourceDrift } from '../services/sources.js';
 
 /** One pass over a source: refresh its status; when reachable, record what a
  *  re-import would change. A failed health check keeps the last known drift. */
@@ -15,6 +16,16 @@ export async function checkSource(row: SourceRow): Promise<void> {
   if (!health.ok) return;
   const drift = await sourceDrift(row);
   await db.update(sources).set({ drift, driftCheckedAt: now }).where(eq(sources.id, row.id));
+}
+
+/** The "Refresh all" button: check what the scope may edit, return what it may see. */
+export async function checkScopedSources(scope: Scope): Promise<SourceRow[]> {
+  const rows = await db
+    .select()
+    .from(sources)
+    .where(and(eq(sources.ownerId, scope.ownerId), inSubtree(sources.projectId, scope)));
+  for (const row of rows) await checkSource(row).catch(() => {});
+  return listSources(scope);
 }
 
 /** Every source of every owner, one after another. One failure never stops the pass.
