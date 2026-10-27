@@ -1956,3 +1956,9 @@ button,
 tr.row-warn td:first-child {
   box-shadow: inset 3px 0 0 var(--warn);
 }
+summary.editor-section {
+  cursor: pointer;
+}
+details:not([open]) > summary.editor-section {
+  margin-bottom: 0;
+}
