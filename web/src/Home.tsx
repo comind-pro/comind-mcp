@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { PageId } from './App.js';
-import { type Agent, api, type CallLog, type Group, type Source, type Tool } from './api.js';
+import { type Agent, api, type CallLog, type Group, type Secret, type Source, type Tool } from './api.js';
+import { driftSummary, humanStatus } from './tabs/SourcesTab.js';
 import { Sparkline } from './ui.js';
 
 interface Totals {
@@ -44,6 +45,57 @@ export function deriveSteps(counts: { sources: number; tools: number; groups: nu
   ];
 }
 
+export interface AttentionItem {
+  tone: 'err' | 'warn';
+  title: string;
+  detail: string;
+  page: PageId;
+  /** row to open on that page */
+  id?: string;
+}
+
+/** Things that block agents or will soon: broken connections, unset secrets, pending re-imports, idle agents. */
+export function deriveAttention(sources: Source[], secrets: Secret[], agents: Agent[]): AttentionItem[] {
+  return [
+    ...sources
+      // a missing secret already has its own item below — don't repeat it per connection
+      .filter((s) => s.status === 'error' && !/secret \S+ is pending/.test(s.statusMessage ?? ''))
+      .map((s) => ({
+        tone: 'err' as const,
+        title: `${s.name} is failing`,
+        detail: s.statusMessage ? humanStatus(s.statusMessage) : 'Connection check failed',
+        page: 'connections' as const,
+        id: s.id,
+      })),
+    ...secrets
+      .filter((s) => s.pending)
+      .map((s) => ({
+        tone: 'warn' as const,
+        title: `Secret ${s.name} has no value`,
+        detail: 'Connections that use it fail until you set it.',
+        page: 'secrets' as const,
+      })),
+    ...sources
+      .filter((s) => s.status !== 'error' && driftSummary(s.drift))
+      .map((s) => ({
+        tone: 'warn' as const,
+        title: `${s.name} has tool updates`,
+        detail: `Re-import to pick up: ${driftSummary(s.drift)}`,
+        page: 'connections' as const,
+        id: s.id,
+      })),
+    ...agents
+      .filter((a) => !a.groups?.length)
+      .map((a) => ({
+        tone: 'warn' as const,
+        title: `Agent ${a.name} has no access`,
+        detail: 'Grant it a workspace, or it sees no tools.',
+        page: 'agents' as const,
+        id: a.id,
+      })),
+  ];
+}
+
 /** Daily call counts for the last `days` days, oldest first. */
 export function bucketDays(timestamps: (number | string)[], now: number, days = 7): number[] {
   const buckets = new Array(days).fill(0);
@@ -61,8 +113,10 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   const [tools, setTools] = useState<Tool[] | null>(null);
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [agents, setAgents] = useState<Agent[] | null>(null);
+  const [secrets, setSecrets] = useState<Secret[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
   const [recent, setRecent] = useState<CallLog[]>([]);
+  const [allAttn, setAllAttn] = useState(false);
   const [spark, setSpark] = useState<number[] | null>(null);
   const [err, setErr] = useState(false);
 
@@ -84,6 +138,10 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
       .get<Agent[]>('/agents')
       .then(setAgents)
       .catch(() => setErr(true));
+    void api
+      .get<Secret[]>('/secrets')
+      .then(setSecrets)
+      .catch(() => {});
     const from = new Date(Date.now() - 86_400_000).toISOString();
     void api
       .get<{ totals: Totals }>(`/metrics?from=${encodeURIComponent(from)}`)
@@ -131,6 +189,7 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   const allDone = steps.every((s) => s.done);
   const firstOpen = steps.findIndex((s) => !s.done);
   const failing = sources.filter((s) => s.status === 'error').length;
+  const attention = deriveAttention(sources, secrets, agents);
 
   if (!sources.length) {
     return (
@@ -165,6 +224,39 @@ export function Home({ onNavigate }: { onNavigate: (p: PageId) => void }) {
               {i === firstOpen && <span className="home-step-cta">Do this →</span>}
             </button>
           ))}
+        </div>
+      )}
+
+      {attention.length > 0 && (
+        <div className="card">
+          <div className="card-head-row">
+            <h2>Needs attention</h2>
+            <span className="text-muted">{attention.length}</span>
+          </div>
+          <div className="attn-list">
+            {(allAttn ? attention : attention.slice(0, 5)).map((a) => (
+              <button
+                key={`${a.page}:${a.title}`}
+                className="attn-item"
+                onClick={() => {
+                  // App follows the hash; the tab then opens the row
+                  location.hash = `/${a.page}${a.id ? `/${a.id}` : ''}`;
+                }}
+              >
+                <span className="status-dot" style={{ background: `var(--${a.tone})` }} />
+                <span className="attn-text">
+                  <span className="attn-title">{a.title}</span>
+                  <span className="attn-detail">{a.detail}</span>
+                </span>
+                <span className="attn-go">Fix →</span>
+              </button>
+            ))}
+          </div>
+          {attention.length > 5 && (
+            <button className="ghost mt-8" onClick={() => setAllAttn(!allAttn)}>
+              {allAttn ? 'Show less' : `Show all ${attention.length}`}
+            </button>
+          )}
         </div>
       )}
 

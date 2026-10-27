@@ -51,9 +51,9 @@ const kb1 = (b: number) => (b / 1024).toFixed(1);
 
 const WINDOWS: Record<string, number> = { '24h': 1, '7d': 7, '30d': 30, all: 0 };
 const SOURCES = [
-  { value: '', label: 'all' },
-  { value: 'live', label: 'live' },
-  { value: 'test', label: 'test' },
+  { value: '', label: 'all calls' },
+  { value: 'live', label: 'agents' },
+  { value: 'test', label: 'test runs' },
   { value: 'schedule', label: 'scheduled' },
 ] as const;
 
@@ -118,56 +118,44 @@ export function LogsTab() {
         Every tool call your agents make lands here — what ran, how long it took, and whether it worked.
       </div>
 
-      <div className="page-head">
-        <div>
-          {metrics && (
-            <span className="sub">
-              {metrics.totals.calls} calls · {metrics.totals.errors} errors
+      <div className="filter-bar">
+        <span className="seg">
+          {Object.keys(WINDOWS).map((w) => (
+            <span key={w} className={win === w ? 'on' : ''} onClick={() => setWin(w as keyof typeof WINDOWS)}>
+              {w === 'all' ? 'all time' : w}
             </span>
-          )}
-        </div>
-        <div className="row">
-          <span className="seg">
-            {Object.keys(WINDOWS).map((w) => (
-              <span key={w} className={win === w ? 'on' : ''} onClick={() => setWin(w as keyof typeof WINDOWS)}>
-                {w === 'all' ? 'all' : w}
-              </span>
-            ))}
-          </span>
-          <span className="seg">
-            {SOURCES.map((s) => (
-              <span
-                key={s.value || 'all'}
-                className={source === s.value ? 'on' : ''}
-                onClick={() => setSource(s.value)}
-              >
-                {s.label}
-              </span>
-            ))}
-          </span>
-          <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-            <option value="">All workspaces</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-          <select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-            <option value="">All agents</option>
-            {agents.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-          <button className="ghost" onClick={load}>
-            Refresh
-          </button>
-        </div>
+          ))}
+        </span>
+        <span className="seg">
+          {SOURCES.map((s) => (
+            <span key={s.value || 'all'} className={source === s.value ? 'on' : ''} onClick={() => setSource(s.value)}>
+              {s.label}
+            </span>
+          ))}
+        </span>
+        <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+          <option value="">All workspaces</option>
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+        <select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+          <option value="">All agents</option>
+          {agents.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+        <button className="ghost ml-auto" onClick={load}>
+          Refresh
+        </button>
       </div>
 
-      {metrics && (
+      {/* no calls in the window → skip the empty breakdown tables, the empty state below says it */}
+      {metrics && metrics.totals.calls > 0 && (
         <>
           <div className="log-stats">
             {stat('calls', metrics.totals.calls)}

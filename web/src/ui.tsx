@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './icons.js';
 
 export type SortDir = 1 | -1;
@@ -176,4 +176,92 @@ export function Advanced({ summary = 'Advanced', children }: { summary?: string;
       <div className="advanced-body">{children}</div>
     </details>
   );
+}
+
+/** Right-side editor panel. Closes on ×, backdrop click, or Esc (not while typing); asks first when `dirty`. */
+export function Drawer({
+  title,
+  badge,
+  dirty = false,
+  onClose,
+  children,
+}: {
+  title: ReactNode;
+  badge?: ReactNode;
+  dirty?: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const { confirm, element: confirmEl } = useConfirm();
+  const requestClose = async () => {
+    if (!dirty || (await confirm('Discard unsaved changes?', 'Discard'))) onClose();
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.key === 'Escape' && !t?.closest('input, textarea, select, .modal')) void requestClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+  return (
+    <>
+      {/* mousedown, not click: a text selection dragged out of the drawer must not close it */}
+      <div className="drawer-overlay" onMouseDown={(e) => e.target === e.currentTarget && void requestClose()}>
+        <aside className="drawer" role="dialog" aria-modal="true">
+          <header className="drawer-head">
+            <span className="drawer-title">{title}</span>
+            {badge}
+            {dirty && <span className="badge muted">unsaved</span>}
+            <button
+              className="icon-btn ml-auto"
+              onClick={() => void requestClose()}
+              title="Close (Esc)"
+              aria-label="Close"
+            >
+              <Icon name="x" size={16} />
+            </button>
+          </header>
+          <div className="drawer-body">{children}</div>
+        </aside>
+      </div>
+      {confirmEl}
+    </>
+  );
+}
+
+/** True once the picked (saveable) part of `ed` differs from how it looked when this id was opened. */
+export function useDirty<T extends { id: string }>(ed: T | null, pick: (e: T) => unknown): boolean {
+  const base = useRef<{ id: string; snap: string } | null>(null);
+  if (!ed) {
+    base.current = null;
+    return false;
+  }
+  const snap = JSON.stringify(pick(ed));
+  // new id = freshly opened, or a draft just got created → that state is the clean baseline
+  if (base.current?.id !== ed.id) base.current = { id: ed.id, snap };
+  return base.current.snap !== snap;
+}
+
+/** Keeps `#/<page>/<id>` in sync with the open drawer, and reopens it from the URL once `rows` load. */
+export function useItemRoute<T extends { id: string }>(
+  openId: string | null | undefined,
+  rows: T[] | null,
+  open: (row: T) => void,
+) {
+  const pending = useRef<string | null>(location.hash.split('/')[2] ?? null);
+  useEffect(() => {
+    if (!rows || !pending.current) return;
+    const row = rows.find((r) => r.id === pending.current);
+    pending.current = null;
+    if (row) open(row);
+  }, [rows]);
+  useEffect(() => {
+    if (pending.current) return;
+    const page = location.hash.split('/')[1];
+    if (!page) return;
+    const id = openId && openId !== 'new' ? `/${openId}` : '';
+    // replaceState: no hashchange event, no history entry per drawer
+    history.replaceState(null, '', `#/${page}${id}`);
+  }, [openId]);
 }
