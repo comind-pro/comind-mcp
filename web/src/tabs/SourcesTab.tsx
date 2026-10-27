@@ -383,8 +383,11 @@ export function SourcesTab() {
             </>
           )}
 
-          <div className="editor-section">Connection</div>
-          <SourceFields kind={e.kind} cfg={e.cfg} onChange={setCfg} />
+          {/* existing source: connection already set up, keep it folded */}
+          <details key={e.id} open={isNew}>
+            <summary className="editor-section">Connection</summary>
+            <SourceFields kind={e.kind} cfg={e.cfg} onChange={setCfg} />
+          </details>
 
           {isNew && (
             <div style={{ marginTop: 18 }}>
