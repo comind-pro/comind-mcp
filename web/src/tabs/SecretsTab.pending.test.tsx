@@ -32,8 +32,8 @@ afterEach(cleanup);
 
 it('pending rows keep separate drafts, save only their own, and can be deleted', async () => {
   render(<SecretsTab />);
-  await screen.findAllByText('pending');
-  const [a, b] = screen.getAllByPlaceholderText('set value') as HTMLInputElement[];
+  await screen.findAllByText('needs value');
+  const [a, b] = screen.getAllByPlaceholderText('paste value, Enter to save') as HTMLInputElement[];
   fireEvent.change(a, { target: { value: 'abc' } });
   expect(a.value).toBe('abc');
   expect(b.value).toBe('');

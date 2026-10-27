@@ -24,5 +24,5 @@ it('changes the agent role and shows the COO badge', async () => {
   expect(screen.queryByText('COO')).toBeNull();
   fireEvent.change(sel, { target: { value: 'coo' } });
   expect(api.patch).toHaveBeenCalledWith('/agents/a1', { role: 'coo' });
-  await waitFor(() => expect(screen.getByText('COO')).toBeTruthy());
+  await waitFor(() => expect(screen.getAllByText('COO').length).toBeGreaterThan(0));
 });

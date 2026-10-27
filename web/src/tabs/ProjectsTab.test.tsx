@@ -25,6 +25,7 @@ const getUnscoped = vi.fn(async (p: string): Promise<unknown> => {
   if (p === '/projects/a/summary') return summary;
   if (p === '/projects/a/access') return access;
   if (p === '/projects/d/summary') return { ...summary, node: projects[1], cooAgents: [] };
+  if (p === '/projects/t/summary') return { ...summary, node: projects[0], cooAgents: [] };
   if (p === '/agents') return [{ id: 'ag1', name: 'coo-bot', role: 'coo', projectId: 'a' }];
   if (p === '/sources') return [{ id: 's2', name: 'Postgres', projectId: 'd' }];
   if (p === '/tools')
@@ -97,7 +98,7 @@ it('New child posts the node and reloads the tree', async () => {
   await openAnalytics();
   fireEvent.change(screen.getByLabelText('New child kind'), { target: { value: 'team' } });
   fireEvent.change(screen.getByLabelText('New child name'), { target: { value: 'Growth' } });
-  fireEvent.click(screen.getByRole('button', { name: '+ New child' }));
+  fireEvent.click(screen.getByRole('button', { name: '+ Add' }));
   await waitFor(() =>
     expect(api.postUnscoped).toHaveBeenCalledWith('/projects', { kind: 'team', name: 'Growth', parentId: 'a' }),
   );
@@ -107,7 +108,7 @@ it('New child posts the node and reloads the tree', async () => {
 it('New child works with no node selected, parented to the root', async () => {
   ui();
   fireEvent.change(screen.getByLabelText('New child name'), { target: { value: 'Growth' } });
-  fireEvent.click(screen.getByRole('button', { name: '+ New child' }));
+  fireEvent.click(screen.getByRole('button', { name: '+ Add' }));
   await waitFor(() =>
     expect(api.postUnscoped).toHaveBeenCalledWith('/projects', { kind: 'project', name: 'Growth', parentId: 't' }),
   );
@@ -132,14 +133,14 @@ it('Move offers non-native resources from other nodes and posts the move', async
 
 it('Delete confirms with the counts; hidden for the default nodes', async () => {
   await openAnalytics();
-  fireEvent.click(screen.getByRole('button', { name: 'Delete node' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Delete (project|team)$/ }));
   const msg = 'Delete "Analytics"? This removes 1 descendant, 2 sources, 5 tools, 1 workspace, 1 agent, 1 secret.';
   const modal = (await screen.findByText(msg)).closest('.modal') as HTMLElement;
   fireEvent.click(within(modal).getByRole('button', { name: 'Delete' }));
   await waitFor(() => expect(api.delUnscoped).toHaveBeenCalledWith('/projects/a'));
   await waitFor(() => expect(reload).toHaveBeenCalled());
   fireEvent.click(screen.getByRole('button', { name: /Default/ }));
-  await waitFor(() => expect(screen.queryByRole('button', { name: 'Delete node' })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('button', { name: /^Delete (project|team)$/ })).toBeNull());
 });
 
 it('shows who granted an allowlist row', async () => {

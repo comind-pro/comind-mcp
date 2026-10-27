@@ -27,8 +27,18 @@ const PAGES: { id: PageId; label: string; hint: string | null; icon: IconName }[
   { id: 'activity', label: 'Activity', hint: 'call logs', icon: 'pulse' },
 ];
 
+// #/<page>[/<item id>] — item part is handled by useItemRoute in each tab
+const pageFromHash = (): PageId => {
+  const id = location.hash.replace(/^#\/?/, '').split('/')[0];
+  return PAGES.some((p) => p.id === id) ? (id as PageId) : 'home';
+};
+
 export function App() {
-  const [page, setPage] = useState<PageId>('home');
+  const [page, setPageState] = useState<PageId>(pageFromHash);
+  const setPage = (p: PageId) => {
+    location.hash = p === 'home' ? '' : `/${p}`;
+    setPageState(p);
+  };
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState(getTheme());
@@ -43,6 +53,12 @@ export function App() {
       localStorage.setItem('comind_nav', r ? 'full' : 'rail');
       return !r;
     });
+
+  useEffect(() => {
+    const sync = () => setPageState(pageFromHash());
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
 
   useEffect(() => {
     const drop = () => {

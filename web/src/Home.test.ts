@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bucketDays, deriveSteps } from './Home.js';
+import type { Agent, Secret, Source } from './api.js';
+import { bucketDays, deriveAttention, deriveSteps } from './Home.js';
 
 describe('deriveSteps', () => {
   it('marks all steps undone when every count is zero', () => {
@@ -43,5 +44,39 @@ describe('bucketDays', () => {
     const buckets = bucketDays([now - 8 * day, new Date(now).toISOString()], now);
     expect(buckets.reduce((a, b) => a + b, 0)).toBe(1);
     expect(buckets[6]).toBe(1);
+  });
+});
+
+describe('deriveAttention', () => {
+  const src = (p: Partial<Source>): Source =>
+    ({
+      id: 'x',
+      name: 'x',
+      kind: 'mcp',
+      config: {},
+      status: 'ok',
+      statusMessage: null,
+      projectId: 'p',
+      createdByAgentId: null,
+      ...p,
+    }) as Source;
+
+  it('lists failing sources with a readable zod message, pending secrets, drift and idle agents', () => {
+    const items = deriveAttention(
+      [
+        src({ name: 'mail', status: 'error', statusMessage: '[{"path":["pass"],"message":"Required"}]' }),
+        src({ name: 'api', drift: { new: ['a'], changed: [], gone: [] } }),
+        src({ name: 'fine' }),
+      ],
+      [{ name: 'KEY', pending: true } as Secret, { name: 'SET', pending: false } as Secret],
+      [{ name: 'bot', groups: [] } as unknown as Agent],
+    );
+    expect(items.map((i) => i.title)).toEqual([
+      'mail is failing',
+      'Secret KEY has no value',
+      'api has tool updates',
+      'Agent bot has no access',
+    ]);
+    expect(items[0].detail).toBe('pass: Required');
   });
 });

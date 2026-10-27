@@ -26,7 +26,8 @@ const errMsg = (e: unknown) => String((e as Error).message);
 export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }) {
   const { projects, selected, reload, agentNames } = useContext(ProjectsContext);
   const { confirm, element: confirmEl } = useConfirm();
-  const [selId, setSelId] = useState<string | null>(selected);
+  // land on something useful instead of an empty "select" panel
+  const [selId, setSelId] = useState<string | null>(selected ?? buildTree(projects)[0]?.id ?? null);
   const [summary, setSummary] = useState<ProjectSummary | null>(null);
   const [access, setAccess] = useState<AccessRow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -172,9 +173,15 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
             {cooCount(n.id) > 0 && <span className="badge muted">{cooCount(n.id)} COO</span>}
           </button>
         ))}
-        <h4>New node</h4>
+        <h4>Add a team or project</h4>
+        <div className="hint mb-8">Teams group projects; each project keeps its own connections, tools and agents.</div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <select aria-label="New child parent" value={parent} onChange={(e) => setParentId(e.target.value)}>
+          <select
+            aria-label="New child parent"
+            title="Inside"
+            value={parent}
+            onChange={(e) => setParentId(e.target.value)}
+          >
             {flatten(roots).map(({ node: n, depth }) => (
               <option key={n.id} value={n.id}>
                 {'— '.repeat(depth) + n.name}
@@ -196,17 +203,14 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
             onChange={(e) => setChildName(e.target.value)}
           />
           <button className="ghost" disabled={!childName.trim() || !parent} onClick={() => void addChild()}>
-            + New child
+            + Add
           </button>
         </div>
       </div>
       <div>
         {err && <div className="err-msg">{err}</div>}
         {!node ? (
-          <EmptyState
-            title="Select a node"
-            body="Pick a team or project on the left to see what it holds and shares."
-          />
+          <EmptyState title="Select a team or project" body="Pick one on the left to see what it holds and shares." />
         ) : (
           <div className="card">
             <div className="card-head-row">
@@ -218,7 +222,7 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
               <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
                 {(
                   [
-                    [summary.counts.children, 'descendant', 'descendants'],
+                    [summary.counts.children, 'sub-project', 'sub-projects'],
                     [summary.counts.sources, 'source', 'sources'],
                     [summary.counts.tools, 'tool', 'tools'],
                     [summary.counts.groups, 'workspace', 'workspaces'],
@@ -232,6 +236,7 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
             )}
 
             <h4>COO agents</h4>
+            <div className="hint mb-8">Agents that can administer this {node.kind} through MCP.</div>
             {summary?.cooAgents.length ? (
               <div className="row" style={{ gap: 8 }}>
                 {summary.cooAgents.map((a) => (
@@ -241,10 +246,11 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
                 ))}
               </div>
             ) : (
-              <div className="hint">None. Set an agent's role to COO on the Agents tab.</div>
+              <div className="hint">None yet. Set an agent's role to COO on the Agents page.</div>
             )}
 
-            <h4>Allowlist</h4>
+            <h4>Shared into this {node.kind}</h4>
+            <div className="hint mb-8">Things from other projects this {node.kind} is allowed to use.</div>
             {access.length ? (
               <table>
                 <thead>
@@ -280,10 +286,10 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
                 </tbody>
               </table>
             ) : (
-              <div className="hint">Nothing shared into this node yet.</div>
+              <div className="hint">Nothing shared yet.</div>
             )}
 
-            <h4>Share a resource</h4>
+            <h4>Share something in</h4>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               <select
                 aria-label="Resource type"
@@ -316,7 +322,7 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
               </button>
             </div>
 
-            <h4>Move here</h4>
+            <h4>Move into this {node.kind}</h4>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               <select
                 aria-label="Move type"
@@ -357,7 +363,7 @@ export function ProjectsTab({ onNavigate }: { onNavigate?: (p: PageId) => void }
             {!isDefaultNode(node) && (
               <div className="row" style={{ marginTop: 16 }}>
                 <button className="danger" disabled={!summary} onClick={() => void remove()}>
-                  Delete node
+                  Delete {node.kind}
                 </button>
               </div>
             )}

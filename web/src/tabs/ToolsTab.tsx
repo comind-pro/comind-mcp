@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PageId } from '../App.js';
 import { api, type Source, type Tool } from '../api.js';
-import { Icon } from '../icons.js';
 import { RowBadges } from '../ProjectSelector.js';
-import { EmptyState, Loading, Th, useConfirm, useSort } from '../ui.js';
+import { Drawer, EmptyState, Loading, Th, useConfirm, useDirty, useItemRoute, useSort } from '../ui.js';
 import { buildInput, parseInput } from './SchemaBuilder.js';
 import { type Cfg, type Editing, type MetaForm, type Step, ToolEditor } from './ToolEditor.js';
 import { ToolView } from './ToolView.js';
@@ -66,6 +65,13 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   const sort = useSort(filtered, sortGetters);
   const { confirm, element: confirmEl } = useConfirm();
 
+  useItemRoute(ed?.id, tools, (t) => void open(t));
+  // everything except UI/test-run state
+  const dirty = useDirty(
+    ed,
+    ({ right, jsonError, testVals, testOut, testing, pickerStep, pickerQuery, stepSchemaOpen, stepTest, ...data }) =>
+      data,
+  );
   if (tools === null) return <Loading />;
 
   const patch = (p: Partial<Editing>) => setEd((e) => (e ? { ...e, ...p } : e));
@@ -571,31 +577,20 @@ export function ToolsTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
         </div>
       </div>
 
-      {/* editor panel — new draft or the tool being edited */}
       {ed && (
-        <div className="scard open" style={{ marginBottom: 18 }}>
-          <div className="scard-head">
-            <span
-              className="mono"
-              style={{
-                fontSize: 13.5,
-                fontWeight: 600,
-                color: 'var(--accent)',
-              }}
-            >
-              {ed.name || 'new_tool'}
-            </span>
+        <Drawer
+          title={<span className="mono">{ed.name || 'new_tool'}</span>}
+          badge={
             <span className={`tbadge ${ed.kind === 'composite' ? 'composite' : ''}`}>
               {kindLabel(ed.kind)}
               {ed.id === 'new' ? ' · draft' : ''}
             </span>
-            <span className="edit-link ml-auto" onClick={close}>
-              <Icon name="x" size={15} />
-            </span>
-            <span className="chev up">⌄</span>
-          </div>
-          <div className="scard-body">{editor(ed)}</div>
-        </div>
+          }
+          dirty={dirty}
+          onClose={close}
+        >
+          {editor(ed)}
+        </Drawer>
       )}
 
       {/* toolbar */}

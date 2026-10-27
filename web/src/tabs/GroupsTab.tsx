@@ -1,8 +1,7 @@
 import { type ChangeEvent, useEffect, useRef, useState } from 'react';
 import { api, type Group, type ImportReport, type Schedule, type Source, type Tool } from '../api.js';
-import { Icon } from '../icons.js';
 import { RowBadges } from '../ProjectSelector.js';
-import { CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
+import { CopyRow, Drawer, EmptyState, Loading, useConfirm, useItemRoute } from '../ui.js';
 import { ToolPicker } from './ToolPicker.js';
 
 export function GroupsTab() {
@@ -61,6 +60,7 @@ export function GroupsTab() {
     void api.get<Source[]>('/sources').then(setSources);
   }, []);
 
+  useItemRoute(openId, groups, (g) => void select(g));
   if (groups === null) return <Loading />;
 
   const select = async (g: Group) => {
@@ -392,10 +392,17 @@ export function GroupsTab() {
               </span>
               {!g.schedulingEnabled && <span className="tbadge">self-scheduling off</span>}
               <span className="ml-auto" />
-              <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Configure'}</span>
-              <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
+              <span className="edit-link">Configure</span>
             </div>
-            {open && <div className="scard-body">{body(g)}</div>}
+            {open && (
+              <Drawer
+                title={g.name}
+                badge={<span className="mono muted">/{g.slug}</span>}
+                onClose={() => setOpenId(null)}
+              >
+                {body(g)}
+              </Drawer>
+            )}
           </div>
         );
       })}

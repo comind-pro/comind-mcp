@@ -150,16 +150,17 @@ export function SecretsTab() {
         <table>
           <thead>
             <tr>
-              <th>name</th>
-              <th>scope</th>
-              <th>reference</th>
-              <th>type</th>
+              <th>Name</th>
+              <th>Used by</th>
+              <th>Reference in configs</th>
+              <th>Type</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {secrets.map((s) => (
-              <tr key={s.id}>
+            {/* unset ones first — they're what breaks connections */}
+            {[...secrets.filter((s) => s.pending), ...secrets.filter((s) => !s.pending)].map((s) => (
+              <tr key={s.id} className={s.pending ? 'row-warn' : ''}>
                 <td className="mono">
                   {s.displayName}
                   <RowBadges row={s} />
@@ -175,20 +176,20 @@ export function SecretsTab() {
                 <td>
                   {s.pending ? (
                     <span className="badge" style={{ color: 'var(--warn)', borderColor: 'var(--warn)' }}>
-                      pending
+                      needs value
                     </span>
                   ) : (
                     <span className="tbadge">{s.kind}</span>
                   )}
                   {s.envRef && editId !== s.id && <span className="muted"> ← {s.envRef}</span>}
                 </td>
-                <td>
+                <td className="secret-actions">
                   {s.pending ? (
                     <div className="row gap-4">
                       <input
                         className="grow"
                         type="password"
-                        placeholder="set value"
+                        placeholder="paste value, Enter to save"
                         value={drafts[s.id] ?? ''}
                         onChange={(e) => setDrafts({ ...drafts, [s.id]: e.target.value })}
                         onKeyDown={(e) => e.key === 'Enter' && drafts[s.id] && savePending(s)}

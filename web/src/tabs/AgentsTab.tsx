@@ -2,7 +2,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { type Agent, type AgentKey, api, type Group, SYSTEM_TOOLS } from '../api.js';
 import { Icon } from '../icons.js';
 import { ProjectsContext, RowBadges } from '../ProjectSelector.js';
-import { Advanced, CopyRow, EmptyState, Loading, useConfirm } from '../ui.js';
+import { Advanced, CopyRow, Drawer, EmptyState, Loading, useConfirm, useItemRoute } from '../ui.js';
 
 interface InspectGroup {
   group: { id: string; name: string; slug: string; schedulingEnabled: boolean };
@@ -164,6 +164,7 @@ export function AgentsTab() {
     void api.get<Group[]>('/groups').then(setGroups);
   }, []);
 
+  useItemRoute(openId, agents, (a) => openAgent(a));
   if (agents === null) return <Loading />;
 
   const create = async () => {
@@ -518,10 +519,17 @@ export function AgentsTab() {
                 {granted.length ? `${granted.length} workspace${granted.length === 1 ? '' : 's'}` : 'no access'}
               </span>
               <span className="ml-auto" />
-              <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Manage'}</span>
-              <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
+              <span className="edit-link">Manage</span>
             </div>
-            {open && <div className="scard-body">{body(a)}</div>}
+            {open && (
+              <Drawer
+                title={a.name}
+                badge={a.role === 'coo' ? <span className="tbadge">COO</span> : undefined}
+                onClose={() => setOpenId(null)}
+              >
+                {body(a)}
+              </Drawer>
+            )}
           </div>
         );
       })}

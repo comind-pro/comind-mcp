@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type Source, type SourceDrift, type Tool } from '../api.js';
 import { Icon, type IconName } from '../icons.js';
 import { RowBadges } from '../ProjectSelector.js';
-import { Advanced, EmptyState, Loading, useConfirm } from '../ui.js';
+import { Advanced, Drawer, EmptyState, Loading, useConfirm, useDirty, useItemRoute } from '../ui.js';
 import { type Cfg, DEFAULTS, KIND_META, type Kind, SourceFields } from './SourceFields.js';
 
 const KINDS: Kind[] = ['mcp', 'openapi', 'http', 'imap', 'sql', 'ga'];
@@ -32,6 +32,18 @@ export const driftSummary = (d: SourceDrift | null | undefined): string =>
     .filter((k) => d?.[k].length)
     .map((k) => `${d?.[k].length} ${k}`)
     .join(' · ');
+
+/** Zod issue arrays ("[{ "path": ["pass"], "message": … }]") → "pass: String must contain…"; anything else as-is. */
+export const humanStatus = (msg: string): string => {
+  try {
+    const issues = JSON.parse(msg);
+    if (Array.isArray(issues) && issues.every((i) => i && typeof i.message === 'string'))
+      return issues.map((i) => (i.path?.length ? `${i.path.join('.')}: ${i.message}` : i.message)).join('; ');
+  } catch {
+    /* not JSON */
+  }
+  return msg;
+};
 
 const ago = (iso: string): string => {
   const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
@@ -76,6 +88,8 @@ export function SourcesTab() {
       });
   useEffect(() => void load(), []);
 
+  useItemRoute(ed?.id, sources, (s) => openEdit(s));
+  const dirty = useDirty(ed, (e) => [e.name, e.kind, e.cfg, e.jsonRaw, e.secrets]);
   if (sources === null) return <Loading />;
 
   const patch = (p: Partial<Editing>) => setEd((e) => (e ? { ...e, ...p } : e));
@@ -602,16 +616,15 @@ export function SourcesTab() {
 
       {err && !ed && <div className="err-msg">{err}</div>}
 
-      {/* draft card */}
-      {ed && ed.id === 'new' && (
-        <div className="scard open">
-          <div className="scard-head" onClick={close}>
-            <span className="name">{ed.name || 'New connection'}</span>
-            <span className="tbadge">{ed.kind}</span>
-            <span className="chev up">⌄</span>
-          </div>
-          <div className="scard-body">{editor(ed, true)}</div>
-        </div>
+      {ed && (
+        <Drawer
+          title={ed.id === 'new' ? ed.name || 'New connection' : ed.name}
+          badge={<span className="tbadge">{ed.kind}</span>}
+          dirty={dirty}
+          onClose={close}
+        >
+          {editor(ed, ed.id === 'new')}
+        </Drawer>
       )}
 
       {sources.map((s) => {
@@ -635,11 +648,11 @@ export function SourcesTab() {
                 </span>
               )}
               <span className="ml-auto" />
-              <span className="edit-link">{open ? <Icon name="x" size={15} /> : 'Edit'}</span>
-              <span className={`chev ${open ? 'up' : ''}`}>⌄</span>
+              <span className="edit-link">Edit</span>
             </div>
-            {s.status === 'error' && s.statusMessage && !open && <div className="src-err">{s.statusMessage}</div>}
-            {open && ed && <div className="scard-body">{editor(ed, false)}</div>}
+            {s.status === 'error' && s.statusMessage && !open && (
+              <div className="src-err">{humanStatus(s.statusMessage)}</div>
+            )}
           </div>
         );
       })}

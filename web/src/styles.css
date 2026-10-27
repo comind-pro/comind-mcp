@@ -23,7 +23,7 @@
     Segoe UI,
     Roboto,
     sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   color-scheme: light;
 }
 
@@ -64,7 +64,7 @@ h2 {
 }
 h3 {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -190,7 +190,7 @@ h3 {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 10px 0;
-  font-size: 13px;
+  font-size: 14px;
 }
 .side-user-email {
   overflow: hidden;
@@ -217,7 +217,7 @@ h3 {
   flex: 1;
   min-width: 0;
   padding: 24px 32px 48px;
-  max-width: 1280px;
+  max-width: 1440px;
 }
 .page-head-shell {
   display: flex;
@@ -232,7 +232,7 @@ h3 {
 }
 .page-hint {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .page-loading {
   padding: 40px;
@@ -252,7 +252,7 @@ h3 {
   letter-spacing: -0.2px;
 }
 .page-head .sub {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-muted);
   margin-left: 10px;
   font-weight: 400;
@@ -290,7 +290,7 @@ textarea {
   color: var(--text);
   border-radius: 6px;
   padding: 7px 10px;
-  font-size: 13px;
+  font-size: 14px;
   font-family: inherit;
 }
 select {
@@ -307,7 +307,7 @@ button {
   border: none;
   border-radius: 6px;
   padding: 7px 12px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -348,7 +348,7 @@ button:disabled:hover {
   border: none;
   border-radius: 8px;
   padding: 9px 15px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -360,7 +360,7 @@ button:disabled:hover {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
 }
 th,
 td {
@@ -371,7 +371,7 @@ td {
 th {
   color: var(--text-muted);
   font-weight: 500;
-  font-size: 12px;
+  font-size: 13px;
 }
 .th-sort {
   cursor: pointer;
@@ -396,16 +396,16 @@ th {
   width: 12px;
   margin-left: 2px;
   color: var(--accent);
-  font-size: 11px;
+  font-size: 12px;
 }
 code,
 .mono {
   font-family: ui-monospace, Menlo, monospace;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .badge {
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 7px;
   border-radius: 20px;
   border: 1px solid var(--border);
@@ -426,11 +426,11 @@ code,
   border: 1px solid var(--border);
   border-radius: 20px;
   padding: 3px 10px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .err-msg {
   color: var(--err);
-  font-size: 13px;
+  font-size: 14px;
   margin: 8px 0;
   white-space: pre-line;
 }
@@ -457,7 +457,7 @@ code,
   border-radius: 8px;
   padding: 12px 14px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.55;
 }
 .intro b {
@@ -467,7 +467,7 @@ code,
   color: var(--text-muted);
 }
 .hint {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   margin: 4px 0 10px;
   line-height: 1.5;
@@ -502,7 +502,7 @@ code,
 }
 button.mini {
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* form builder */
@@ -513,7 +513,7 @@ button.mini {
   background: var(--surface);
 }
 .builder h3 {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
   color: var(--text);
   margin: 16px 0 8px;
@@ -646,7 +646,7 @@ button.mini {
 }
 
 .tbadge {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-muted);
   background: var(--surface-inset);
@@ -673,7 +673,7 @@ button.mini {
   font-weight: 600;
 }
 .edit-link {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
   background: var(--surface-inset);
@@ -748,7 +748,7 @@ button.mini {
   margin-top: 0;
 }
 .field-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 6px;
@@ -759,7 +759,7 @@ button.mini {
   min-height: 280px;
   resize: vertical;
   font-family: ui-monospace, Menlo, monospace;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
 }
 
@@ -775,7 +775,7 @@ button.mini {
 .seg > span {
   padding: 5px 13px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-muted);
   cursor: pointer;
@@ -821,7 +821,7 @@ button.mini {
 .kind-card-desc {
   display: block;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* discovered-tools checklist */
@@ -842,7 +842,7 @@ button.mini {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 13px;
   color: #fff;
   border: 1.5px solid var(--border);
   flex: none;
@@ -870,7 +870,7 @@ button.mini {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   flex: none;
 }
@@ -881,7 +881,7 @@ button.mini {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: 13px;
   background: var(--surface-raised);
   color: var(--accent);
   font-weight: 600;
@@ -978,7 +978,7 @@ button.mini {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 9px 11px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--ok);
   overflow: auto;
@@ -1043,7 +1043,7 @@ button.mini {
   color: var(--ok);
 }
 .save-state {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   margin-left: 8px;
   font-weight: 400;
@@ -1074,7 +1074,7 @@ button.mini {
   cursor: pointer;
   padding: 8px 12px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
   user-select: none;
 }
 .advanced-body {
@@ -1209,7 +1209,7 @@ button.mini {
 .home-step-body {
   display: block;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .home-step-cta {
   margin-left: auto;
@@ -1241,7 +1241,7 @@ button.mini {
 }
 .stat-card-sub {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -1255,7 +1255,7 @@ button.mini {
 }
 .stat-card-l {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .sparkline {
   display: block;
@@ -1267,7 +1267,7 @@ button.mini {
 
 /* Tools screen — flat table inside a .card (scrolls horizontally on mobile via base rule) */
 .tools-table .tool-subname {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -1300,7 +1300,7 @@ tr.clickable:hover {
 tr.detail-row td {
   background: var(--surface-inset);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .log-detail {
   margin: 0 0 10px;
@@ -1317,7 +1317,7 @@ tr.detail-row td {
 /* logs metric stat cards (activity screen) */
 .log-stats {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 11px;
   margin-bottom: 16px;
 }
@@ -1333,7 +1333,7 @@ tr.detail-row td {
   letter-spacing: -0.5px;
 }
 .log-stat-l {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -1353,7 +1353,7 @@ tr.detail-row td {
   padding-top: 64px;
 }
 .landing-eyebrow {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1392,7 +1392,7 @@ tr.detail-row td {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-muted);
   text-decoration: none;
   border: 1px solid var(--border);
@@ -1495,7 +1495,7 @@ tr.detail-row td {
 }
 .shot-title {
   margin-left: 8px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 .shot-body {
@@ -1508,7 +1508,7 @@ tr.detail-row td {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .shot-row.muted {
   color: var(--text-muted);
@@ -1525,7 +1525,7 @@ tr.detail-row td {
 }
 .shot-badge {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -1543,7 +1543,7 @@ tr.detail-row td {
 }
 .shot-caption {
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   margin-top: 10px;
 }
@@ -1572,7 +1572,7 @@ tr.detail-row td {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 .landing-step {
@@ -1587,12 +1587,12 @@ tr.detail-row td {
   font-size: 14px;
 }
 .landing-step .muted {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
 }
 .landing-foot {
   margin-top: 24px;
-  font-size: 13px;
+  font-size: 14px;
   text-align: center;
 }
 
@@ -1749,7 +1749,7 @@ tr.detail-row td {
   margin-top: 10px;
 }
 .fs-12 {
-  font-size: 12px;
+  font-size: 13px;
 }
 .fw-400 {
   font-weight: 400;
@@ -1842,4 +1842,117 @@ button,
   .projects-layout {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===== home: needs attention ===== */
+
+.attn-list {
+  display: flex;
+  flex-direction: column;
+}
+.attn-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 8px;
+  background: none;
+  color: var(--text);
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  text-align: left;
+  font-weight: 400;
+}
+.attn-item:first-child {
+  border-top: none;
+}
+.attn-item:hover {
+  background: var(--surface-inset);
+}
+.attn-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.attn-title {
+  font-weight: 600;
+}
+.attn-detail {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attn-go {
+  color: var(--accent);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* ===== drawer (editors) ===== */
+
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 18, 22, 0.45);
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+}
+.drawer {
+  width: min(1100px, 100vw);
+  height: 100%;
+  background: var(--surface-raised);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  animation: drawerIn 0.18s ease both;
+}
+@keyframes drawerIn {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.drawer-title {
+  font-size: 18px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+}
+@media (max-width: 800px) {
+  .drawer .editor-split {
+    flex-direction: column;
+  }
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.secret-actions {
+  min-width: 340px;
+}
+tr.row-warn td:first-child {
+  box-shadow: inset 3px 0 0 var(--warn);
 }
