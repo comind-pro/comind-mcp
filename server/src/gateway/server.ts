@@ -33,6 +33,8 @@ export interface AgentAuth {
   compactResults: boolean;
   /** Built-in system.* tools this group exposes (subset of SYSTEM_TOOL_NAMES). */
   systemTools: string[];
+  /** Tool ids hidden from this agent even though the group holds them. */
+  blockedTools: string[];
 }
 
 /** An authenticated agent plus every V-MCP group it may reach (for /a/mcp). */
@@ -43,6 +45,8 @@ export interface AgentAuthAll {
   role: 'lead' | 'coo';
   /** Built-in system.* tools this agent exposes (subset of SYSTEM_TOOL_NAMES). */
   systemTools: string[];
+  /** Tool ids hidden from this agent even though one of its groups holds them. */
+  blockedTools: string[];
   groups: { id: string; slug: string; schedulingEnabled: boolean; compactResults: boolean }[];
 }
 
@@ -53,6 +57,7 @@ interface Resolved {
   role: 'lead' | 'coo';
   /** Built-in system.* tools this agent exposes (subset of SYSTEM_TOOL_NAMES). */
   systemTools: string[];
+  blockedTools: string[];
   /** If set, the Bearer is restricted to this single group (group-scoped OAuth token). */
   restrictGroupId: string | null;
 }
@@ -76,6 +81,7 @@ export async function resolveBearer(authHeader: string | undefined): Promise<Res
         projectId: agent.projectId,
         role: agent.role,
         systemTools: agent.systemTools ?? [],
+        blockedTools: agent.blockedTools ?? [],
         restrictGroupId: null,
       };
   }
@@ -93,6 +99,7 @@ export async function resolveBearer(authHeader: string | undefined): Promise<Res
     projectId: ag.projectId,
     role: ag.role,
     systemTools: ag.systemTools ?? [],
+    blockedTools: ag.blockedTools ?? [],
     restrictGroupId: tok.groupId,
   };
 }
@@ -131,6 +138,7 @@ export async function authenticateAgent(ref: string, authHeader: string | undefi
     schedulingEnabled: grp.schedulingEnabled,
     compactResults: grp.compactResults,
     systemTools: r.systemTools,
+    blockedTools: r.blockedTools,
   };
 }
 
@@ -150,6 +158,7 @@ export async function authenticateAgentAll(authHeader: string | undefined): Prom
       projectId: r.projectId,
       role: r.role,
       systemTools: r.systemTools,
+      blockedTools: r.blockedTools,
       groups: [],
     };
 
@@ -160,6 +169,7 @@ export async function authenticateAgentAll(authHeader: string | undefined): Prom
     projectId: r.projectId,
     role: r.role,
     systemTools: r.systemTools,
+    blockedTools: r.blockedTools,
     groups: grps.map((g) => ({
       id: g.id,
       slug: g.slug,
@@ -223,6 +233,9 @@ async function handleSelfCron(auth: AgentAuth, name: string, args: Record<string
     const tool = String(args.tool ?? '');
     if (!isValidCron(cronExpr)) return text(`Invalid cron: ${cronExpr}`, true);
     if (!(await toolInGroup(auth.groupId, tool, auth.ownerId))) return text(`Tool not in group: ${tool}`, true);
+    // ponytail: checked at schedule time only; blocking a tool later leaves its old schedules running
+    if (!(await groupVisibleTools(auth.groupId, auth.blockedTools)).some((t) => t.name === tool))
+      return text(`Tool not available to this agent: ${tool}`, true);
     const row = await createSchedule({
       ownerId: auth.ownerId,
       groupId: auth.groupId,
@@ -271,8 +284,8 @@ export function withReservedArgs(schema: Record<string, unknown>): Record<string
   };
 }
 
-/** Visible tools assigned to a group. */
-async function groupVisibleTools(groupId: string) {
+/** Visible tools assigned to a group, minus the ones blocked for the calling agent. */
+async function groupVisibleTools(groupId: string, blocked: string[]) {
   const links = await db.select().from(groupTools).where(eq(groupTools.groupId, groupId));
   const ids = links.map((l) => l.toolId);
   if (!ids.length) return [];
@@ -280,7 +293,7 @@ async function groupVisibleTools(groupId: string) {
     .select()
     .from(tools)
     .where(and(inArray(tools.id, ids), liveTool()));
-  return rows.filter((t) => t.visible);
+  return rows.filter((t) => t.visible && !blocked.includes(t.id));
 }
 
 type ToolRow = Awaited<ReturnType<typeof groupVisibleTools>>[number];
@@ -325,7 +338,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const list = await groupVisibleTools(auth.groupId);
+    const list = await groupVisibleTools(auth.groupId, auth.blockedTools);
     const titles = await toolTitles(list);
     const toolDefs = list.map((t) => ({
       name: mcpToolName(t.name),
@@ -355,6 +368,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
           ownerId: auth.ownerId,
           scope: 'group',
           groups: [{ id: auth.groupId, slug: auth.groupSlug, schedulingEnabled: auth.schedulingEnabled }],
+          blockedTools: auth.blockedTools,
         },
         sysName,
         a,
@@ -377,7 +391,7 @@ export async function buildGroupServer(auth: AgentAuth): Promise<Server> {
     // Gate: the agent may only call tools assigned & visible in its group.
     // Clients call with the MCP-safe name from tools/list; resolve it back to
     // the stored name (older clients may still send the raw one).
-    const allowed = await groupVisibleTools(auth.groupId);
+    const allowed = await groupVisibleTools(auth.groupId, auth.blockedTools);
     const tool = allowed.find((t) => t.name === name || mcpToolName(t.name) === name);
     if (!tool) {
       return { content: [{ type: 'text', text: `Tool not in group: ${name}` }], isError: true };
@@ -416,7 +430,7 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
   const index = async () => {
     const map = new Map<string, { groupId: string; tool: Awaited<ReturnType<typeof groupVisibleTools>>[number] }>();
     for (const g of auth.groups) {
-      for (const t of await groupVisibleTools(g.id)) {
+      for (const t of await groupVisibleTools(g.id, auth.blockedTools)) {
         const key = mcpToolName(t.name);
         if (!map.has(key)) map.set(key, { groupId: g.id, tool: t });
       }
@@ -463,6 +477,7 @@ export async function buildAgentServer(auth: AgentAuthAll): Promise<Server> {
             slug: g.slug,
             schedulingEnabled: g.schedulingEnabled,
           })),
+          blockedTools: auth.blockedTools,
         },
         sysName,
         (args ?? {}) as Record<string, unknown>,
