@@ -23,6 +23,8 @@ export interface SystemCtx {
   ownerId: string;
   scope: 'group' | 'agent';
   groups: { id: string; slug: string; schedulingEnabled?: boolean }[];
+  /** Tool ids hidden from this agent (see agents.blockedTools). */
+  blockedTools?: string[];
 }
 
 const groupIdsOf = (ctx: SystemCtx) => ctx.groups.map((g) => g.id);
@@ -265,7 +267,7 @@ function clampLimit(args: Record<string, unknown>): number {
 }
 
 /** Visible tools assigned to any of the given groups (deduped by tool id). */
-async function visibleToolsForGroups(groupIds: string[]) {
+async function visibleToolsForGroups(groupIds: string[], blocked: string[] = []) {
   if (!groupIds.length) return [];
   const links = await db.select().from(groupTools).where(inArray(groupTools.groupId, groupIds));
   const ids = [...new Set(links.map((l) => l.toolId))];
@@ -274,12 +276,12 @@ async function visibleToolsForGroups(groupIds: string[]) {
     .select()
     .from(tools)
     .where(and(inArray(tools.id, ids), liveTool()));
-  return rows.filter((t) => t.visible);
+  return rows.filter((t) => t.visible && !blocked.includes(t.id));
 }
 
 /** Distinct sources backing the visible tools the agent can reach. */
-async function sourcesForGroups(groupIds: string[]) {
-  const visible = await visibleToolsForGroups(groupIds);
+async function sourcesForGroups(groupIds: string[], blocked: string[] = []) {
+  const visible = await visibleToolsForGroups(groupIds, blocked);
   const sourceIds = [...new Set(visible.map((t) => t.sourceId).filter((s): s is string => !!s))];
   if (!sourceIds.length) return [];
   return db.select().from(sources).where(inArray(sources.id, sourceIds));
@@ -389,12 +391,12 @@ async function dispatch(ctx: SystemCtx, name: string, args: Record<string, unkno
       const tz = Intl.DateTimeFormat().resolvedOptions();
       const [db_ok, srcRows, visible, groupRows] = await Promise.all([
         dbOk(),
-        sourcesForGroups(groupIds),
-        visibleToolsForGroups(groupIds),
+        sourcesForGroups(groupIds, ctx.blockedTools),
+        visibleToolsForGroups(groupIds, ctx.blockedTools),
         Promise.all(
           ctx.groups.map(async (g) => ({
             slug: g.slug,
-            tools: (await visibleToolsForGroups([g.id])).length,
+            tools: (await visibleToolsForGroups([g.id], ctx.blockedTools)).length,
             scheduling_enabled: g.schedulingEnabled ?? null,
           })),
         ),

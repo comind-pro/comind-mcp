@@ -1962,3 +1962,239 @@ summary.editor-section {
 details:not([open]) > summary.editor-section {
   margin-bottom: 0;
 }
+
+/* ---- Lite mode: one agent at a time, a switch per service ---- */
+.lite-shell {
+  min-height: 100vh;
+  background: var(--surface);
+}
+.lite-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.lite {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 760px);
+  gap: 0 clamp(16px, 4vw, 48px);
+  padding: 24px;
+}
+.lite-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lite-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 10px 6px;
+}
+.lite-agent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  color: var(--text);
+}
+.lite-agent:hover {
+  background: var(--surface-inset);
+}
+.lite-agent.on {
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  font-weight: 600;
+}
+.lite-av {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+.lite-link {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-align: left;
+  padding: 8px 10px;
+}
+.lite-title {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+.lite-lead {
+  color: var(--text-muted);
+  margin: 0 0 20px;
+}
+.lite-list {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.lite-svc {
+  border-top: 1px solid var(--border);
+}
+.lite-svc:first-child {
+  border-top: 0;
+}
+.lite-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.lite-row .grow {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lite-ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--surface-inset);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  flex: none;
+  text-transform: uppercase;
+}
+.lite-name {
+  font-weight: 600;
+}
+.lite-sub {
+  color: var(--text-muted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lite-sub.err {
+  color: var(--err);
+}
+.lite-svc:not(.on) .lite-row > button[aria-expanded="false"] {
+  visibility: hidden;
+}
+.lite-tools {
+  padding: 0 16px 14px 58px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lite-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.lite-tool code {
+  font-size: 13px;
+}
+.lite-warn {
+  font-size: 12px;
+  color: var(--warn);
+}
+.lite-sw {
+  position: relative;
+  width: 40px;
+  height: 23px;
+  flex: none;
+}
+.lite-sw input {
+  opacity: 0;
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.lite-sw i {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: var(--border-strong);
+  transition: background 0.15s;
+  pointer-events: none;
+}
+.lite-sw i::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s;
+}
+.lite-sw input:checked + i {
+  background: var(--ok);
+}
+.lite-sw input:checked + i::after {
+  transform: translateX(17px);
+}
+.lite-sw input:focus-visible + i {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lite-sw input:disabled + i {
+  opacity: 0.5;
+}
+.lite-sw.sm {
+  width: 32px;
+  height: 19px;
+}
+.lite-sw.sm i::after {
+  width: 13px;
+  height: 13px;
+}
+.lite-sw.sm input:checked + i::after {
+  transform: translateX(13px);
+}
+.lite-connect {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+@media (max-width: 720px) {
+  .lite {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+  .lite-agents {
+    flex-direction: row;
+    overflow-x: auto;
+    margin-bottom: 16px;
+  }
+  .lite-label {
+    display: none;
+  }
+  .lite-agent {
+    white-space: nowrap;
+  }
+  .lite-tools {
+    padding-left: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lite-sw i,
+  .lite-sw i::after {
+    transition: none;
+  }
+}

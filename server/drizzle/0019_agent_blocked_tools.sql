@@ -1,0 +1,1 @@
+ALTER TABLE "agents" ADD COLUMN "blocked_tools" jsonb DEFAULT '[]'::jsonb NOT NULL;

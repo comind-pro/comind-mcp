@@ -274,6 +274,9 @@ export const agents = pgTable('agents', {
   // names of built-in system.* introspection tools this agent exposes (subset of
   // SYSTEM_TOOL_NAMES). Applies to every V-MCP the agent connects to and /a/mcp.
   systemTools: jsonb('system_tools').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  // tool ids hidden from this agent even when one of its groups holds them (Lite
+  // mode's per-agent "off" switch; the groups stay shared with other agents).
+  blockedTools: jsonb('blocked_tools').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   createdAt: createdAt(),
 });
 

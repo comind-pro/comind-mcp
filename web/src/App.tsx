@@ -3,6 +3,7 @@ import { AuthPage } from './AuthPage.js';
 import { type Agent, type AuthUser, api, type Project, projectStore, tokenStore } from './api.js';
 import { Home } from './Home.js';
 import { Icon, type IconName } from './icons.js';
+import { LiteView } from './LiteView.js';
 import { ProjectSelector, ProjectsContext } from './ProjectSelector.js';
 import { knownProject } from './projects.js';
 import { AgentsTab } from './tabs/AgentsTab.js';
@@ -47,6 +48,11 @@ export function App() {
   const [agentNames, setAgentNames] = useState<Map<string, string>>(new Map());
   const [navOpen, setNavOpen] = useState(false);
   const [rail, setRail] = useState(() => localStorage.getItem('comind_nav') === 'rail');
+  const [lite, setLiteState] = useState(() => localStorage.getItem('comind_mode') === 'lite');
+  const setLite = (on: boolean) => {
+    localStorage.setItem('comind_mode', on ? 'lite' : 'full');
+    setLiteState(on);
+  };
 
   const toggleRail = () =>
     setRail((r) => {
@@ -113,6 +119,29 @@ export function App() {
 
   const current = PAGES.find((p) => p.id === page) ?? PAGES[0];
 
+  if (lite)
+    return (
+      <div className="lite-shell">
+        <header className="lite-top">
+          <span className="side-brand">comind-mcp</span>
+          <span className="ml-auto" />
+          <ProjectSelector projects={projects} value={selected} onChange={setSelected} />
+          <button className="ghost" onClick={() => setLite(false)}>
+            Full mode
+          </button>
+        </header>
+        <ProjectsContext.Provider value={{ projects, selected, agentNames, reload }}>
+          <LiteView
+            key={selected ?? 'all'}
+            onFull={(hash) => {
+              location.hash = hash;
+              setLite(false);
+            }}
+          />
+        </ProjectsContext.Provider>
+      </div>
+    );
+
   return (
     <div className="shell">
       <button className="nav-burger" onClick={() => setNavOpen(!navOpen)} aria-label="Menu">
@@ -149,6 +178,12 @@ export function App() {
           ))}
         </nav>
         <div className="side-foot">
+          <button className="side-item" onClick={() => setLite(true)}>
+            <span className="side-icon">
+              <Icon name="grid" />
+            </span>
+            <span className="side-label">Lite mode</span>
+          </button>
           <button className="side-item" onClick={() => setTheme(toggleTheme())}>
             <span className="side-icon">
               <Icon name={theme === 'light' ? 'moon' : 'sun'} />

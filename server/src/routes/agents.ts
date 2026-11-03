@@ -8,7 +8,14 @@ import { hashKey } from '../lib/crypto.js';
 import { newApiKey, newId } from '../lib/id.js';
 import { sendErr } from '../lib/req.js';
 import { inSubtree, scopeFor } from '../lib/scope.js';
-import { createAgent, endpointFor, ownedAgent, setAgentRole } from '../services/agents.js';
+import {
+  agentToolIds,
+  createAgent,
+  endpointFor,
+  ownedAgent,
+  setAgentRole,
+  setAgentToolIds,
+} from '../services/agents.js';
 import { isErr } from '../services/sources.js';
 
 const createBody = z.object({ name: z.string().min(1) });
@@ -145,6 +152,20 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     if (!(await ownedAgent(await scopeFor(req), id))) return reply.code(404).send({ error: 'not_found' });
     await db.delete(agents).where(eq(agents.id, id));
     return reply.code(204).send();
+  });
+
+  // Lite mode: the flat set of tool ids this agent can call, read and replaced as a whole.
+  app.get('/agents/:id/tools', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const r = await agentToolIds(await scopeFor(req), id);
+    return isErr(r) ? sendErr(reply, r) : r;
+  });
+
+  app.put('/agents/:id/tools', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { toolIds } = z.object({ toolIds: z.array(z.string()) }).parse(req.body);
+    const r = await setAgentToolIds(await scopeFor(req), id, toolIds);
+    return isErr(r) ? sendErr(reply, r) : r;
   });
 
   app.get('/agents/:id/groups', async (req, reply) => {
